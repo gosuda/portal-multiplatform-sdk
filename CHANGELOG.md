@@ -2,6 +2,9 @@
 
 ## 2026-09-17
 
+- feat(sample): redesigned Compose UI (dark theme, gradient hero, rounded
+  cards); bundled Snake game served via staticDir
+
 - feat(sdk): `PortalClient(context)` on Android defaults `identity_path` to
   `filesDir/identity.json`; relay URLs normalized at `open` mirroring
   `utils.NormalizeRelayURL`; `PortalClient.sessions` StateFlow;

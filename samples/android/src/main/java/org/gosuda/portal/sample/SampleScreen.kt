@@ -1,7 +1,8 @@
 package org.gosuda.portal.sample
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,27 +10,31 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,9 +42,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalDiagnostics
 import org.gosuda.portal.PortalIdentity
@@ -61,13 +70,43 @@ data class SampleActions(
     val onDiagnostics: () -> Unit,
 )
 
+// ---- palette ---------------------------------------------------------------
+
+private val Bg = Color(0xFF0B1020)
+private val Surface1 = Color(0xFF141A33)
+private val Surface2 = Color(0xFF1B2342)
+private val Violet = Color(0xFF7C4DFF)
+private val Blue = Color(0xFF448AFF)
+private val Mint = Color(0xFF69F0AE)
+private val TextPrimary = Color(0xFFE8ECF8)
+private val TextSecondary = Color(0xFF8A93B8)
+private val Danger = Color(0xFFFF6B6B)
+
+private val PortalColors = darkColorScheme(
+    primary = Violet,
+    secondary = Blue,
+    tertiary = Mint,
+    background = Bg,
+    surface = Surface1,
+    surfaceVariant = Surface2,
+    onPrimary = Color.White,
+    onBackground = TextPrimary,
+    onSurface = TextPrimary,
+    onSurfaceVariant = TextSecondary,
+    error = Danger,
+    errorContainer = Color(0xFF3A1A24),
+    onErrorContainer = Color(0xFFFFB4B4),
+    primaryContainer = Surface2,
+    secondaryContainer = Surface2,
+    tertiaryContainer = Color(0xFF14352A),
+)
+
 @Composable
 fun PortalSampleTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
-        content = content
-    )
+    MaterialTheme(colorScheme = PortalColors, content = content)
 }
+
+// ---- screen ----------------------------------------------------------------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,76 +118,201 @@ fun SampleScreen(
     diagnostics: PortalDiagnostics?,
     actions: SampleActions
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Portal Sample") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            )
-        }
-    ) { padding ->
+    Scaffold(containerColor = Bg) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item { ConfigCard(snapshot, actions.onStart) }
+            item { HeroHeader(snapshot) }
             item { SessionCard(snapshot, lastError, actions) }
-            item { IdentityCard(identity, actions.onGenerateIdentity) }
             item { PublicUrlCard(snapshot) }
+            item { ConfigCard(snapshot, actions.onStart) }
+            item { IdentityCard(identity, actions.onGenerateIdentity) }
             item { MetadataCard(snapshot, actions.onUpdateMetadata) }
             item { RelayManagerCard(snapshot, actions) }
             item { EventLogCard(eventLog) }
             item { DiagnosticsCard(diagnostics, actions.onDiagnostics) }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
+}
+
+// ---- hero ------------------------------------------------------------------
+
+@Composable
+private fun HeroHeader(snapshot: PortalSnapshot?) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.linearGradient(listOf(Violet, Blue)))
+            .padding(24.dp)
+    ) {
+        Column {
+            Text(
+                "PORTAL",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                when (snapshot?.phase) {
+                    null -> "Ready to tunnel"
+                    TunnelPhase.ACTIVE -> "Live on the network"
+                    TunnelPhase.FAILED -> "Tunnel failed"
+                    TunnelPhase.STOPPED -> "Tunnel stopped"
+                    else -> "Working…"
+                },
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                snapshot?.primaryPublicUrl ?: "Serve a site or game from this device",
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.85f),
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+// ---- session ---------------------------------------------------------------
+
+@Composable
+private fun SessionCard(
+    snapshot: PortalSnapshot?,
+    lastError: String?,
+    actions: SampleActions
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
+        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PhaseChip(snapshot?.phase)
+                Spacer(Modifier.weight(1f))
+                snapshot?.let {
+                    Text(
+                        "rev ${it.revision} · dropped ${it.droppedEventCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+            if (snapshot?.hasSecurityWarning == true) {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        "MITM suspected on a relay — treat endpoints as untrusted",
+                        modifier = Modifier.padding(10.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+            snapshot?.lastFailure?.let { failure ->
+                Spacer(Modifier.height(8.dp))
+                Text("${failure.code}: ${failure.message}",
+                    style = MaterialTheme.typography.bodySmall, color = Danger)
+            }
+            lastError?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton("Stop", actions.onStop,
+                    enabled = snapshot != null && !snapshot.isTerminal, modifier = Modifier.weight(1f))
+                ActionButton("Refresh", actions.onRefresh,
+                    enabled = snapshot != null && !snapshot.isTerminal, modifier = Modifier.weight(1f))
+                ActionButton("Await", actions.onAwaitReady,
+                    enabled = snapshot != null && !snapshot.isTerminal, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhaseChip(phase: TunnelPhase?) {
+    val (label, color, textColor) = when (phase) {
+        null -> Triple("idle", Surface2, TextSecondary)
+        TunnelPhase.ACTIVE -> Triple("active", Mint, Color(0xFF0B1020))
+        TunnelPhase.FAILED -> Triple("failed", Danger, Color.White)
+        TunnelPhase.STOPPED -> Triple("stopped", Surface2, TextSecondary)
+        else -> Triple(phase.name.lowercase(), Blue, Color.White)
+    }
+    Surface(color = color, shape = RoundedCornerShape(999.dp)) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = textColor
+        )
+    }
+}
+
+@Composable
+private fun ActionButton(
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = TextPrimary,
+            disabledContentColor = TextSecondary.copy(alpha = 0.4f)
+        )
+    ) { Text(label, fontSize = 13.sp) }
 }
 
 // ---- config ----------------------------------------------------------------
 
 @Composable
 private fun ConfigCard(snapshot: PortalSnapshot?, onStart: (PortalConfig) -> Unit) {
-    var name by remember { mutableStateOf("kmp-sample") }
+    var name by remember { mutableStateOf("snake-game") }
     var discovery by remember { mutableStateOf(true) }
     var udp by remember { mutableStateOf(false) }
     var tcp by remember { mutableStateOf(false) }
     var ech by remember { mutableStateOf(false) }
     var banMitm by remember { mutableStateOf(false) }
     var hide by remember { mutableStateOf(false) }
-    var description by remember { mutableStateOf("Portal KMP SDK sample") }
-    var tags by remember { mutableStateOf("demo,kmp") }
+    var description by remember { mutableStateOf("Snake served from this device") }
+    var tags by remember { mutableStateOf("game,snake") }
 
     val editable = snapshot == null || snapshot.isTerminal
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Tunnel config", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = name, onValueChange = { name = it },
-                label = { Text("name") }, enabled = editable,
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            OutlinedTextField(
-                value = description, onValueChange = { description = it },
-                label = { Text("description") }, enabled = editable,
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            OutlinedTextField(
-                value = tags, onValueChange = { tags = it },
-                label = { Text("tags (comma-separated)") }, enabled = editable,
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
+    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
+        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            SectionTitle("Tunnel config")
+            PortalField(name, { name = it }, "name", editable)
+            PortalField(description, { description = it }, "description", editable)
+            PortalField(tags, { tags = it }, "tags (comma-separated)", editable)
             Spacer(Modifier.height(4.dp))
-            FlagRow("discovery", discovery, editable) { discovery = it }
-            FlagRow("udp", udp, editable) { udp = it }
-            FlagRow("tcp", tcp, editable) { tcp = it }
-            FlagRow("ech", ech, editable) { ech = it }
-            FlagRow("ban_mitm", banMitm, editable) { banMitm = it }
-            FlagRow("hide", hide, editable) { hide = it }
-            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth()) {
+                FlagChip("discovery", discovery, editable, Modifier.weight(1f)) { discovery = it }
+                FlagChip("udp", udp, editable, Modifier.weight(1f)) { udp = it }
+                FlagChip("tcp", tcp, editable, Modifier.weight(1f)) { tcp = it }
+            }
+            Row(Modifier.fillMaxWidth()) {
+                FlagChip("ech", ech, editable, Modifier.weight(1f)) { ech = it }
+                FlagChip("ban_mitm", banMitm, editable, Modifier.weight(1f)) { banMitm = it }
+                FlagChip("hide", hide, editable, Modifier.weight(1f)) { hide = it }
+            }
+            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = {
                     onStart(
@@ -164,103 +328,63 @@ private fun ConfigCard(snapshot: PortalSnapshot?, onStart: (PortalConfig) -> Uni
                     )
                 },
                 enabled = editable,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Start tunnel") }
-        }
-    }
-}
-
-@Composable
-private fun FlagRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onChange, enabled = enabled)
-        Text(label, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
-    }
-}
-
-// ---- session ---------------------------------------------------------------
-
-@Composable
-private fun SessionCard(
-    snapshot: PortalSnapshot?,
-    lastError: String?,
-    actions: SampleActions
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PhaseChip(snapshot?.phase)
-                Spacer(Modifier.weight(1f))
-                snapshot?.let {
-                    Text(
-                        "rev ${it.revision} · dropped ${it.droppedEventCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (snapshot?.hasSecurityWarning == true) {
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        "MITM suspected on a relay — treat endpoints as untrusted",
-                        modifier = Modifier.padding(8.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                }
-            }
-            snapshot?.lastFailure?.let { failure ->
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "${failure.code}: ${failure.message}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Violet,
+                    contentColor = Color.White,
+                    disabledContainerColor = Surface2,
+                    disabledContentColor = TextSecondary
                 )
-            }
-            lastError?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error)
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = actions.onStop,
-                    enabled = snapshot != null && !snapshot.isTerminal
-                ) { Text("Stop") }
-                OutlinedButton(
-                    onClick = actions.onRefresh,
-                    enabled = snapshot != null && !snapshot.isTerminal
-                ) { Text("Refresh") }
-                OutlinedButton(
-                    onClick = actions.onAwaitReady,
-                    enabled = snapshot != null && !snapshot.isTerminal
-                ) { Text("Await ready") }
-            }
+            ) { Text("Start tunnel", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
         }
     }
 }
 
 @Composable
-private fun PhaseChip(phase: TunnelPhase?) {
-    val (label, color) = when (phase) {
-        null -> "idle" to MaterialTheme.colorScheme.surfaceVariant
-        TunnelPhase.ACTIVE -> "active" to MaterialTheme.colorScheme.tertiaryContainer
-        TunnelPhase.FAILED -> "failed" to MaterialTheme.colorScheme.errorContainer
-        TunnelPhase.STOPPED -> "stopped" to MaterialTheme.colorScheme.surfaceVariant
-        else -> phase.name.lowercase() to MaterialTheme.colorScheme.secondaryContainer
-    }
-    Surface(color = color, shape = MaterialTheme.shapes.small) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold
+private fun PortalField(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+    enabled: Boolean
+) {
+    OutlinedTextField(
+        value = value, onValueChange = onChange,
+        label = { Text(label, color = TextSecondary) },
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Violet,
+            unfocusedBorderColor = Surface2,
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary,
+            disabledTextColor = TextSecondary,
+            disabledBorderColor = Surface2
         )
+    )
+}
+
+@Composable
+private fun FlagChip(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onChange: (Boolean) -> Unit
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = checked, onCheckedChange = onChange, enabled = enabled,
+            colors = CheckboxDefaults.colors(
+                checkedColor = Violet,
+                uncheckedColor = TextSecondary,
+                checkmarkColor = Color.White
+            )
+        )
+        Text(label, style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace, color = TextPrimary)
     }
 }
 
@@ -268,27 +392,27 @@ private fun PhaseChip(phase: TunnelPhase?) {
 
 @Composable
 private fun IdentityCard(identity: PortalIdentity?, onGenerate: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Identity", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
+    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
+        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            SectionTitle("Identity")
             if (identity == null) {
                 Text(
                     "No identity generated. The tunnel creates one at identity_path on first start.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall, color = TextSecondary
                 )
             } else {
                 SelectionContainer {
                     Text(
                         "name=${identity.name}\naddress=${identity.address}",
                         style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        color = Mint
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onGenerate) { Text("Generate identity") }
+            Spacer(Modifier.height(10.dp))
+            ActionButton("Generate identity", onGenerate, enabled = true)
         }
     }
 }
@@ -298,28 +422,26 @@ private fun IdentityCard(identity: PortalIdentity?, onGenerate: () -> Unit) {
 @Composable
 private fun PublicUrlCard(snapshot: PortalSnapshot?) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
+        colors = CardDefaults.cardColors(containerColor = Surface2),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Public URL", style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.height(4.dp))
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text("PUBLIC URL", style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary, letterSpacing = 2.sp)
+            Spacer(Modifier.height(6.dp))
             SelectionContainer {
                 Text(
                     snapshot?.primaryPublicUrl ?: "no public url yet",
                     style = MaterialTheme.typography.bodyLarge,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.Monospace,
+                    color = if (snapshot?.primaryPublicUrl != null) Mint else TextSecondary
                 )
             }
             if (snapshot != null && snapshot.publicUrls.size > 1) {
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    "+${snapshot.publicUrls.size - 1} more",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("+${snapshot.publicUrls.size - 1} more",
+                    style = MaterialTheme.typography.labelSmall, color = TextSecondary)
             }
         }
     }
@@ -335,42 +457,26 @@ private fun MetadataCard(snapshot: PortalSnapshot?, onUpdate: (PortalMetadata) -
     var hide by remember { mutableStateOf(false) }
     val active = snapshot != null && !snapshot.isTerminal
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Metadata (live update)", style = MaterialTheme.typography.titleMedium)
+    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
+        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            SectionTitle("Metadata (live update)")
+            PortalField(description, { description = it }, "description", active)
+            PortalField(tags, { tags = it }, "tags", active)
+            PortalField(owner, { owner = it }, "owner", active)
+            FlagChip("hide", hide, active) { hide = it }
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = description, onValueChange = { description = it },
-                label = { Text("description") }, enabled = active,
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            OutlinedTextField(
-                value = tags, onValueChange = { tags = it },
-                label = { Text("tags") }, enabled = active,
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            OutlinedTextField(
-                value = owner, onValueChange = { owner = it },
-                label = { Text("owner") }, enabled = active,
-                modifier = Modifier.fillMaxWidth(), singleLine = true
-            )
-            FlagRow("hide", hide, active) { hide = it }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    onUpdate(
-                        PortalMetadata(
-                            description = description.ifBlank { null },
-                            tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-                                .ifEmpty { null },
-                            owner = owner.ifBlank { null },
-                            hide = hide
-                        )
+            ActionButton("Update metadata", enabled = active, onClick = {
+                onUpdate(
+                    PortalMetadata(
+                        description = description.ifBlank { null },
+                        tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                            .ifEmpty { null },
+                        owner = owner.ifBlank { null },
+                        hide = hide
                     )
-                },
-                enabled = active,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Update metadata") }
+                )
+            })
         }
     }
 }
@@ -382,26 +488,32 @@ private fun RelayManagerCard(snapshot: PortalSnapshot?, actions: SampleActions) 
     var newRelay by remember { mutableStateOf("") }
     val active = snapshot != null && !snapshot.isTerminal
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Relays (${snapshot?.relays?.size ?: 0})",
-                style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
+    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
+        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            SectionTitle("Relays (${snapshot?.relays?.size ?: 0})")
             snapshot?.relays.orEmpty().forEach { relay ->
                 RelayRow(relay, active, actions.onRemoveRelay)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = newRelay, onValueChange = { newRelay = it },
-                    label = { Text("relay url") }, enabled = active,
-                    modifier = Modifier.weight(1f), singleLine = true
+                    label = { Text("relay url", color = TextSecondary) },
+                    enabled = active,
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet,
+                        unfocusedBorderColor = Surface2,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    )
                 )
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(
-                    onClick = { actions.onAddRelay(newRelay); newRelay = "" },
-                    enabled = active && newRelay.isNotBlank()
-                ) { Text("Add") }
+                ActionButton("Add", enabled = active && newRelay.isNotBlank(),
+                    onClick = { actions.onAddRelay(newRelay); newRelay = "" })
             }
         }
     }
@@ -413,32 +525,25 @@ private fun RelayRow(
     active: Boolean,
     onRemove: (String) -> Unit
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.small
-    ) {
-        Column(modifier = Modifier.padding(8.dp)) {
+    Surface(color = Surface2, shape = RoundedCornerShape(12.dp)) {
+        Column(modifier = Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     relay.relayUrl,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
+                    color = TextPrimary,
                     modifier = Modifier.weight(1f)
                 )
                 RelayStateChip(relay)
                 Spacer(Modifier.width(6.dp))
-                OutlinedButton(
-                    onClick = { onRemove(relay.relayUrl) },
-                    enabled = active
-                ) { Text("×") }
+                ActionButton("×", enabled = active, onClick = { onRemove(relay.relayUrl) })
             }
             relay.publicUrl?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(it, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
             }
             relay.error?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error)
+                Text(it, style = MaterialTheme.typography.labelSmall, color = Danger)
             }
         }
     }
@@ -446,17 +551,19 @@ private fun RelayRow(
 
 @Composable
 private fun RelayStateChip(relay: PortalRelayStatus) {
-    val color = when {
-        relay.isMitm -> MaterialTheme.colorScheme.errorContainer
-        relay.isReady -> MaterialTheme.colorScheme.tertiaryContainer
-        relay.isFailed -> MaterialTheme.colorScheme.errorContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+    val (label, color) = when {
+        relay.isMitm -> "mitm" to Danger
+        relay.isReady -> "ready" to Mint
+        relay.isFailed -> "failed" to Danger
+        else -> relay.state to Surface2
     }
-    Surface(color = color, shape = MaterialTheme.shapes.small) {
+    Surface(color = color, shape = RoundedCornerShape(999.dp)) {
         Text(
-            if (relay.isMitm) "mitm" else relay.state,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall
+            label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = if (color == Mint || color == Danger) Color(0xFF0B1020) else TextSecondary
         )
     }
 }
@@ -465,23 +572,26 @@ private fun RelayStateChip(relay: PortalRelayStatus) {
 
 @Composable
 private fun EventLogCard(eventLog: List<String>) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Events", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
+    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
+        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            SectionTitle("Events")
             if (eventLog.isEmpty()) {
                 Text("no events yet", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = TextSecondary)
             } else {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0A0E1E))
                         .verticalScroll(rememberScrollState())
+                        .padding(10.dp)
                 ) {
                     eventLog.forEach { line ->
                         Text(line, style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace)
+                            fontFamily = FontFamily.Monospace, color = Mint)
                     }
                 }
             }
@@ -493,20 +603,32 @@ private fun EventLogCard(eventLog: List<String>) {
 
 @Composable
 private fun DiagnosticsCard(diagnostics: PortalDiagnostics?, onLoad: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Diagnostics", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
+    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
+        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            SectionTitle("Diagnostics")
             diagnostics?.let { d ->
                 Text(
                     "sdk=${d.sdkVersion} abi=${d.abiVersion} wire=${d.wireSchemaVersion}\n" +
                         "sessions=${d.activeSessions} orphanDrops=${d.droppedOrphanEvents}",
                     style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.Monospace,
+                    color = TextSecondary
                 )
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onLoad) { Text("Load diagnostics") }
+            ActionButton("Load diagnostics", onLoad, enabled = true)
         }
     }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = TextPrimary,
+        modifier = Modifier.padding(bottom = 10.dp)
+    )
 }

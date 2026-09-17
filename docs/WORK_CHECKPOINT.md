@@ -20,6 +20,11 @@ SDK improvement pass — **complete for this session's scope**.
 - Session 4 changes: SessionRegistry extraction, Portal.builder() entry
   point, relay editor + keep-alive toggle in sample, vertical config list,
   sync-portal-tunnel.sh, mascot logo.
+- Session 5 changes: full sample redesign — three destinations (Publish,
+  Settings, Activity), English strings, vertical config with explanations,
+  URL copy/open, keep-alive toggle, relay editor, busy guards, session
+  retention, KeepAliveService notification actions, PortalClientHolder,
+  SampleApp shared state, mascot PNG logo.
 - Not verified locally (needs macOS): `compileKotlinIos*`, XCFramework.
 
 ## Next action

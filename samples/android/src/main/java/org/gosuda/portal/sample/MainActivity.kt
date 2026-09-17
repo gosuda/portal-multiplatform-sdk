@@ -2,6 +2,10 @@ package org.gosuda.portal.sample
 
 import android.os.Bundle
 import android.content.Intent
+import android.Manifest
+import android.os.Build
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
@@ -18,8 +22,9 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import org.gosuda.portal.Capability
-import org.gosuda.portal.PortalClient
 import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalDiagnostics
 import org.gosuda.portal.PortalEvent
@@ -42,16 +47,23 @@ class MainActivity : ComponentActivity() {
     private val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val client get() = PortalClientHolder.client
 
-    private val tunnel = MutableStateFlow<PortalTunnel?>(null)
+    private val app get() = application as SampleApp
+    private val tunnel get() = app.tunnel
 
-    val snapshot: StateFlow<PortalSnapshot?> =
+    val snapshot: StateFlow<PortalSnapshot?> by lazy {
         tunnel.flatMapLatest { it?.state ?: flowOf(null) }
-            .stateIn(ownerScope, SharingStarted.Eagerly, null)
+            .stateIn(ownerScope, SharingStarted.Eagerly, tunnel.value?.state?.value)
+    }
 
-    val lastError = MutableStateFlow<String?>(null)
+    val lastError get() = app.lastError
     val identity = MutableStateFlow<PortalIdentity?>(null)
     val eventLog = MutableStateFlow<List<String>>(emptyList())
     val diagnostics = MutableStateFlow<PortalDiagnostics?>(null)
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) lastError.value = "Notification permission denied. Manage connection and stop from the app."
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,12 +75,16 @@ class MainActivity : ComponentActivity() {
                 val id by identity.collectAsState()
                 val log by eventLog.collectAsState()
                 val diag by diagnostics.collectAsState()
+                val busy by app.busy.collectAsState()
+                val keepAlive by app.keepAlive.collectAsState()
                 SampleScreen(
                     snapshot = snap,
                     lastError = error,
                     identity = id,
                     eventLog = log,
                     diagnostics = diag,
+                    busy = busy,
+                    keepAlive = keepAlive,
                     actions = actions()
                 )
             }
@@ -89,43 +105,66 @@ class MainActivity : ComponentActivity() {
     )
 
     private fun setKeepAlive(enabled: Boolean) {
-        val intent = Intent(this, KeepAliveService::class.java)
-        if (enabled) {
-            startForegroundService(intent)
-        } else {
-            stopService(intent)
+        if (app.busy.value) return
+        if (enabled && Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        try {
+            if (enabled && tunnel.value?.state?.value?.isTerminal == false) {
+                startForegroundService(Intent(this, KeepAliveService::class.java))
+            } else if (!enabled) {
+                stopService(Intent(this, KeepAliveService::class.java))
+            }
+            app.keepAlive.value = enabled
+        } catch (e: RuntimeException) {
+            lastError.value = "Could not start background execution: ${e.message}"
+            app.keepAlive.value = false
         }
     }
 
     // ---- actions -----------------------------------------------------------
 
     private fun startTunnel(config: PortalConfig) {
-        ownerScope.launch {
+        if (app.busy.value || tunnel.value?.state?.value?.isTerminal == false) return
+        app.busy.value = true
+        app.scope.launch {
             lastError.value = null
             try {
-                val siteDir = extractSite()
-                // The engine loads or creates the identity at this path; the
-                // process CWD is read-only on Android, so use filesDir.
+                if (app.keepAlive.value) {
+                    startForegroundService(Intent(this@MainActivity, KeepAliveService::class.java))
+                }
+                val siteDir = withContext(Dispatchers.IO) { extractSite() }
                 val resolved = config.copy(
-                    identityPath = config.identityPath
-                        ?: File(filesDir, "identity.json").absolutePath,
+                    identityPath = config.identityPath ?: File(filesDir, "identity.json").absolutePath,
                     staticDir = config.staticDir ?: siteDir.absolutePath,
                     staticIndex = config.staticIndex ?: "index.html"
                 )
                 tunnel.value = client.open(resolved)
-            } catch (e: PortalException) {
-                lastError.value = "start failed: ${e.code} ${e.message}"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError.value = "Could not start publishing: ${e.message}"
+                stopService(Intent(this@MainActivity, KeepAliveService::class.java))
+            } finally {
+                app.busy.value = false
             }
         }
     }
 
     private fun stopTunnel() {
         val t = tunnel.value ?: return
-        ownerScope.launch {
+        if (app.busy.value) return
+        app.busy.value = true
+        app.scope.launch {
             try {
                 t.stop()
+                stopService(Intent(this@MainActivity, KeepAliveService::class.java))
+                lastError.value = null
             } catch (e: PortalException) {
-                lastError.value = "stop failed: ${e.code} ${e.message}"
+                lastError.value = "Could not stop. Try again: ${e.message}"
+            } finally {
+                app.busy.value = false
             }
         }
     }
@@ -237,13 +276,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (isFinishing) {
-            ownerScope.launch {
-                tunnel.value?.stop()
-                client.close()
-                ownerScope.cancel()
-            }
-        }
+        ownerScope.cancel()
     }
 }
 

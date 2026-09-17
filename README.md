@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" width="140" alt="Portal SDK mascot"/>
+  <img src="docs/logo.png" width="140" alt="Portal SDK mascot"/>
 </p>
 
 <h1 align="center">Portal Multiplatform SDK</h1>

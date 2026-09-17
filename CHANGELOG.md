@@ -2,6 +2,14 @@
 
 ## 2026-09-17
 
+- feat(sample): redesigned Android + iOS UIs — three destinations (Publish,
+  Settings, Activity), Korean→English strings, vertical config with
+  explanations, URL copy/open, keep-alive toggle, relay editor, busy
+  guards, session retention across tabs/rotation
+- feat(sample): KeepAliveService with notification actions; PortalClientHolder
+  for process-scoped ownership; SampleApp for shared state
+- docs(readme): mascot logo (PNG), upstream-sync section
+
 - feat(sdk): `SessionRegistry` extracted from `PortalClient`;
   `Portal.client()`/`Portal.builder()` entry points
 - feat(sample): relay list editor, keep-alive foreground-service toggle,

@@ -1,6 +1,11 @@
 package org.gosuda.portal.sample
 
 import android.app.Application
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import org.gosuda.portal.PortalTunnel
 import org.gosuda.portal.lifecycle.PortalClientHolder
 
 /**
@@ -9,6 +14,12 @@ import org.gosuda.portal.lifecycle.PortalClientHolder
  * backgrounding.
  */
 class SampleApp : Application() {
+    internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    internal val tunnel = MutableStateFlow<PortalTunnel?>(null)
+    internal val busy = MutableStateFlow(false)
+    internal val keepAlive = MutableStateFlow(false)
+    internal val lastError = MutableStateFlow<String?>(null)
+
     override fun onCreate() {
         super.onCreate()
         PortalClientHolder.init()

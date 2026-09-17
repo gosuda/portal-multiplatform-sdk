@@ -1,53 +1,73 @@
 package org.gosuda.portal.sample
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalDiagnostics
 import org.gosuda.portal.PortalIdentity
@@ -70,35 +90,28 @@ data class SampleActions(
     val onKeepAlive: (Boolean) -> Unit,
 )
 
-// ---- palette ---------------------------------------------------------------
-
-private val Bg = Color(0xFF0B1020)
-private val Surface1 = Color(0xFF141A33)
-private val Surface2 = Color(0xFF1B2342)
-private val Violet = Color(0xFF7C4DFF)
-private val Blue = Color(0xFF448AFF)
-private val Mint = Color(0xFF69F0AE)
-private val TextPrimary = Color(0xFFE8ECF8)
-private val TextSecondary = Color(0xFF8A93B8)
-private val Danger = Color(0xFFFF6B6B)
-
+private val Bg = Color(0xFF080F1D)
+private val Surface1 = Color(0xFF111E30)
+private val Surface2 = Color(0xFF1B2D42)
+private val Cyan = Color(0xFF64DCEC)
+private val Mint = Color(0xFFA0F0CC)
+private val TextPrimary = Color(0xFFF0F5FC)
+private val TextSecondary = Color(0xFFA7B8CE)
+private val Danger = Color(0xFFFFA29B)
 private val PortalColors = darkColorScheme(
-    primary = Violet,
-    secondary = Blue,
-    tertiary = Mint,
+    primary = Cyan,
+    secondary = Mint,
     background = Bg,
     surface = Surface1,
     surfaceVariant = Surface2,
-    onPrimary = Color.White,
+    onPrimary = Bg,
+    onSecondary = Bg,
     onBackground = TextPrimary,
     onSurface = TextPrimary,
     onSurfaceVariant = TextSecondary,
     error = Danger,
-    errorContainer = Color(0xFF3A1A24),
-    onErrorContainer = Color(0xFFFFB4B4),
-    primaryContainer = Surface2,
-    secondaryContainer = Surface2,
-    tertiaryContainer = Color(0xFF14352A),
+    errorContainer = Color(0xFF39232C),
+    onErrorContainer = Danger,
 )
 
 @Composable
@@ -106,9 +119,6 @@ fun PortalSampleTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = PortalColors, content = content)
 }
 
-// ---- screen ----------------------------------------------------------------
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SampleScreen(
     snapshot: PortalSnapshot?,
@@ -116,534 +126,290 @@ fun SampleScreen(
     identity: PortalIdentity?,
     eventLog: List<String>,
     diagnostics: PortalDiagnostics?,
+    busy: Boolean,
+    keepAlive: Boolean,
     actions: SampleActions
 ) {
-    Scaffold(containerColor = Bg) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            item { HeroHeader(snapshot) }
-            item { SessionCard(snapshot, lastError, actions) }
-            item { PublicUrlCard(snapshot) }
-            item { ConfigCard(snapshot, actions.onStart, actions.onKeepAlive) }
-            item { MetadataCard(snapshot, actions.onUpdateMetadata) }
-            item { RelayManagerCard(snapshot, actions) }
-            item { EventLogCard(eventLog) }
-            item { DiagnosticsCard(diagnostics, actions.onDiagnostics) }
-            item { Spacer(Modifier.height(24.dp)) }
-        }
-    }
-}
-
-// ---- hero ------------------------------------------------------------------
-
-@Composable
-private fun HeroHeader(snapshot: PortalSnapshot?) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Brush.linearGradient(listOf(Violet, Blue)))
-            .padding(24.dp)
-    ) {
-        Column {
-            Text(
-                "PORTAL",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 4.sp,
-                color = Color.White.copy(alpha = 0.8f)
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                when (snapshot?.phase) {
-                    null -> "Ready to tunnel"
-                    TunnelPhase.ACTIVE -> "Live on the network"
-                    TunnelPhase.FAILED -> "Tunnel failed"
-                    TunnelPhase.STOPPED -> "Tunnel stopped"
-                    else -> "Working…"
-                },
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                snapshot?.primaryPublicUrl ?: "Serve a site or game from this device",
-                fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.85f),
-                fontFamily = FontFamily.Monospace
-            )
-        }
-    }
-}
-
-// ---- session ---------------------------------------------------------------
-
-@Composable
-private fun SessionCard(
-    snapshot: PortalSnapshot?,
-    lastError: String?,
-    actions: SampleActions
-) {
-    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
-        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PhaseChip(snapshot?.phase)
-                Spacer(Modifier.weight(1f))
-                snapshot?.let {
-                    Text(
-                        "rev ${it.revision} · dropped ${it.droppedEventCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                }
-            }
-            if (snapshot?.hasSecurityWarning == true) {
-                Spacer(Modifier.height(10.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(
-                        "MITM suspected on a relay — treat endpoints as untrusted",
-                        modifier = Modifier.padding(10.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                }
-            }
-            snapshot?.lastFailure?.let { failure ->
-                Spacer(Modifier.height(8.dp))
-                Text("${failure.code}: ${failure.message}",
-                    style = MaterialTheme.typography.bodySmall, color = Danger)
-            }
-            lastError?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ActionButton("Stop", actions.onStop,
-                    enabled = snapshot != null && !snapshot.isTerminal, modifier = Modifier.weight(1f))
-                ActionButton("Refresh", actions.onRefresh,
-                    enabled = snapshot != null && !snapshot.isTerminal, modifier = Modifier.weight(1f))
-                ActionButton("Await", actions.onAwaitReady,
-                    enabled = snapshot != null && !snapshot.isTerminal, modifier = Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun PhaseChip(phase: TunnelPhase?) {
-    val (label, color, textColor) = when (phase) {
-        null -> Triple("idle", Surface2, TextSecondary)
-        TunnelPhase.ACTIVE -> Triple("active", Mint, Color(0xFF0B1020))
-        TunnelPhase.FAILED -> Triple("failed", Danger, Color.White)
-        TunnelPhase.STOPPED -> Triple("stopped", Surface2, TextSecondary)
-        else -> Triple(phase.name.lowercase(), Blue, Color.White)
-    }
-    Surface(color = color, shape = RoundedCornerShape(999.dp)) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = textColor
-        )
-    }
-}
-
-@Composable
-private fun ActionButton(
-    label: String,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = TextPrimary,
-            disabledContentColor = TextSecondary.copy(alpha = 0.4f)
-        )
-    ) { Text(label, fontSize = 13.sp) }
-}
-
-// ---- config ----------------------------------------------------------------
-
-@Composable
-private fun ConfigCard(
-    snapshot: PortalSnapshot?,
-    onStart: (PortalConfig) -> Unit,
-    onKeepAlive: (Boolean) -> Unit
-) {
-    var name by remember { mutableStateOf("snake-game") }
-    var discovery by remember { mutableStateOf(true) }
-    var udp by remember { mutableStateOf(false) }
-    var tcp by remember { mutableStateOf(false) }
-    var ech by remember { mutableStateOf(false) }
-    var banMitm by remember { mutableStateOf(false) }
-    var hide by remember { mutableStateOf(false) }
-    var description by remember { mutableStateOf("Snake served from this device") }
-    var tags by remember { mutableStateOf("game,snake") }
-    var relays by remember { mutableStateOf("") }
-    var keepAlive by remember { mutableStateOf(false) }
-
-
-    val editable = snapshot == null || snapshot.isTerminal
-
-    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
-        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            SectionTitle("Tunnel config")
-            Hint("Serve a site or game from this device. The URL rotates as relays join/leave.")
-            PortalField(relays, { relays = it }, "relays", "comma-separated relay URLs; empty = public pool", editable)
-            PortalField(name, { name = it }, "name", "public name — becomes <name>.portal.<relay>", editable)
-            PortalField(description, { description = it }, "description", "shown in the public directory", editable)
-            PortalField(tags, { tags = it }, "tags", "comma-separated search keywords", editable)
-            Spacer(Modifier.height(4.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                FlagChip("discovery", discovery, editable,
-                    hint = "list in the public directory") { discovery = it }
-                FlagChip("udp", udp, editable,
-                    hint = "relay UDP traffic (games, QUIC)") { udp = it }
-                FlagChip("tcp", tcp, editable,
-                    hint = "relay raw TCP ports") { tcp = it }
-                FlagChip("ech", ech, editable,
-                    hint = "hide SNI from relays (privacy)") { ech = it }
-                FlagChip("ban_mitm", banMitm, editable,
-                    hint = "refuse relays that intercept TLS") { banMitm = it }
-                FlagChip("hide", hide, editable,
-                    hint = "unlisted; only reachable by direct URL") { hide = it }
-            }
-            FlagChip("keep_alive", keepAlive, editable,
-                hint = "foreground service keeps the tunnel running in background") {
-                keepAlive = it
-                onKeepAlive(it)
-            }
-            Button(
-                onClick = {
-                    onStart(
-                        PortalConfig(
-                            name = name.ifBlank { null },
-                            discovery = discovery,
-                            udp = udp, tcp = tcp, ech = ech,
-                            banMitm = banMitm, hide = hide,
-                            description = description.ifBlank { null },
-                            tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-                                .ifEmpty { null },
-                            relays = relays.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-                                .ifEmpty { null }
-                        )
-                    )
-                },
-
-                enabled = editable,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Violet,
-                    contentColor = Color.White,
-                    disabledContainerColor = Surface2,
-                    disabledContentColor = TextSecondary
-                )
-            ) { Text("Start tunnel", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
-        }
-    }
-}
-
-@Composable
-private fun PortalField(
-    value: String,
-    onChange: (String) -> Unit,
-    label: String,
-    hint: String,
-    enabled: Boolean
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        OutlinedTextField(
-            value = value, onValueChange = onChange,
-            label = { Text(label, color = TextSecondary) },
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Violet,
-                unfocusedBorderColor = Surface2,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary,
-                disabledTextColor = TextSecondary,
-                disabledBorderColor = Surface2
-            )
-        )
-        Hint(hint)
-    }
-}
-
-@Composable
-private fun FlagChip(
-    label: String,
-    checked: Boolean,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    hint: String,
-    onChange: (Boolean) -> Unit
-) {
-    Column(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = checked, onCheckedChange = onChange, enabled = enabled,
-                colors = CheckboxDefaults.colors(
-                    checkedColor = Violet,
-                    uncheckedColor = TextSecondary,
-                    checkmarkColor = Color.White
-                )
-            )
-            Text(label, style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace, color = TextPrimary)
-        }
-        Hint(hint)
-    }
-}
-
-@Composable
-private fun Hint(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelSmall,
-        color = TextSecondary.copy(alpha = 0.7f),
-        modifier = Modifier.padding(start = 4.dp, top = 2.dp)
-    )
-}
-
-// ---- identity ---------------------------------------------------------------
-
-@Composable
-private fun IdentityCard(identity: PortalIdentity?, onGenerate: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
-        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            SectionTitle("Identity")
-            if (identity == null) {
-                Text(
-                    "No identity generated. The tunnel creates one at identity_path on first start.",
-                    style = MaterialTheme.typography.bodySmall, color = TextSecondary
-                )
-            } else {
-                SelectionContainer {
-                    Text(
-                        "name=${identity.name}\naddress=${identity.address}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = Mint
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            ActionButton("Generate identity", onGenerate, enabled = true)
-        }
-    }
-}
-
-// ---- public url --------------------------------------------------------------
-
-@Composable
-private fun PublicUrlCard(snapshot: PortalSnapshot?) {
+    // Drafts belong to the screen, not a destination. Saveable state also survives rotation.
+    var destination by rememberSaveable { mutableStateOf(0) }
+    var name by rememberSaveable { mutableStateOf("snake-game") }
+    var description by rememberSaveable { mutableStateOf("Snake game served from this device") }
+    var tags by rememberSaveable { mutableStateOf("game,snake") }
+    var relays by rememberSaveable { mutableStateOf("") }
+    var discovery by rememberSaveable { mutableStateOf(true) }
+    var udp by rememberSaveable { mutableStateOf(false) }
+    var tcp by rememberSaveable { mutableStateOf(false) }
+    var ech by rememberSaveable { mutableStateOf(false) }
+    var banMitm by rememberSaveable { mutableStateOf(false) }
+    var hide by rememberSaveable { mutableStateOf(false) }
+    var liveDescription by rememberSaveable { mutableStateOf("") }
+    var liveTags by rememberSaveable { mutableStateOf("") }
+    var liveOwner by rememberSaveable { mutableStateOf("") }
+    var liveHide by rememberSaveable { mutableStateOf(false) }
+    var newRelay by rememberSaveable { mutableStateOf("") }
+    var activityPanel by rememberSaveable { mutableStateOf("session") }
+    val publishScroll = rememberLazyListState()
+    val settingsScroll = rememberLazyListState()
+    val activityScroll = rememberLazyListState()
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Surface2),
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("PUBLIC URL", style = MaterialTheme.typography.labelMedium,
-                    color = TextSecondary, letterSpacing = 2.sp, modifier = Modifier.weight(1f))
-                ActionButton(
-                    "Copy",
-                    enabled = snapshot?.primaryPublicUrl != null,
-                    onClick = {
-                        snapshot?.primaryPublicUrl?.let {
-                            clipboard.setText(AnnotatedString(it))
+    val uriHandler = LocalUriHandler.current
+    val running = snapshot != null && !snapshot.isTerminal
+    val editable = !running && !busy
+    val operable = running && !busy && snapshot?.phase != TunnelPhase.STOPPING
+    val missingRelay = !discovery && relays.split(',').none { it.isNotBlank() }
+    val urls = if (running) snapshot?.publicUrls.orEmpty() else emptyList()
+    val notify: (String) -> Unit = { message ->
+        scope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(message) }
+    }
+
+    Scaffold(
+        containerColor = Bg,
+        snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            Surface(color = Bg, shadowElevation = 12.dp) {
+                Column(Modifier.imePadding()) {
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
+                        if (missingRelay && !running) {
+                            Text("Enable auto-discovery or enter a relay address.",
+                                color = Danger, style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(bottom = 8.dp))
+                        }
+                        Button(
+                            onClick = {
+                                if (running) actions.onStop()
+                                else actions.onStart(PortalConfig(
+                                    name = name.trim().ifBlank { null },
+                                    description = description.ifBlank { null },
+                                    tags = commaValues(tags), relays = commaValues(relays),
+                                    discovery = discovery, udp = udp, tcp = tcp,
+                                    ech = ech, banMitm = banMitm, hide = hide,
+                                ))
+                            },
+                            enabled = !busy && (running || !missingRelay),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (running) Surface2 else Cyan,
+                                contentColor = if (running) TextPrimary else Bg,
+                            ),
+                        ) {
+                            Text(when {
+                                busy -> "Processing…"
+                                snapshot?.phase == TunnelPhase.STOPPING -> "Retry stop"
+                                running -> "Stop publishing"
+                                else -> "Publish game"
+                            }, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                )
+                    NavigationBar(containerColor = Bg, tonalElevation = 0.dp) {
+                        listOf("Publish", "Settings", "Activity").forEachIndexed { index, label ->
+                            NavigationBarItem(
+                                selected = destination == index,
+                                onClick = { destination = index },
+                                icon = { DestinationIcon(index, destination == index) },
+                                label = { Text(label, fontWeight = FontWeight.SemiBold) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Cyan, selectedTextColor = Cyan,
+                                    indicatorColor = Surface2,
+                                    unselectedIconColor = TextSecondary,
+                                    unselectedTextColor = TextSecondary,
+                                ),
+                            )
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.height(6.dp))
-            SelectionContainer {
-                Text(
-                    snapshot?.primaryPublicUrl ?: "no public url yet",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontFamily = FontFamily.Monospace,
-                    color = if (snapshot?.primaryPublicUrl != null) Mint else TextSecondary
-                )
+        },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            state = when (destination) { 1 -> settingsScroll; 2 -> activityScroll; else -> publishScroll },
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("PORTAL / from this device to the web", color = Cyan,
+                            style = MaterialTheme.typography.labelMedium, letterSpacing = 1.sp)
+                        Text(when (destination) { 1 -> "Your settings"; 2 -> "Publishing activity"; else -> "Small game, wide world" },
+                            modifier = Modifier.padding(top = 8.dp), fontSize = 27.sp,
+                            lineHeight = 34.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
-            if (snapshot != null && snapshot.publicUrls.size > 1) {
-                Spacer(Modifier.height(4.dp))
-                Text("+${snapshot.publicUrls.size - 1} more",
-                    style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+            if (lastError != null || snapshot?.lastFailure != null || snapshot?.hasSecurityWarning == true) {
+                item {
+                    Panel("Needs attention") {
+                        if (snapshot?.hasSecurityWarning == true) {
+                            Text("TLS interception suspected on a relay. Do not trust that endpoint; check the connection.", color = Danger)
+                        }
+                        snapshot?.lastFailure?.let { Text("${it.code}: ${it.message}", color = Danger) }
+                        lastError?.let { Text(it, color = Danger) }
+                    }
+                }
             }
-            Spacer(Modifier.height(6.dp))
-            Hint("The URL changes as relays join/leave. Copy the current one.")
-        }
-    }
-}
-
-// ---- metadata ----------------------------------------------------------------
-
-@Composable
-private fun MetadataCard(snapshot: PortalSnapshot?, onUpdate: (PortalMetadata) -> Unit) {
-    var description by remember { mutableStateOf("") }
-    var tags by remember { mutableStateOf("") }
-    var owner by remember { mutableStateOf("") }
-    var hide by remember { mutableStateOf(false) }
-    val active = snapshot != null && !snapshot.isTerminal
-
-    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
-        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            SectionTitle("Metadata (live update)")
-            PortalField(description, { description = it }, "description", "shown in the public directory", active)
-            PortalField(tags, { tags = it }, "tags", "comma-separated search keywords", active)
-            PortalField(owner, { owner = it }, "owner", "who runs this tunnel", active)
-            FlagChip("hide", hide, active, hint = "unlisted; URL-only access") { hide = it }
-            Spacer(Modifier.height(8.dp))
-            ActionButton("Update metadata", enabled = active, onClick = {
-                onUpdate(
-                    PortalMetadata(
-                        description = description.ifBlank { null },
-                        tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-                            .ifEmpty { null },
-                        owner = owner.ifBlank { null },
-                        hide = hide
-                    )
-                )
-            })
-        }
-    }
-}
-
-// ---- relays ------------------------------------------------------------------
-
-@Composable
-private fun RelayManagerCard(snapshot: PortalSnapshot?, actions: SampleActions) {
-    var newRelay by remember { mutableStateOf("") }
-    val active = snapshot != null && !snapshot.isTerminal
-
-    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
-        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            SectionTitle("Relays (${snapshot?.relays?.size ?: 0})")
-            Hint("Relays carry your traffic. More relays = more URLs, more resilience.")
-            snapshot?.relays.orEmpty().forEach { relay ->
-                RelayRow(relay, active, actions.onRemoveRelay)
-                Spacer(Modifier.height(8.dp))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newRelay, onValueChange = { newRelay = it },
-                    label = { Text("relay url", color = TextSecondary) },
-                    enabled = active,
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Violet,
-                        unfocusedBorderColor = Surface2,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
-                    )
-                )
-                Spacer(Modifier.width(8.dp))
-                ActionButton("Add", enabled = active && newRelay.isNotBlank(),
-                    onClick = { actions.onAddRelay(newRelay); newRelay = "" })
-            }
-        }
-    }
-}
-
-@Composable
-private fun RelayRow(
-    relay: PortalRelayStatus,
-    active: Boolean,
-    onRemove: (String) -> Unit
-) {
-    Surface(color = Surface2, shape = RoundedCornerShape(12.dp)) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    relay.relayUrl,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = TextPrimary,
-                    modifier = Modifier.weight(1f)
-                )
-                RelayStateChip(relay)
-                Spacer(Modifier.width(6.dp))
-                ActionButton("×", enabled = active, onClick = { onRemove(relay.relayUrl) })
-            }
-            relay.publicUrl?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-            }
-            relay.error?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = Danger)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RelayStateChip(relay: PortalRelayStatus) {
-    val (label, color) = when {
-        relay.isMitm -> "mitm" to Danger
-        relay.isReady -> "ready" to Mint
-        relay.isFailed -> "failed" to Danger
-        else -> relay.state to Surface2
-    }
-    Surface(color = color, shape = RoundedCornerShape(999.dp)) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = if (color == Mint || color == Danger) Color(0xFF0B1020) else TextSecondary
-        )
-    }
-}
-
-// ---- events ------------------------------------------------------------------
-
-@Composable
-private fun EventLogCard(eventLog: List<String>) {
-    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
-        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            SectionTitle("Events")
-            if (eventLog.isEmpty()) {
-                Text("no events yet", style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary)
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF0A0E1E))
-                        .verticalScroll(rememberScrollState())
-                        .padding(10.dp)
-                ) {
-                    eventLog.forEach { line ->
-                        Text(line, style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace, color = Mint)
+            when (destination) {
+                0 -> {
+                    item { PublishHero(snapshot?.nativeStatus?.name ?: name, snapshot?.phase, running) }
+                    item {
+                        Panel(if (urls.isEmpty()) "Waiting for a public link" else "Share this link now") {
+                            if (urls.isEmpty()) {
+                                Text(if (running) "The relay will send an address here. No link to share yet."
+                                    else "Tap 'Publish game' below to publish the built-in Snake game from this device. Share the address you receive after the relay connects.",
+                                    color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+                            } else {
+                                Text("The address can change as relays join/leave. Share the current link.",
+                                    color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                                urls.forEachIndexed { index, url ->
+                                    Surface(color = Bg, shape = RoundedCornerShape(16.dp)) {
+                                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Public address ${index + 1}", color = TextSecondary,
+                                                style = MaterialTheme.typography.labelMedium)
+                                            SelectionContainer { Text(url, color = Mint,
+                                                fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium) }
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                ActionButton("Copy link", onClick = {
+                                                    clipboard.setText(AnnotatedString(url))
+                                                    notify("Copied public address ${index + 1}.")
+                                                }, modifier = Modifier.weight(1f).semantics { contentDescription = "Copy public address ${index + 1}" })
+                                                ActionButton("Open", onClick = {
+                                                    try { uriHandler.openUri(url) }
+                                                    catch (_: Exception) { notify("Cannot open the address. Copy the link and check it in a browser.") }
+                                                }, modifier = Modifier.weight(1f).semantics { contentDescription = "Open public address ${index + 1} in browser" })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        Panel("Before you publish") {
+                            Text("This device serves the game. The app and network must stay connected for visitors to reach it.", color = TextSecondary)
+                            Text(if (keepAlive) "Keep-alive on · runs with a notification."
+                                else "Keep-alive off · change it in Settings.",
+                                color = Mint, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { destination = 1 }) { Text("Review publish settings →") }
+                        }
+                    }
+                }
+                1 -> {
+                    item {
+                        Text(if (running) "Cannot edit start settings while publishing. Stop publishing below, then edit. Live info can be changed in Activity."
+                            else "The game is ready. Change what you need, then publish with the button below.", color = TextSecondary)
+                    }
+                    item {
+                        Panel("01 / Basics") {
+                            PortalField(name, { name = it }, "Public name", "Name for a new identity. A saved identity may keep its existing name.", editable)
+                            PortalField(description, { description = it }, "Description", "A sentence describing the game. May appear in the public directory.", editable)
+                            PortalField(tags, { tags = it }, "Tags", "Comma-separated. e.g. game, snake", editable)
+                            SettingRow("Keep alive in background", "Keeps running via a foreground service and notification. Subject to the device's power-saving policy.",
+                                keepAlive, editable, actions.onKeepAlive)
+                        }
+                    }
+                    item {
+                        Panel("02 / Relay connection") {
+                            Text("Relays carry traffic between this device and visitors.", color = TextSecondary)
+                            SettingRow("Auto-discover relays", "Finds relays to use. Does not list your game in the public directory.",
+                                discovery, editable) { discovery = it }
+                            PortalField(relays, { relays = it }, "Relay address (manual)", "Comma-separated. At least one required when auto-discovery is off.", editable, missingRelay)
+                        }
+                    }
+                    item {
+                        Panel("03 / Visibility & security") {
+                            SettingRow("Hide from public directory", "Reduces listing exposure. Not authentication or access control — anyone with the URL can connect.",
+                                hide, editable) { hide = it }
+                            SettingRow("Use ECH", "Requests TLS ClientHello protection. Depends on relay support; does not guarantee full traffic anonymity.",
+                                ech, editable) { ech = it }
+                            SettingRow("Block MITM relays", "Rejects relays where TLS interception is detected. Does not guarantee all connections are safe.",
+                                banMitm, editable) { banMitm = it }
+                        }
+                    }
+                    item {
+                        Panel("04 / Protocols") {
+                            Text("The built-in game is served over the web. Enable extra protocols only if you need other traffic.", color = TextSecondary)
+                            SettingRow("UDP relay", "Requests UDP relay for games, QUIC, etc.", udp, editable) { udp = it }
+                            SettingRow("TCP relay", "Requests raw TCP relay beyond web publishing.", tcp, editable) { tcp = it }
+                        }
+                    }
+                }
+                2 -> {
+                    item { Text("Inspect the connection and manage live publish info.", color = TextSecondary) }
+                    item {
+                        ActivityPanel("session", "Connection status", activityPanel, { activityPanel = it }) {
+                            PhaseBadge(snapshot?.phase)
+                            snapshot?.let {
+                                Text("Revision ${it.revision} · dropped events ${it.droppedEventCount}", color = TextSecondary,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (running) {
+                                ActionButton("Refresh status", actions.onRefresh, operable, Modifier.fillMaxWidth())
+                                ActionButton("Await ready", actions.onAwaitReady, operable, Modifier.fillMaxWidth())
+                            } else Text("No active publish. Start publishing to see connection status.", color = TextSecondary)
+                        }
+                    }
+                    item {
+                        ActivityPanel("metadata", "Edit public info", activityPanel, { activityPanel = it }) {
+                            Text(if (running) "Changes metadata for the currently running publish. Separate from next-start settings."
+                                else "Change description, tags, owner, and listing visibility live after publishing.", color = TextSecondary)
+                            PortalField(liveDescription, { liveDescription = it }, "New description", "Description shown in the public directory. Empty values are excluded from the update.", operable)
+                            PortalField(liveTags, { liveTags = it }, "New tags", "Comma-separated. Empty values are excluded from the update.", operable)
+                            PortalField(liveOwner, { liveOwner = it }, "Owner", "Name of who runs this publish. Empty values are excluded from the update.", operable)
+                            SettingRow("Hide from public directory", "Does not block URL access or add authentication.", liveHide, operable) { liveHide = it }
+                            if (running) ActionButton("Apply public info", {
+                                actions.onUpdateMetadata(PortalMetadata(
+                                    description = liveDescription.ifBlank { null }, tags = commaValues(liveTags),
+                                    owner = liveOwner.ifBlank { null }, hide = liveHide,
+                                ))
+                            }, operable, Modifier.fillMaxWidth())
+                        }
+                    }
+                    item {
+                        ActivityPanel("relays", "Relay management · ${snapshot?.relays?.size ?: 0}", activityPanel, { activityPanel = it }) {
+                            Text("Add or remove relays while running. Public addresses may change as connections shift.", color = TextSecondary)
+                            snapshot?.relays.orEmpty().forEach { relay -> RelayRow(relay, running, operable, actions.onRemoveRelay) }
+                            if (running) {
+                                PortalField(newRelay, { newRelay = it }, "Relay address to add", "Enter one relay address to connect.", operable)
+                                ActionButton("Add relay", { actions.onAddRelay(newRelay.trim()) },
+                                    operable && newRelay.isNotBlank(), Modifier.fillMaxWidth())
+                            } else Text("Set start relays in Settings.", color = Mint)
+                        }
+                    }
+                    item {
+                        ActivityPanel("identity", "Device identity", activityPanel, { activityPanel = it }) {
+                            if (identity == null) Text("No identity to show yet. One is created on first start or a saved identity is used.", color = TextSecondary)
+                            else SelectionContainer {
+                                Text("Name: ${identity.name}\nAddress: ${identity.address}", color = Mint,
+                                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Text("Generate a new identity to inspect. Does not change the running publish's identity.", color = TextSecondary)
+                            ActionButton("Generate new identity", actions.onGenerateIdentity, editable, Modifier.fillMaxWidth())
+                        }
+                    }
+                    item {
+                        ActivityPanel("events", "Event history · ${eventLog.size}", activityPanel, { activityPanel = it }) {
+                            if (eventLog.isEmpty()) Text("No history yet. Connection activity will appear here.", color = TextSecondary)
+                            else SelectionContainer {
+                                Text(eventLog.joinToString("\n"), color = TextSecondary,
+                                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    item {
+                        ActivityPanel("diagnostics", "Diagnostics", activityPanel, { activityPanel = it }) {
+                            diagnostics?.let { d ->
+                                SelectionContainer {
+                                    Text("SDK ${d.sdkVersion} · ABI ${d.abiVersion} · wire schema ${d.wireSchemaVersion}\n" +
+                                        "Active sessions ${d.activeSessions} · orphan drops ${d.droppedOrphanEvents}",
+                                        color = TextSecondary, style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace)
+                                }
+                            } ?: Text("Load SDK and session info when troubleshooting.", color = TextSecondary)
+                            ActionButton("Load diagnostics", actions.onDiagnostics, !busy, Modifier.fillMaxWidth())
+                        }
                     }
                 }
             }
@@ -651,36 +417,185 @@ private fun EventLogCard(eventLog: List<String>) {
     }
 }
 
-// ---- diagnostics --------------------------------------------------------------
+private fun commaValues(value: String): List<String>? =
+    value.split(',').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { null }
 
 @Composable
-private fun DiagnosticsCard(diagnostics: PortalDiagnostics?, onLoad: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = Surface1),
-        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            SectionTitle("Diagnostics")
-            diagnostics?.let { d ->
-                Text(
-                    "sdk=${d.sdkVersion} abi=${d.abiVersion} wire=${d.wireSchemaVersion}\n" +
-                        "sessions=${d.activeSessions} orphanDrops=${d.droppedOrphanEvents}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = TextSecondary
-                )
-                Spacer(Modifier.height(8.dp))
+private fun PublishHero(name: String, phase: TunnelPhase?, compact: Boolean) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+        .background(Brush.linearGradient(listOf(Color(0xFF19394A), Surface1)))) {
+        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            PhaseBadge(phase)
+            Text(if (compact) "Publishing from this device" else "This device is\nthe game's start.",
+                fontSize = if (compact) 24.sp else 32.sp, lineHeight = 39.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
+            Text(name.ifBlank { "My Snake game" }, color = Mint,
+                style = MaterialTheme.typography.titleMedium)
+            if (!compact) {
+                GameIllustration()
+                Text("Built-in Snake game · preview", color = TextSecondary,
+                    style = MaterialTheme.typography.labelMedium)
             }
-            ActionButton("Load diagnostics", onLoad, enabled = true)
         }
     }
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-        color = TextPrimary,
-        modifier = Modifier.padding(bottom = 10.dp)
-    )
+private fun GameIllustration() {
+    Canvas(Modifier.fillMaxWidth().height(146.dp).semantics {
+        contentDescription = "Snake game preview: mint snake and food on a dark board"
+    }) {
+        drawRoundRect(Bg.copy(alpha = 0.75f), cornerRadius = CornerRadius(18.dp.toPx()))
+        val cell = 17.dp.toPx()
+        val left = (size.width - cell * 11) / 2
+        val top = (size.height - cell * 6) / 2
+        for (x in 0..10) for (y in 0..5) {
+            drawCircle(TextSecondary.copy(alpha = 0.17f), 1.dp.toPx(), Offset(left + x * cell, top + y * cell))
+        }
+        val snake = listOf(1 to 4, 2 to 4, 3 to 4, 3 to 3, 3 to 2, 4 to 2, 5 to 2, 6 to 2, 7 to 2)
+        snake.forEachIndexed { index, (x, y) ->
+            drawRoundRect(if (index == snake.lastIndex) Mint else Cyan.copy(alpha = 0.45f + index * 0.05f),
+                topLeft = Offset(left + x * cell - cell * 0.43f, top + y * cell - cell * 0.43f),
+                size = Size(cell * 0.86f, cell * 0.86f), cornerRadius = CornerRadius(4.dp.toPx()))
+        }
+        drawCircle(Bg, 1.7.dp.toPx(), Offset(left + 7.18f * cell, top + 1.83f * cell))
+        drawCircle(Danger.copy(alpha = 0.12f), 15.dp.toPx(), Offset(left + 9 * cell, top + 2 * cell))
+        drawCircle(Danger, 5.dp.toPx(), Offset(left + 9 * cell, top + 2 * cell))
+    }
+}
+
+@Composable
+private fun DestinationIcon(index: Int, selected: Boolean) {
+    val color = if (selected) Cyan else TextSecondary
+    Canvas(Modifier.size(24.dp)) {
+        val stroke = 1.8.dp.toPx()
+        when (index) {
+            0 -> {
+                drawRoundRect(color, Offset(size.width * 0.12f, size.height * 0.19f),
+                    Size(size.width * 0.76f, size.height * 0.62f), CornerRadius(5.dp.toPx()), style = Stroke(stroke))
+                drawLine(color, Offset(size.width * 0.28f, size.height * 0.5f), Offset(size.width * 0.5f, size.height * 0.5f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.39f, size.height * 0.39f), Offset(size.width * 0.39f, size.height * 0.61f), stroke, StrokeCap.Round)
+                drawCircle(color, 1.5.dp.toPx(), Offset(size.width * 0.7f, size.height * 0.46f))
+            }
+            1 -> for (i in 0..2) {
+                val y = size.height * (0.25f + i * 0.25f)
+                drawLine(color, Offset(size.width * 0.12f, y), Offset(size.width * 0.88f, y), stroke, StrokeCap.Round)
+                drawCircle(Bg, 3.dp.toPx(), Offset(size.width * (if (i == 1) 0.65f else 0.35f), y))
+                drawCircle(color, 3.dp.toPx(), Offset(size.width * (if (i == 1) 0.65f else 0.35f), y), style = Stroke(stroke))
+            }
+            else -> {
+                for (i in 0..2) {
+                    val x = size.width * (0.25f + i * 0.25f)
+                    drawLine(color, Offset(x, size.height * 0.8f),
+                        Offset(x, size.height * (if (i == 1) 0.2f else 0.45f)), stroke * 2, StrokeCap.Round)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhaseBadge(phase: TunnelPhase?) {
+    val label = when (phase) {
+        null, TunnelPhase.IDLE -> "Ready to publish"
+        TunnelPhase.STARTING -> "Starting"
+        TunnelPhase.CONNECTING -> "Connecting to relay"
+        TunnelPhase.ACTIVE -> "Publishing"
+        TunnelPhase.STOPPING -> "Stopping"
+        TunnelPhase.STOPPED -> "Stopped"
+        TunnelPhase.FAILED -> "Failed"
+    }
+    val color = when (phase) { TunnelPhase.ACTIVE -> Mint; TunnelPhase.FAILED -> Danger; else -> Cyan }
+    Surface(color = color.copy(alpha = 0.12f), shape = RoundedCornerShape(30.dp)) {
+        Text(label, color = color, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun Panel(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface1)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ActivityPanel(key: String, title: String, selected: String, onSelect: (String) -> Unit,
+    content: @Composable ColumnScope.() -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface1)) {
+        TextButton(onClick = { onSelect(if (selected == key) "" else key) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)) {
+            Text(title, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f))
+            Text(if (selected == key) "Collapse" else "Expand", color = Cyan)
+        }
+        if (selected == key) Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+    }
+}
+
+@Composable
+private fun PortalField(value: String, onChange: (String) -> Unit, label: String, hint: String,
+    enabled: Boolean, isError: Boolean = false) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(value = value, onValueChange = onChange, label = { Text(label) },
+            enabled = enabled, isError = isError, modifier = Modifier.fillMaxWidth(), singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cyan,
+                unfocusedBorderColor = Surface2, disabledTextColor = TextSecondary,
+                disabledLabelColor = TextSecondary, disabledBorderColor = Surface2))
+        Text(hint, color = if (isError) Danger else TextSecondary, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun SettingRow(label: String, hint: String, checked: Boolean, enabled: Boolean,
+    onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp)
+        .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+        .padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(label, fontWeight = FontWeight.Medium, color = TextPrimary)
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled,
+            colors = SwitchDefaults.colors(checkedThumbColor = Bg, checkedTrackColor = Cyan))
+    }
+}
+
+@Composable
+private fun ActionButton(label: String, onClick: () -> Unit, enabled: Boolean = true,
+    modifier: Modifier = Modifier) {
+    OutlinedButton(onClick = onClick, enabled = enabled,
+        modifier = modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) {
+        Text(label, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun RelayRow(relay: PortalRelayStatus, running: Boolean, operable: Boolean, onRemove: (String) -> Unit) {
+    Surface(color = Bg, shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(when {
+                !running -> "Ended"
+                relay.isMitm -> "MITM suspected"
+                relay.isFailed -> "Failed"
+                relay.isReady -> "Ready"
+                else -> "State: ${relay.state}"
+            }, color = if (relay.isMitm || relay.isFailed) Danger else TextSecondary,
+                style = MaterialTheme.typography.labelMedium)
+            SelectionContainer { Text(relay.relayUrl, fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall, color = TextPrimary) }
+            relay.error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
+            if (running) ActionButton("Remove this relay", { onRemove(relay.relayUrl) }, operable,
+                Modifier.semantics { contentDescription = "Remove relay ${relay.relayUrl}" })
+        }
+    }
 }

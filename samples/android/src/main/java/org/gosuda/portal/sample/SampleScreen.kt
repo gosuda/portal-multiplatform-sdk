@@ -94,6 +94,7 @@ data class SampleActions(
     val onRemoveRelay: (String) -> Unit,
     val onDiagnostics: () -> Unit,
     val onKeepAlive: (Boolean) -> Unit,
+    val onPreferGpu: (Boolean) -> Unit,
 )
 
 private val Bg = Color(0xFF080F1D)
@@ -161,6 +162,7 @@ fun SampleScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
+    val preferGpu by OnDeviceModelContent.preferGpu.collectAsState()
     val uriHandler = LocalUriHandler.current
     val onDeviceEngineStatus by OnDeviceModelContent.engineStatus.collectAsState()
     val context = LocalContext.current
@@ -354,6 +356,13 @@ fun SampleScreen(
                             Text("The built-in game is served over the web. Enable extra protocols only if you need other traffic.", color = TextSecondary)
                             SettingRow("UDP relay", "Requests UDP relay for games, QUIC, etc.", udp, editable) { udp = it }
                             SettingRow("TCP relay", "Requests raw TCP relay beyond web publishing.", tcp, editable) { tcp = it }
+                        }
+                    }
+                    item {
+                        Panel("05 / On-device model") {
+                            Text("Applies to the 'On-device model' content. Takes effect on the next publish, or restarts the engine if it is running.", color = TextSecondary)
+                            SettingRow("Use GPU for inference", "Tries the GPU backend before CPU. Faster on real devices; on emulators the GPU path compiles slowly then fails — leave off.",
+                                preferGpu, editable) { actions.onPreferGpu(it) }
                         }
                     }
                 }

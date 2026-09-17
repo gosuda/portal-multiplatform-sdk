@@ -38,6 +38,7 @@ import org.gosuda.portal.lifecycle.PortalClientHolder
 import org.gosuda.portal.sample.content.PublishableContent
 import org.gosuda.portal.sample.content.SampleContents
 
+import org.gosuda.portal.sample.content.ondevice.OnDeviceModelContent
 /**
  * Feature-rich Portal sample: config editor, identity management, session
  * controls (start/stop/refresh/awaitReady), live metadata + relay updates,
@@ -106,6 +107,7 @@ class MainActivity : ComponentActivity() {
         onRemoveRelay = ::removeRelay,
         onDiagnostics = ::loadDiagnostics,
         onKeepAlive = ::setKeepAlive,
+        onPreferGpu = { OnDeviceModelContent.setPreferGpu(this, it) },
     )
 
     private fun setKeepAlive(enabled: Boolean) {

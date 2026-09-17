@@ -2,6 +2,11 @@
 
 ## 2026-09-17
 
+- feat(sample): GPU inference toggle in Settings → '05 / On-device model'
+  — persisted via SharedPreferences, default off on emulators (GPU path
+  compiles ~90 s then fails), on elsewhere; toggling while the engine is
+  running restarts it on the new backend
+
 - fix(sample): model download — switched to non-gated
   litert-community/SmolLM2-135M-Instruct (~140 MB); Gemma repos are
   gated (HF auth required) and returned 401

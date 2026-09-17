@@ -64,6 +64,8 @@ object OnDeviceModelContent : PublishableContent {
     private const val REQUEST_TIMEOUT_MS = 120_000L
 
     const val PORT = 18080
+    private const val PREFS = "ondevice_model"
+    private const val KEY_PREFER_GPU = "prefer_gpu"
     private const val MAX_TOKENS_CAP = 512
 
     private var server: ServerSocket? = null
@@ -90,8 +92,34 @@ object OnDeviceModelContent : PublishableContent {
     }
     private val _engineStatus = MutableStateFlow<EngineStatus>(EngineStatus.Idle)
     val engineStatus: StateFlow<EngineStatus> = _engineStatus.asStateFlow()
+    /** User preference: try the GPU backend before CPU. Persisted. */
+    private val _preferGpu = MutableStateFlow(!isEmulator())
+    val preferGpu: StateFlow<Boolean> = _preferGpu.asStateFlow()
+
+    fun setPreferGpu(context: Context, enabled: Boolean) {
+        _preferGpu.value = enabled
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_PREFER_GPU, enabled).apply()
+        // If the engine is already up, restart it on the new backend.
+        if (engine != null || _engineStatus.value is EngineStatus.Loading) {
+            scope?.launch {
+                engineMutex.withLock {
+                    runCatching { engine?.close() }
+                    engine = null
+                    engineBackend = "none"
+                }
+                initEngine(context)
+            }
+        }
+    }
+
+    private fun loadPreferGpu(context: Context) {
+        _preferGpu.value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_PREFER_GPU, !isEmulator())
+    }
 
     override suspend fun start(context: Context) {
+        loadPreferGpu(context)
         if (server != null) return
         val socket = ServerSocket(PORT)
         server = socket
@@ -149,14 +177,12 @@ object OnDeviceModelContent : PublishableContent {
         engineMutex.withLock {
             if (engine != null) return@withLock
             // Cascading fallback per the official tutorial: GPU → CPU.
-            // On emulators the GPU delegate compiles (WebGPU→Vulkan→host) but
-            // inference fails (no OpenCL) after ~90 s of wasted work — skip it.
-            // maxNumTokens caps the KV cache; threadCount caps CPU workers.
-            val isEmulator = android.os.Build.FINGERPRINT.contains("generic") ||
-                android.os.Build.MODEL.contains("Emulator") ||
-                android.os.Build.MODEL.contains("sdk_gphone")
+            // GPU is tried only when the user enabled it (default off on
+            // emulators: the delegate compiles ~90 s then fails inference —
+            // no OpenCL). maxNumTokens caps the KV cache; threadCount caps
+            // CPU workers.
             val candidates = buildList {
-                if (!isEmulator) {
+                if (_preferGpu.value) {
                     add(EngineConfig(
                         modelPath = modelFile.absolutePath,
                         backend = Backend.GPU(),
@@ -204,6 +230,11 @@ object OnDeviceModelContent : PublishableContent {
         val file = ModelDownload.modelFile(context)
         return if (file.exists() && file.length() > 0) file else null
     }
+
+    private fun isEmulator(): Boolean =
+        android.os.Build.FINGERPRINT.contains("generic") ||
+            android.os.Build.MODEL.contains("Emulator") ||
+            android.os.Build.MODEL.contains("sdk_gphone")
 
     // ---- HTTP handling ------------------------------------------------------
 

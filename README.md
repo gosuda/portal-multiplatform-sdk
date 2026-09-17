@@ -19,9 +19,27 @@
 
 ---
 
-## What it does
+## What you can build with it
 
-Portal lets a phone app publish a reachable endpoint — a local HTTP server, a
+
+
+Portal turns an app process into a public endpoint — no server, no public IP,
+no port forwarding. Concrete things people build on it:
+
+- **Mobile-hosted web apps** — serve a full static site or HTTP API straight
+  from the app (the sample does exactly this: `kmp-sample.portal.damn.it.com`).
+- **Game servers on a phone** — expose a UDP or TCP listener for multiplayer
+  sessions, co-op lobbies, or LAN-style play over the internet.
+- **Webhooks & callbacks on-device** — receive push-style HTTP callbacks in an
+  app without a backend relay of your own.
+- **Dev tunnels** — point a public URL at a dev build running on a phone for
+  demos, QA, or sharing work-in-progress.
+- **Paid endpoints** — gate routes behind x402 micropayments (Sui USDC,
+  Casper wCSPR) with per-route pricing.
+- **Private-by-default exposure** — ECH hides the hostname, `hide=true`
+  unlists the endpoint, and MITM self-probing flags suspicious relays.
+
+## What it does
 static site, a raw TCP/UDP socket — through public relays, without a server or
 a public IP. This SDK wraps the shared `libportaltunnel` engine in a single
 Kotlin Multiplatform API:
@@ -103,6 +121,7 @@ tunnel.state.collect { snapshot ->
 
 // Or suspend until a capability is confirmed ready.
 val ready = tunnel.awaitReady(Capability.STATIC_SITE)
+// or: tunnel.awaitActive(15_000)
 
 tunnel.stop()      // retryable on native failure
 client.close()     // stops only the sessions this client owns
@@ -118,19 +137,121 @@ client.open(config: config) { session, failure in
 }
 ```
 
-See [samples/android](samples/android) for a complete Activity and
-[samples/ios](samples/ios) for a SwiftUI sketch.
+See [samples/android](samples/android) for a complete Compose app and
+[samples/ios](samples/ios) for the SwiftUI equivalent.
 
-## Identity
+## Usage
+
+### Configuration
+
+`PortalConfig` is the single input. Common shapes:
+
+```kotlin
+// Static site (the sample)
+PortalConfig(name = "site", staticDir = dir, staticIndex = "index.html")
+
+// Proxy a local HTTP server
+PortalConfig(name = "api", targetAddr = "127.0.0.1:8080")
+
+// Raw UDP / TCP listener
+PortalConfig(name = "game", udp = true, udpAddr = "127.0.0.1:7777")
+PortalConfig(name = "tcp",  tcp = true)
+
+// Discovery off, explicit relays only
+PortalConfig(name = "x", discovery = false,
+             relays = listOf("https://portal.example.com"))
+
+// Paid route (x402)
+PortalConfig(
+    name = "paid",
+    httpRoutes = listOf(
+        PortalHTTPRoute(prefix = "/premium", upstream = "http://127.0.0.1:8080",
+                        amount = "0.01")
+    ),
+    x402 = PortalX402Config(payTo = "0x…", network = "sui", asset = "USDC")
+)
+```
+
+Key rules: `identity_json` XOR `identity_path`; `discovery=false` needs ≥1
+relay; relays are `https`-only (`http` allowed for loopback); targets are
+loopback-only unless `PortalClient(allowRemoteTargets = true)`.
+
+### Lifecycle & ownership
+
+- One `PortalClient` per app (or long-lived component). It owns every
+  `PortalTunnel` it opens.
+- `client.close()` stops exactly the sessions it owns — never another
+  client's. Safe to call twice; concurrent calls serialize.
+- `tunnel.stop()` is idempotent and retryable: a native failure leaves the
+  session in `STOPPING`, not `STOPPED`.
+- Cancelling `open` rolls the native handle back — no orphaned sessions.
+
+### Observing state
+
+```kotlin
+// Authoritative snapshot — render this in UI.
+tunnel.state.collect { snap ->
+    snap.phase               // IDLE → STARTING → CONNECTING → ACTIVE → …
+    snap.primaryPublicUrl    // first public URL, if any
+    snap.relays              // per-relay state/failure/error
+    snap.hasSecurityWarning  // sticky MITM flag
+    snap.isActive / isTerminal
+}
+
+// Auxiliary events (bounded, not replayed).
+tunnel.events.collect { event -> /* Started / StatusChanged / … */ }
+
+// Aggregate stream across all sessions this client owns.
+client.events.collect { event -> … }
+```
+
+### Live updates without restart
+
+```kotlin
+tunnel.updateMetadata(PortalMetadata(description = "new", tags = listOf("x")))
+tunnel.addRelay("https://portal.example.com")
+tunnel.removeRelay("https://portal.example.com")
+tunnel.refresh()   // pull authoritative native status now
+```
+
+### Identity
 
 ```kotlin
 val identity = PortalIdentity.generate("my-app")   // native-generated keys
 val restored = PortalIdentity.parse(savedJson)      // validate + redacted toString
 config = PortalConfig(identityJson = identity.document, ...)
+// or let the engine persist one:
+PortalConfig(identityPath = File(filesDir, "identity.json").absolutePath, ...)
 ```
 
-`PortalIdentity.document` contains key material — it is redacted from
-`toString`; store it in Keystore-wrapped storage / Keychain, never log it.
+`PortalIdentity.document` contains key material — redacted from `toString`;
+store it in Keystore-wrapped storage / Keychain, never log it.
+
+### Android: surviving background & rotation
+
+`portal-android-lifecycle` keeps a tunnel alive past the screen:
+
+```kotlin
+// Application.onCreate
+PortalClientHolder.init()
+
+// Foreground service for tunnels that must run while backgrounded
+class TunnelService : PortalTunnelService() {
+    override fun buildNotification(): Notification = …
+}
+// manifest: <service android:name=".TunnelService"
+//   android:foregroundServiceType="dataSync"/>
+```
+
+### Diagnostics
+
+```kotlin
+val d = client.diagnostics()
+// d.sdkVersion, d.abiVersion, d.activeSessions, d.droppedOrphanEvents,
+// d.droppedAggregateEvents, d.sessions[]
+```
+
+
 
 ## Design rules (the short version)
 
@@ -153,9 +274,10 @@ Known gaps & release gates: [TASKS.md](TASKS.md),
 ```
 portal-sdk/               KMP library (commonMain / androidMain / nativeMain / iosMain)
 portal-native-android/    JNI bridge + prebuilt libportaltunnel.so
+portal-android-lifecycle/ Process-scoped client + foreground-service base
 native/                   portaltunnel.h, C test stub, source provenance
-samples/android/          minimal Activity sample
-samples/ios/              SwiftUI sketch + XCFramework instructions
+samples/android/          Compose sample (config, identity, relays, events, diagnostics)
+samples/ios/              SwiftUI sample + XCFramework instructions
 docs/                     DESIGN_RULES, TROUBLESHOOTING, WORK_CHECKPOINT
 .agents/skills/           agent skill: API reference, examples, troubleshooting
 ```

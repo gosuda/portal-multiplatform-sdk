@@ -61,6 +61,7 @@ public data class PortalSnapshot(
     val nativeStatus: PortalStatus? = null
 ) {
     val primaryPublicUrl: String? get() = publicUrls.firstOrNull()
+    val isActive: Boolean get() = phase == TunnelPhase.ACTIVE
     val isTerminal: Boolean get() = phase == TunnelPhase.STOPPED || phase == TunnelPhase.FAILED
 }
 

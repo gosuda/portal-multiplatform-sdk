@@ -39,6 +39,7 @@ public class PortalIdentity internal constructor(
          * @throws PortalException [PortalFailure.Codes.IDENTITY_INVALID] if the
          *   native runtime returns a document without a usable address.
          */
+        @Throws(PortalException::class)
         public fun generate(name: String = ""): PortalIdentity =
             generate(platformNativeEngine(), name)
 
@@ -47,6 +48,7 @@ public class PortalIdentity internal constructor(
          * @throws PortalException [PortalFailure.Codes.IDENTITY_INVALID] on
          *   malformed input or a document missing name/address.
          */
+        @Throws(PortalException::class)
         public fun parse(identityJson: String): PortalIdentity {
             if (identityJson.isBlank() || identityJson.length > MAX_IDENTITY_BYTES) {
                 throw PortalException(

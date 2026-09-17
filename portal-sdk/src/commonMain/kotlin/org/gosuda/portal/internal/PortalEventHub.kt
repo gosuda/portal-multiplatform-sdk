@@ -65,11 +65,17 @@ internal object PortalEventHub {
 
     private fun dispatch(tunnelId: String, eventType: String, payloadJson: String) {
         val tunnel = routes.load()[tunnelId]
-        if (tunnel != null) {
+        if (tunnel == null) {
+            bufferOrphan(tunnelId, eventType, payloadJson)
+            return
+        }
+        try {
             val event = tunnel.handleRawEvent(eventType, payloadJson)
             tunnel.owner.onTunnelEvent(event)
-        } else {
-            bufferOrphan(tunnelId, eventType, payloadJson)
+        } catch (t: Throwable) {
+            // A reducer failure must never propagate into the native callback
+            // thread; count it and move on.
+            droppedOrphans.addAndFetch(1)
         }
     }
 

@@ -1,77 +1,346 @@
 import SwiftUI
 import PortalSDK
 
-/// Minimal SwiftUI sample driving the KMP SDK through the callback facade.
-/// The client outlives the view; observation cancel != tunnel stop.
+/// Feature-rich SwiftUI sample driving the KMP SDK through the callback
+/// facade. The client outlives the view; observation cancel != tunnel stop.
 @MainActor
 final class PortalHomeModel: ObservableObject {
+    // Config
+    @Published var name = "ios-kmp-sample"
+    @Published var discovery = true
+    @Published var udp = false
+    @Published var tcp = false
+    @Published var ech = false
+    @Published var banMitm = false
+    @Published var hide = false
+    @Published var configDescription = "Portal KMP iOS sample"
+    @Published var configTags = "demo,kmp"
+
+    // Session state
     @Published var phase: String = "idle"
+    @Published var revision: Int64 = 0
     @Published var publicUrl: String = ""
-    @Published var relays: String = ""
-    @Published var warning: Bool = false
+    @Published var relays: [PortalRelayStatus] = []
+    @Published var warning = false
+    @Published var lastFailure: String?
+    @Published var lastError: String?
+
+    // Identity / metadata / relays
+    @Published var identityAddress: String = ""
+    @Published var metaDescription = ""
+    @Published var metaTags = ""
+    @Published var metaOwner = ""
+    @Published var metaHide = false
+    @Published var newRelay = ""
+
+    // Events + diagnostics
+    @Published var eventLog: [String] = []
+    @Published var diagnosticsText = ""
 
     private let client = PortalIosClient()
     private var session: PortalIosSession?
-    private var observation: PortalSubscription?
+    private var stateSub: PortalSubscription?
+    private var eventSub: PortalSubscription?
     private var startOp: PortalOperation?
 
-    func start(siteDir: String) {
+    var isTerminal: Bool { session?.snapshot.isTerminal ?? true }
+    var hasSession: Bool { session != nil && !isTerminal }
+
+    // ---- actions -----------------------------------------------------------
+
+    func start(siteDir: String, identityPath: String) {
+        lastError = nil
         let config = PortalConfig(
-            name: "ios-kmp-sample",
-            identityJson: nil, identityPath: nil,
-            relays: nil, discovery: true, maxActiveRelays: 2,
-            banMitm: false, ech: false, overlay: false, udp: false, tcp: false,
-            description: "Portal KMP iOS sample", tags: nil, owner: nil,
-            thumbnail: nil, hide: false,
+            name: name.isEmpty ? nil : name,
+            identityJson: nil,
+            identityPath: identityPath,
+            relays: nil,
+            discovery: discovery,
+            maxActiveRelays: 3,
+            banMitm: banMitm, ech: ech, overlay: false,
+            udp: udp, tcp: tcp,
+            description: configDescription.isEmpty ? nil : configDescription,
+            tags: configTags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
+            owner: nil, thumbnail: nil, hide: hide,
             staticDir: siteDir, staticIndex: "index.html",
             targetAddr: nil, udpAddr: nil, httpRoutes: nil, x402: nil
         )
         startOp = client.open(config: config) { [weak self] session, failure in
             guard let self else { return }
             if let failure {
-                self.phase = "failed: \(failure.code)"
+                self.lastError = "start failed: \(failure.code) \(failure.message)"
                 return
             }
             self.session = session
-            self.observation = session?.observeState { [weak self] s in
-                self?.phase = "\(s.phase)"
-                self?.publicUrl = s.primaryPublicUrl ?? ""
-                self?.warning = s.hasSecurityWarning
-                self?.relays = s.relays
-                    .map { "\($0.relayUrl) [\($0.state)]" }
-                    .joined(separator: "\n")
-            }
+            self.attach(session)
         }
     }
 
     func stop() {
         session?.stop { [weak self] failure in
-            if let failure { self?.phase = "stop failed: \(failure.code)" }
+            if let failure { self?.lastError = "stop failed: \(failure.code)" }
         }
     }
 
+    func refresh() {
+        session?.refresh { [weak self] failure in
+            if let failure { self?.lastError = "refresh failed: \(failure.code)" }
+        }
+    }
+
+    func awaitReady() {
+        session?.awaitReady(capability: .staticSite, timeoutMillis: 15_000) { [weak self] _, failure in
+            if let failure { self?.lastError = "awaitReady failed: \(failure.code)" }
+        }
+    }
+
+    func generateIdentity() {
+        // PortalIdentity.generate uses the platform engine; on iOS it needs
+        // the linked libportaltunnel.a.
+        do {
+            let identity = try PortalIdentity.companion.generate(name: "ios-kmp-sample")
+            identityAddress = identity.address
+        } catch {
+            lastError = "identity failed: \(error.localizedDescription)"
+        }
+    }
+
+    func updateMetadata() {
+        let metadata = PortalMetadata(
+            description: metaDescription.isEmpty ? nil : metaDescription,
+            tags: metaTags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
+            owner: metaOwner.isEmpty ? nil : metaOwner,
+            thumbnail: nil,
+            hide: metaHide
+        )
+        session?.updateMetadata(metadata: metadata) { [weak self] failure in
+            if let failure { self?.lastError = "metadata failed: \(failure.code)" }
+        }
+    }
+
+    func addRelay() {
+        guard !newRelay.isEmpty else { return }
+        session?.addRelay(relayUrl: newRelay) { [weak self] failure in
+            if let failure { self?.lastError = "addRelay failed: \(failure.code)" }
+        }
+        newRelay = ""
+    }
+
+    func removeRelay(_ url: String) {
+        session?.removeRelay(relayUrl: url) { [weak self] failure in
+            if let failure { self?.lastError = "removeRelay failed: \(failure.code)" }
+        }
+    }
+
+    func loadDiagnostics() {
+        let d = client.diagnostics()
+        diagnosticsText = "sdk=\(d.sdkVersion) abi=\(d.abiVersion) wire=\(d.wireSchemaVersion)\n" +
+            "sessions=\(d.activeSessions) orphanDrops=\(d.droppedOrphanEvents)"
+    }
+
     func onDisappear() {
-        observation?.cancel()   // stop observing; tunnel keeps running
-        observation = nil
+        stateSub?.cancel()
+        eventSub?.cancel()
+        stateSub = nil
+        eventSub = nil
+    }
+
+    // ---- plumbing ------------------------------------------------------------
+
+    private func attach(_ session: PortalIosSession?) {
+        stateSub?.cancel()
+        eventSub?.cancel()
+        stateSub = session?.observeState { [weak self] s in
+            guard let self else { return }
+            self.phase = "\(s.phase)".lowercased()
+            self.revision = s.revision
+            self.publicUrl = s.primaryPublicUrl ?? ""
+            self.relays = s.relays
+            self.warning = s.hasSecurityWarning
+            self.lastFailure = s.lastFailure.map { "\($0.code): \($0.message)" }
+        }
+        eventSub = session?.observeEvents { [weak self] event in
+            self?.appendLog(describe(event))
+        }
+    }
+
+    private func appendLog(_ line: String) {
+        eventLog.append(line)
+        if eventLog.count > 50 { eventLog.removeFirst(eventLog.count - 50) }
+    }
+
+    private func describe(_ event: PortalEvent) -> String {
+        switch event {
+        case let e as PortalEvent.Started: return "STARTED \(e.name)"
+        case is PortalEvent.Stopped: return "STOPPED"
+        case let e as PortalEvent.StatusChanged:
+            return "STATUS_CHANGED active=\(e.status.active) relays=\(e.status.relays.count)"
+        case let e as PortalEvent.MitmSuspected: return "MITM_SUSPECTED \(e.relayUrl)"
+        case let e as PortalEvent.Error: return "ERROR \(e.message)"
+        case let e as PortalEvent.Unknown: return "UNKNOWN \(e.type)"
+        default: return "EVENT"
+        }
     }
 }
+
+// MARK: - View
 
 struct PortalHomeView: View {
     @StateObject private var model = PortalHomeModel()
     let siteDir: String
+    let identityPath: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Button("Start") { model.start(siteDir: siteDir) }
-                Button("Stop") { model.stop() }
+        NavigationStack {
+            List {
+                configSection
+                sessionSection
+                identitySection
+                publicUrlSection
+                metadataSection
+                relaysSection
+                eventsSection
+                diagnosticsSection
             }
-            Text("phase: \(model.phase)")
-            if model.warning { Text("SECURITY WARNING").foregroundColor(.red) }
-            Text(model.publicUrl).font(.footnote)
-            Text(model.relays).font(.caption)
+            .navigationTitle("Portal Sample")
+            .onDisappear { model.onDisappear() }
         }
-        .padding()
-        .onDisappear { model.onDisappear() }
+    }
+
+    private var configSection: some View {
+        Section("Tunnel config") {
+            TextField("name", text: $model.name)
+            TextField("description", text: $model.configDescription)
+            TextField("tags (comma-separated)", text: $model.configTags)
+            Toggle("discovery", isOn: $model.discovery)
+            Toggle("udp", isOn: $model.udp)
+            Toggle("tcp", isOn: $model.tcp)
+            Toggle("ech", isOn: $model.ech)
+            Toggle("ban_mitm", isOn: $model.banMitm)
+            Toggle("hide", isOn: $model.hide)
+            Button("Start tunnel") {
+                model.start(siteDir: siteDir, identityPath: identityPath)
+            }
+            .disabled(model.hasSession)
+        }
+    }
+
+    private var sessionSection: some View {
+        Section("Session") {
+            HStack {
+                Text(model.phase)
+                    .font(.headline)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(phaseColor.opacity(0.2))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                Spacer()
+                Text("rev \(model.revision)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if model.warning {
+                Label("MITM suspected — treat endpoints as untrusted", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red).font(.caption)
+            }
+            if let f = model.lastFailure { Text(f).font(.caption).foregroundStyle(.red) }
+            if let e = model.lastError { Text(e).font(.caption).foregroundStyle(.red) }
+            HStack {
+                Button("Stop") { model.stop() }.disabled(!model.hasSession)
+                Button("Refresh") { model.refresh() }.disabled(!model.hasSession)
+                Button("Await ready") { model.awaitReady() }.disabled(!model.hasSession)
+            }
+        }
+    }
+
+    private var phaseColor: Color {
+        switch model.phase {
+        case "active": return .green
+        case "failed": return .red
+        case "stopped", "idle": return .gray
+        default: return .orange
+        }
+    }
+
+    private var identitySection: some View {
+        Section("Identity") {
+            if model.identityAddress.isEmpty {
+                Text("No identity generated. The tunnel creates one at identity_path on first start.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text(model.identityAddress).font(.caption).textSelection(.enabled)
+            }
+            Button("Generate identity") { model.generateIdentity() }
+        }
+    }
+
+    private var publicUrlSection: some View {
+        Section("Public URL") {
+            Text(model.publicUrl.isEmpty ? "no public url yet" : model.publicUrl)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
+    private var metadataSection: some View {
+        Section("Metadata (live update)") {
+            TextField("description", text: $model.metaDescription)
+            TextField("tags", text: $model.metaTags)
+            TextField("owner", text: $model.metaOwner)
+            Toggle("hide", isOn: $model.metaHide)
+            Button("Update metadata") { model.updateMetadata() }
+                .disabled(!model.hasSession)
+        }
+    }
+
+    private var relaysSection: some View {
+        Section("Relays (\(model.relays.count))") {
+            ForEach(model.relays, id: \.relayUrl) { relay in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(relay.relayUrl).font(.caption).lineLimit(1)
+                        Spacer()
+                        Text(relay.isMitm ? "mitm" : relay.state)
+                            .font(.caption2)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(relay.isMitm || relay.isFailed ? Color.red.opacity(0.2) : Color.green.opacity(0.2))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Button("×") { model.removeRelay(relay.relayUrl) }
+                            .disabled(!model.hasSession)
+                    }
+                    if let url = relay.publicUrl {
+                        Text(url).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if let err = relay.error {
+                        Text(err).font(.caption2).foregroundStyle(.red)
+                    }
+                }
+            }
+            HStack {
+                TextField("relay url", text: $model.newRelay)
+                Button("Add") { model.addRelay() }
+                    .disabled(!model.hasSession || model.newRelay.isEmpty)
+            }
+        }
+    }
+
+    private var eventsSection: some View {
+        Section("Events") {
+            if model.eventLog.isEmpty {
+                Text("no events yet").font(.caption).foregroundStyle(.secondary)
+            } else {
+                ForEach(model.eventLog.suffix(20).reversed().map { $0 }, id: \.self) { line in
+                    Text(line).font(.system(.caption2, design: .monospaced))
+                }
+            }
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Section("Diagnostics") {
+            if !model.diagnosticsText.isEmpty {
+                Text(model.diagnosticsText)
+                    .font(.system(.caption, design: .monospaced))
+            }
+            Button("Load diagnostics") { model.loadDiagnostics() }
+        }
     }
 }

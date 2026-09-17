@@ -2,6 +2,21 @@
 
 ## 2026-09-17
 
+- feat(sdk): add `portal-android-lifecycle` module — `PortalClientHolder`
+  (process-scoped client) + `PortalTunnelService` (foreground-service base)
+- feat(sdk): `PortalIosSession` parity — refresh/addRelay/removeRelay/
+  updateMetadata/awaitReady; `PortalIosClient.diagnostics()`
+- feat(sdk): `PortalClient.isClosed`, `PortalTunnel.awaitActive`,
+  `isActive`/`name`/`address`, `PortalSnapshot.isActive`
+- fix(sdk): non-cancellable cleanup scope so close-during-start cannot orphan
+  a native handle; close() serialized via mutex; hub dispatch guards against
+  reducer throws; aggregate event drops counted in diagnostics
+- feat(sample): Compose sample with config editor, identity, session
+  controls, live metadata, relay management, event log, diagnostics
+- feat(sample): SwiftUI iOS sample with the same feature set
+- build: R8 release build verified; Maven Local publish + clean-consumer
+  resolution; signing gated on key presence
+
 - fix(sdk): route native events through a process-global `PortalEventHub` so
   multiple `PortalClient`s can coexist; add `PortalClient.events` aggregate
   stream and keep STOPPING stable against late status merges

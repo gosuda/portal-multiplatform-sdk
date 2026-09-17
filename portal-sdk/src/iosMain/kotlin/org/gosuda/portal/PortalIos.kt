@@ -83,6 +83,71 @@ public class PortalIosSession internal constructor(
             completion(failure)
         }
     }
+
+    /** Fetches the authoritative native status into the snapshot. */
+    public fun refresh(completion: (PortalFailure?) -> Unit) {
+        client.scope.launch(Dispatchers.Main) {
+            completion(runSessionOp("refresh") { tunnel.refresh() })
+        }
+    }
+
+    /** Adds one relay without restarting the session. */
+    public fun addRelay(relayUrl: String, completion: (PortalFailure?) -> Unit) {
+        client.scope.launch(Dispatchers.Main) {
+            completion(runSessionOp("addRelay") { tunnel.addRelay(relayUrl) })
+        }
+    }
+
+    /** Removes one relay without restarting the session. */
+    public fun removeRelay(relayUrl: String, completion: (PortalFailure?) -> Unit) {
+        client.scope.launch(Dispatchers.Main) {
+            completion(runSessionOp("removeRelay") { tunnel.removeRelay(relayUrl) })
+        }
+    }
+
+    /** Updates public metadata without restarting the session. */
+    public fun updateMetadata(metadata: PortalMetadata, completion: (PortalFailure?) -> Unit) {
+        client.scope.launch(Dispatchers.Main) {
+            completion(runSessionOp("updateMetadata") { tunnel.updateMetadata(metadata) })
+        }
+    }
+
+    /**
+     * Suspends until [capability] is ready, then completes with the snapshot.
+     * Failure codes mirror [PortalTunnel.awaitReady].
+     */
+    public fun awaitReady(
+        capability: Capability,
+        timeoutMillis: Long = 30_000,
+        completion: (PortalSnapshot?, PortalFailure?) -> Unit
+    ) {
+        client.scope.launch(Dispatchers.Main) {
+            try {
+                completion(tunnel.awaitReady(capability, timeoutMillis), null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PortalException) {
+                completion(null, e.failure)
+            } catch (t: Throwable) {
+                completion(
+                    null,
+                    PortalFailure(PortalFailure.Codes.INTERNAL_ERROR, t.message ?: "awaitReady failed")
+                )
+            }
+        }
+    }
+
+    private suspend fun runSessionOp(name: String, block: suspend () -> Any?): PortalFailure? =
+        try {
+            block()
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: PortalException) {
+            e.failure
+        } catch (t: Throwable) {
+            PortalFailure(PortalFailure.Codes.INTERNAL_ERROR, t.message ?: "$name failed")
+        }
 }
 
 /**
@@ -96,6 +161,9 @@ public class PortalIosClient(
     internal val scope get() = client.scope
 
     public fun capabilities(): Set<Capability> = client.capabilities()
+
+    /** Read-only diagnostic snapshot; never contains secrets. */
+    public fun diagnostics(): PortalDiagnostics = client.diagnostics()
 
     /**
      * Starts a tunnel. Completion fires exactly once on the main dispatcher

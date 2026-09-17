@@ -9,16 +9,11 @@ group = "io.github.kimmandoo"
 version = "0.1.0"
 
 android {
-    namespace = "org.gosuda.portal.android"
+    namespace = "org.gosuda.portal.lifecycle"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
-        consumerProguardFiles("consumer-rules.pro")
-        ndk {
-            // Only ABIs for which libportaltunnel.so is shipped.
-            abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
-        }
     }
 
     compileOptions {
@@ -33,7 +28,10 @@ kotlin {
     }
 }
 
-
+dependencies {
+    api(project(":portal-sdk"))
+    implementation(libs.kotlinx.coroutines.android)
+}
 
 mavenPublishing {
     publishToMavenCentral()
@@ -44,11 +42,11 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates(group.toString(), "portal-native-android", version.toString())
+    coordinates(group.toString(), "portal-android-lifecycle", version.toString())
 
     pom {
-        name = "Portal Native Engine (Android)"
-        description = "Prebuilt libportaltunnel binaries and the JNI bridge consumed by the Portal Multiplatform SDK Android target."
+        name = "Portal Android Lifecycle"
+        description = "Process-scoped PortalClient holder and foreground-service base so tunnels survive Activity recreation."
         inceptionYear = "2026"
         url = "https://github.com/kimmandoo/portal-multiplatform-sdk"
         licenses {

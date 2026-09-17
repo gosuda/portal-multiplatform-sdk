@@ -69,6 +69,15 @@ public class PortalTunnel internal constructor(
      */
     public val events: SharedFlow<PortalEvent> = _events.asSharedFlow()
 
+    /** True while the session is in [TunnelPhase.ACTIVE]. */
+    public val isActive: Boolean get() = state.value.phase == TunnelPhase.ACTIVE
+
+    /** Tunnel name from the latest native status, or the configured name. */
+    public val name: String? get() = state.value.nativeStatus?.name ?: config.name
+
+    /** Identity address from the latest native status, if reported. */
+    public val address: String? get() = state.value.nativeStatus?.address
+
     private val opsMutex = Mutex()
     private val revisionCounter = AtomicLong(0)
     private val droppedEvents = AtomicLong(0)
@@ -103,6 +112,31 @@ public class PortalTunnel internal constructor(
             throw PortalException(
                 PortalFailure.Codes.STOP_TIMEOUT,
                 "capability $capability not ready within ${timeoutMillis}ms",
+                retryable = true
+            )
+        }
+    }
+    /**
+     * Suspends until the session reports ACTIVE or [timeoutMillis] elapses.
+     * Equivalent to awaiting every requested capability.
+     */
+    public suspend fun awaitActive(timeoutMillis: Long = 30_000): PortalSnapshot {
+        try {
+            return withTimeout(timeoutMillis) {
+                state.first { snapshot ->
+                    if (snapshot.isTerminal) {
+                        throw PortalException(
+                            PortalFailure.Codes.TUNNEL_CLOSED,
+                            "tunnel reached ${snapshot.phase} before becoming active"
+                        )
+                    }
+                    snapshot.phase == TunnelPhase.ACTIVE
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            throw PortalException(
+                PortalFailure.Codes.STOP_TIMEOUT,
+                "tunnel not active within ${timeoutMillis}ms",
                 retryable = true
             )
         }

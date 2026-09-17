@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import org.gosuda.portal.internal.ConfigValidation
@@ -33,6 +35,7 @@ public data class PortalDiagnostics(
     val wireSchemaVersion: Int,
     val activeSessions: Int,
     val droppedOrphanEvents: Long,
+    val droppedAggregateEvents: Long,
     val sessions: List<SessionDiagnostics>
 ) {
     public data class SessionDiagnostics(
@@ -67,12 +70,17 @@ public class PortalClient internal constructor(
     public constructor(
         allowRemoteTargets: Boolean = false
     ) : this(platformNativeEngine(), allowRemoteTargets)
-
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // Fire-and-forget cleanup must survive client close: a scope whose job is
+    // NonCancellable is never cancelled, so orphan stops always run.
+    private val cleanupScope = CoroutineScope(Dispatchers.Default + NonCancellable)
+
     private val closed = AtomicBoolean(false)
+    private val closeMutex = Mutex()
     private val tunnels = AtomicReference<Map<String, PortalTunnel>>(emptyMap())
     private val generationCounter = AtomicLong(0)
+    private val droppedAggregateEvents = AtomicLong(0)
 
     private val _events = MutableSharedFlow<PortalEvent>(extraBufferCapacity = EVENT_BUFFER)
 
@@ -81,6 +89,9 @@ public class PortalClient internal constructor(
      * replayed; per-session state lives on [PortalTunnel.state].
      */
     public val events: SharedFlow<PortalEvent> = _events.asSharedFlow()
+
+    /** True after [close] has been called. */
+    public val isClosed: Boolean get() = closed.load()
 
     /** Capabilities the bundled v1 engine can nominally provide. */
     public fun capabilities(): Set<Capability> = SUPPORTED_CAPABILITIES
@@ -107,7 +118,7 @@ public class PortalClient internal constructor(
         val tunnelId = try {
             startJob.await()
         } catch (e: CancellationException) {
-            scope.launch(NonCancellable) {
+            cleanupScope.launch {
                 val orphanId = runCatching { startJob.await() }.getOrNull()
                 if (orphanId != null) {
                     runCatching { engine.stop(orphanId) }
@@ -154,23 +165,24 @@ public class PortalClient internal constructor(
         return tunnel
     }
 
-    /**
-     * Stops every session owned by this client and releases the owner scope.
-     * Idempotent. Sessions owned by other clients are unaffected.
-     */
     public suspend fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        val owned = tunnels.load().values.toList()
-        var firstFailure: PortalException? = null
-        for (tunnel in owned) {
+        closeMutex.withLock {
+            if (!closed.compareAndSet(false, true)) return
             try {
-                tunnel.stop()
-            } catch (e: PortalException) {
-                if (firstFailure == null) firstFailure = e
+                val owned = tunnels.load().values.toList()
+                var firstFailure: PortalException? = null
+                for (tunnel in owned) {
+                    try {
+                        tunnel.stop()
+                    } catch (e: PortalException) {
+                        if (firstFailure == null) firstFailure = e
+                    }
+                }
+                firstFailure?.let { throw it }
+            } finally {
+                scope.cancel()
             }
         }
-        scope.cancel()
-        firstFailure?.let { throw it }
     }
 
     public fun diagnostics(): PortalDiagnostics {
@@ -190,6 +202,7 @@ public class PortalClient internal constructor(
             wireSchemaVersion = WIRE_SCHEMA_VERSION,
             activeSessions = sessions.size,
             droppedOrphanEvents = PortalEventHub.droppedOrphanEvents,
+            droppedAggregateEvents = droppedAggregateEvents.load(),
             sessions = sessions
         )
     }
@@ -200,7 +213,9 @@ public class PortalClient internal constructor(
 
     /** Called by the hub after a tunnel reduced a raw event. */
     internal fun onTunnelEvent(event: PortalEvent) {
-        _events.tryEmit(event)
+        if (!_events.tryEmit(event)) {
+            droppedAggregateEvents.addAndFetch(1)
+        }
     }
 
     internal fun unregisterTunnel(tunnelId: String) {

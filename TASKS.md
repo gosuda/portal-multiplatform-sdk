@@ -20,6 +20,11 @@
 - [x] Relay rules aligned with `utils.NormalizeRelayURL` upstream
 - [x] `explicitApi()` mode; `PortalRelayStatus.isMitm`/`isActive`
 - [x] README logo + full docs, CONTRIBUTING.md
+- [x] `portal-android-lifecycle` module (PortalClientHolder + PortalTunnelService)
+- [x] R8 release build verified; Maven Local publish + clean-consumer resolve
+- [x] `PortalIosSession` parity: refresh/addRelay/removeRelay/updateMetadata/awaitReady
+- [x] `PortalClient.isClosed`, `awaitActive`, `isActive`, close mutex,
+      non-cancellable cleanup scope, hub dispatch guard, drop counters
 
 ## Blocked / next
 
@@ -28,8 +33,7 @@
 - [ ] iOS: build `libportaltunnel.a` per target, embed via
       `staticLibraries`/`libraryPaths` in `portaltunnel.def`, re-enable
       `ios*Test` link tasks, verify `PortalSDK.xcframework` on macOS
-- [ ] Real-relay integration test (controlled relay, not public pool)
-- [ ] Device verification: Android release + R8, iOS device + simulator
-- [ ] Clean-consumer check: Maven Local + SwiftPM binary from a fresh project
-- [ ] Decide Android minSdk (26 placeholder) and 32-bit ABI support
-- [ ] Optional `portal-android-lifecycle` module (foreground-service owner)
+- [x] Real-relay integration verified on emulator (3 relays ready, HTTP 200)
+- [x] Android release + R8 verified; iOS device/simulator still blocked on libportaltunnel.a
+- [x] Maven Local clean-consumer resolves portal-sdk-android + portal-native-android
+- [x] Android minSdk = 26 (decided); 32-bit ABIs not shipped (no .so)

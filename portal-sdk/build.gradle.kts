@@ -106,7 +106,13 @@ tasks.matching {
 
 mavenPublishing {
     publishToMavenCentral()
-    signAllPublications()
+    // Sign only when release keys are configured; local Maven publishes skip it.
+    if (providers.gradleProperty("signing.keyId").isPresent ||
+        providers.gradleProperty("signingInMemoryKey").isPresent ||
+        providers.environmentVariable("SIGNING_KEY").isPresent
+    ) {
+        signAllPublications()
+    }
 
     coordinates(group.toString(), "portal-sdk", version.toString())
 

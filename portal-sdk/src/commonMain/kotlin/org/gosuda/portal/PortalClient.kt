@@ -126,7 +126,7 @@ public class PortalClient internal constructor(
         // The native start runs on the owner scope so a caller cancellation
         // cannot orphan a created handle: if the await is cancelled after the
         // native side started, the cleanup job stops it (design doc L.4).
-        val startJob = scope.async(Dispatchers.Default) { engine.start(configJson) }
+        val startJob = cleanupScope.async(Dispatchers.Default) { engine.start(configJson) }
         val tunnelId = try {
             startJob.await()
         } catch (e: CancellationException) {
@@ -157,7 +157,7 @@ public class PortalClient internal constructor(
 
         val tunnel = PortalTunnel(
             tunnelId = tunnelId,
-            config = config,
+            config = resolved,
             owner = this,
             generation = (generationCounter.addAndFetch(1)).toInt()
         )

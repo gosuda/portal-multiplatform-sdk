@@ -276,6 +276,8 @@ class MainActivity : ComponentActivity() {
         is PortalEvent.StatusChanged ->
             "STATUS_CHANGED active=${event.status.active} relays=${event.status.relays.size}"
         is PortalEvent.MitmSuspected -> "MITM_SUSPECTED ${event.relayUrl}"
+        is PortalEvent.RelayAdded -> "RELAY_ADDED ${event.relayUrl}"
+        is PortalEvent.RelayRemoved -> "RELAY_REMOVED ${event.relayUrl}"
         is PortalEvent.Error -> "ERROR ${event.message}"
         is PortalEvent.Unknown -> "UNKNOWN ${event.type}"
     }

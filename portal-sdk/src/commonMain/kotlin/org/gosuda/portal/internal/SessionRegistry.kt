@@ -1,46 +1,35 @@
 package org.gosuda.portal.internal
 
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.gosuda.portal.PortalTunnel
 
 /**
  * Thread-safe registry of live tunnels owned by one [PortalClient].
  * Exposes the ordered session list as a [StateFlow] for UI observation.
  */
-@OptIn(ExperimentalAtomicApi::class)
 internal class SessionRegistry {
-    private val tunnels = AtomicReference<Map<String, PortalTunnel>>(emptyMap())
     private val _sessions = MutableStateFlow<List<PortalTunnel>>(emptyList())
 
     /** Live sessions in open order. */
     val sessions: StateFlow<List<PortalTunnel>> = _sessions.asStateFlow()
 
     fun register(tunnel: PortalTunnel) {
-        tunnels.update { it + (tunnel.tunnelId to tunnel) }
-        _sessions.value = tunnels.load().values.toList()
+        _sessions.update { list ->
+            if (list.any { it.tunnelId == tunnel.tunnelId }) list else list + tunnel
+        }
     }
 
     fun unregister(tunnelId: String) {
-        tunnels.update { it - tunnelId }
-        _sessions.value = tunnels.load().values.toList()
+        _sessions.update { list -> list.filterNot { it.tunnelId == tunnelId } }
     }
 
-    fun get(tunnelId: String): PortalTunnel? = tunnels.load()[tunnelId]
+    fun get(tunnelId: String): PortalTunnel? =
+        _sessions.value.firstOrNull { it.tunnelId == tunnelId }
 
-    fun all(): List<PortalTunnel> = tunnels.load().values.toList()
+    fun all(): List<PortalTunnel> = _sessions.value
 
-    fun size(): Int = tunnels.load().size
-
-    private inline fun AtomicReference<Map<String, PortalTunnel>>.update(
-        crossinline transform: (Map<String, PortalTunnel>) -> Map<String, PortalTunnel>
-    ) {
-        while (true) {
-            val cur = load()
-            if (compareAndSet(cur, transform(cur))) return
-        }
-    }
+    fun size(): Int = _sessions.value.size
 }

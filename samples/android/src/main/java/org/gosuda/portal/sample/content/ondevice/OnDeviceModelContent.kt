@@ -55,7 +55,8 @@ object OnDeviceModelContent : PublishableContent {
     override val id = "ondevice"
     override val title = "On-device model"
     override val summary = "LiteRT-LM LLM on this device — real inference, no cloud"
-    override val detail = "target_addr → 127.0.0.1:$PORT · /v1/generate"
+    override val detail: String
+        get() = "target_addr → 127.0.0.1:$PORT · /v1/generate · engine: $engineBackend"
 
     const val PORT = 18080
     private const val MAX_TOKENS_CAP = 512
@@ -153,9 +154,11 @@ object OnDeviceModelContent : PublishableContent {
                     engine = e
                     engineBackend = config.backend.name
                     engineModelPath = modelFile.absolutePath
+                    android.util.Log.i("PortalSample", "LiteRT-LM engine ready on ${config.backend.name}")
                     return@withLock
-                } catch (_: Throwable) {
-                    // Try the next backend.
+                } catch (t: Throwable) {
+                    android.util.Log.w("PortalSample",
+                        "LiteRT-LM ${config.backend.name} init failed: ${t.message}")
                 }
             }
             engineBackend = "init-failed"

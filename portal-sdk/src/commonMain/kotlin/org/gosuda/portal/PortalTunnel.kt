@@ -146,9 +146,14 @@ public class PortalTunnel internal constructor(
     public suspend fun refresh(): PortalSnapshot {
         ensureUsable("refresh")
         return opsMutex.withLock {
-            val raw = nativeCall("getStatus") { engine.getStatus(tunnelId) }
-            val status = decodeStatus(raw)
-            mergeStatus(status)
+            try {
+                val raw = nativeCall("getStatus") { engine.getStatus(tunnelId) }
+                val status = decodeStatus(raw)
+                mergeStatus(status)
+            } catch (e: PortalException) {
+                _state.update { it.copy(lastFailure = e.failure, revision = nextRevision()) }
+                throw e
+            }
             _state.value
         }
     }
@@ -251,6 +256,24 @@ public class PortalTunnel internal constructor(
                         it.copy(hasSecurityWarning = true, revision = nextRevision())
                     }
                     PortalEvent.MitmSuspected(tunnelId, relay)
+                }
+                "RELAY_ADDED" -> {
+                    val relay = PortalJson.parseToJsonElement(payloadJson).jsonObject["relay_url"]
+                        ?.jsonPrimitive?.content.orEmpty()
+                    _state.update {
+                        it.copy(relays = it.relays + PortalRelayStatus(relayUrl = relay, state = "added"),
+                            revision = nextRevision())
+                    }
+                    PortalEvent.RelayAdded(tunnelId, relay)
+                }
+                "RELAY_REMOVED" -> {
+                    val relay = PortalJson.parseToJsonElement(payloadJson).jsonObject["relay_url"]
+                        ?.jsonPrimitive?.content.orEmpty()
+                    _state.update {
+                        it.copy(relays = it.relays.filterNot { r -> r.relayUrl == relay },
+                            revision = nextRevision())
+                    }
+                    PortalEvent.RelayRemoved(tunnelId, relay)
                 }
                 "ERROR" -> {
                     val message = PortalJson.parseToJsonElement(payloadJson).jsonObject["error"]

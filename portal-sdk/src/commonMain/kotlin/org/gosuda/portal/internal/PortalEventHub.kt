@@ -100,7 +100,11 @@ internal object PortalEventHub {
     private fun drainOrphans(tunnelId: String) {
         val pending = orphans.load()[tunnelId] ?: return
         orphans.update { it - tunnelId }
-        val tunnel = routes.load()[tunnelId] ?: return
+        val tunnel = routes.load()[tunnelId]
+        if (tunnel == null) {
+            droppedOrphans.addAndFetch(pending.size.toLong())
+            return
+        }
         for (raw in pending) {
             val event = tunnel.handleRawEvent(raw.eventType, raw.payloadJson)
             tunnel.owner.onTunnelEvent(event)

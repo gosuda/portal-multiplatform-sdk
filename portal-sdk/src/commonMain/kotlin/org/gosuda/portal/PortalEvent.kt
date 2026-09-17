@@ -16,6 +16,8 @@ public sealed class PortalEvent {
     public data class Stopped(override val tunnelId: String) : PortalEvent()
     public data class StatusChanged(override val tunnelId: String, val status: PortalStatus) : PortalEvent()
     public data class MitmSuspected(override val tunnelId: String, val relayUrl: String) : PortalEvent()
+    public data class RelayAdded(override val tunnelId: String, val relayUrl: String) : PortalEvent()
+    public data class RelayRemoved(override val tunnelId: String, val relayUrl: String) : PortalEvent()
     public data class Error(override val tunnelId: String, val message: String) : PortalEvent()
     public data class Unknown(override val tunnelId: String, val type: String, val rawPayload: String) : PortalEvent()
 }

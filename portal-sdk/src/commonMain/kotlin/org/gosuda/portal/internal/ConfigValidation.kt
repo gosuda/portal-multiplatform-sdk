@@ -142,7 +142,7 @@ internal object ConfigValidation {
             host = authority.substringBeforeLast(':')
             port = authority.substringAfterLast(':', "").ifEmpty { null }
         }
-        if (host.isEmpty()) fail("relay url host is empty: $url")
+        if (host.isEmpty() || host.contains(':')) fail("relay url has an invalid host: $url")
         if (authority.endsWith(':')) fail("relay url has an invalid port: $url")
         if (port != null) {
             val n = port.toIntOrNull() ?: fail("relay url port must be between 1 and 65535: $url")

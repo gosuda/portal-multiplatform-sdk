@@ -2,6 +2,20 @@
 
 ## 2026-09-17
 
+- fix(sdk): SessionRegistry race — register/unregister now use
+  MutableStateFlow.update for atomic read-modify-write
+- fix(sdk): PortalClient.open — engine.start moved to non-cancellable
+  cleanupScope so cancellation after native start cannot orphan the handle
+- fix(sdk): PortalTunnel.refresh — records PortalFailure on snapshot when
+  getStatus throws, so UI sees the error
+- fix(sdk): PortalEventHub.drainOrphans — counts dropped orphans in
+  droppedOrphans metric instead of silently discarding
+- fix(sdk): ConfigValidation — rejects unbracketed IPv6 relay hosts
+- feat(sdk): PortalEvent.RelayAdded / RelayRemoved — relay set changes
+  now surface as typed events and update snapshot.relays
+- feat(sample): LiteRT-LM init failures logged per backend; engine name
+  shown in content detail
+
 - feat(sample): four publishable contents as packages — snake (static),
   explainer (static), ondevice (LiteRT-LM LLM + Markov fallback), minecraft
   (hybrid TCP/HTTP server); each owns its payload + PortalConfig fields

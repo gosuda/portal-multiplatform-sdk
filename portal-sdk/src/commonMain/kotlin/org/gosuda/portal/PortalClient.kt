@@ -123,6 +123,14 @@ public class PortalClient internal constructor(
                 operation = "start"
             )
         }
+        // The client may have been closed while the native start was in
+        // flight; a session registered on a dead owner would be orphaned.
+        if (closed.load()) {
+            withContext(NonCancellable) {
+                runCatching { withContext(Dispatchers.Default) { engine.stop(tunnelId) } }
+            }
+            throw PortalException(PortalFailure.Codes.CLIENT_CLOSED, "client is closed")
+        }
 
         val tunnel = PortalTunnel(
             tunnelId = tunnelId,

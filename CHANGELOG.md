@@ -2,6 +2,10 @@
 
 ## 2026-09-18
 
+- docs(readme): repositioned the SDK as a mobile HTTP/TCP/UDP tunnel runtime,
+  led with a loopback HTTP quick start, and presented static serving as an
+  optional convenience mode
+
 - fix(ci): removed the `main` branch filter from the README build badge so
   release-tag and manually dispatched Gradle CI runs could supply its status
 

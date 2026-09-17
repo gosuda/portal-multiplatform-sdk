@@ -5,9 +5,9 @@
 <h1 align="center">Portal Multiplatform SDK</h1>
 
 <p align="center">
-  Expose local services and static sites from <b>Android</b> and <b>iOS</b> app
-  processes through <a href="https://github.com/gosuda/portal-tunnel">Portal</a>
-  relays — one Kotlin API, every platform.
+  Expose app-local <b>HTTP</b> servers, <b>TCP/UDP</b> sockets, and static
+  assets from Android and iOS through
+  <a href="https://github.com/gosuda/portal-tunnel">Portal</a> relays.
 </p>
 
 <p align="center">
@@ -21,63 +21,73 @@
 
 ## What you can build with it
 
+Portal gives software running inside an Android or iOS app a public endpoint —
+no public IP or port forwarding required:
 
-
-Portal turns an app process into a public endpoint — no server, no public IP,
-no port forwarding. Concrete things people build on it:
-
-- **Mobile-hosted web apps** — serve a full static site or HTTP API straight
-  from the app (the sample does exactly this: `kmp-sample.portal.damn.it.com`).
-- **Game servers on a phone** — expose a UDP or TCP listener for multiplayer
-  sessions, co-op lobbies, or LAN-style play over the internet.
-- **Webhooks & callbacks on-device** — receive push-style HTTP callbacks in an
-  app without a backend relay of your own.
-- **Dev tunnels** — point a public URL at a dev build running on a phone for
-  demos, QA, or sharing work-in-progress.
-- **Paid endpoints** — gate routes behind x402 micropayments (Sui USDC,
-  Casper wCSPR) with per-route pricing.
-- **Private-by-default exposure** — ECH hides the hostname, `hide=true`
-  unlists the endpoint, and MITM self-probing flags suspicious relays.
+- **On-device APIs and webhooks** — expose a Ktor, NanoHTTPD, or other
+  loopback HTTP server for callbacks, integrations, and device-local APIs.
+- **Mobile game and peer services** — publish TCP or UDP listeners for
+  multiplayer sessions, co-op lobbies, and custom protocols.
+- **Dev tunnels** — reach an app's local service from remote QA, demos, or
+  development tooling.
+- **Route-based applications** — send different URL prefixes to local HTTP
+  upstreams or bundled assets, with optional x402 pricing per route.
+- **Static applications** — publish files directly when running an embedded
+  HTTP server would add unnecessary weight.
+- **Privacy-aware endpoints** — use ECH, unlisted discovery, and MITM
+  self-probing across multiple relays.
 
 ## What it does
-static site, a raw TCP/UDP socket — through public relays, without a server or
-a public IP. This SDK wraps the shared `libportaltunnel` engine in a single
-Kotlin Multiplatform API:
 
-- **One `PortalConfig`** drives HTTP/TLS sites, static directories, raw TCP
-  and UDP, ECH privacy, relay discovery, and x402 micropayments.
-- **`StateFlow` snapshots** are the authoritative state; events are auxiliary
-  notifications, never the source of truth.
-- **Structured failures** (`PortalFailure` codes) instead of raw native error
-  codes; cancellation is always `CancellationException`, never wrapped.
-- **Ownership is explicit**: a `PortalClient` owns its sessions, `close()`
-  stops exactly those, and a process-global event hub routes native callbacks
-  to the right owner.
+This SDK is a mobile tunnel runtime around `libportaltunnel`. `PortalConfig`
+describes which app-local service to expose; `PortalClient` owns its tunnel
+sessions and reports their authoritative state:
+
+- **HTTP/TLS upstreams and routes** proxy requests to loopback servers running
+  in the app process.
+- **Raw TCP and UDP tunnels** expose app-owned sockets and custom protocols.
+- **Static directories** are a convenience mode, not a required architecture.
+- **One lifecycle API** covers relay discovery, ECH privacy, x402 payments,
+  structured failures, and explicit session ownership.
+- **`StateFlow` snapshots** are authoritative; bounded events are auxiliary
+  notifications.
+
+## Exposure modes
+
+| App-local source | `PortalConfig` shape | Typical use |
+|---|---|---|
+| HTTP server | `targetAddr = "127.0.0.1:8080"` | APIs, webhooks, dev servers |
+| HTTP routes | `httpRoutes = listOf(...)` | Prefix routing, mixed upstreams, x402 |
+| TCP listener | `tcp = true` | Custom protocols, game sessions |
+| UDP listener | `udp = true, udpAddr = "127.0.0.1:7777"` | Real-time and datagram protocols |
+| Static directory | `staticDir = dir` | Serverless assets and bundled web UIs |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph app["Your app"]
-        UI --> PC["PortalClient"]
-        PC --> T1["PortalTunnel"] & T2["PortalTunnel"]
+    subgraph app["Android / iOS app"]
+        UI["App lifecycle"] --> PC["PortalClient"]
+        HTTP["HTTP server<br/>127.0.0.1:8080"]
+        TCP["TCP listener"]
+        UDP["UDP listener"]
+        FILES["Static assets"]
     end
-    PC --> HUB["PortalEventHub<br/>(process-global routing)"]
-    HUB --> ENG["PortalNativeEngine"]
-    ENG -->|androidMain| JNI["JNI bridge<br/>libportaltunnel.so"]
-    ENG -->|nativeMain| C["C ABI<br/>portaltunnel.def"]
-    JNI & C --> GO["libportaltunnel<br/>(Go mobile bridge)"]
-    GO --> R1["relay"] & R2["relay"] & R3["relay"]
+    PC --> HUB["PortalEventHub<br/>(session routing)"]
+    HUB --> ENG["libportaltunnel runtime"]
+    ENG --> HTTP & TCP & UDP & FILES
+    ENG --> R["Portal relays"]
+    R --> PUBLIC["Public HTTP/TCP/UDP endpoint"]
 ```
 
 | Layer | Where | Contract |
 |---|---|---|
-| `PortalClient` / `PortalTunnel` | `commonMain` | snapshots, events, failures, ownership |
-| `PortalEventHub` | `commonMain` | one global callback → per-owner routing |
-| `PortalNativeEngine` | `commonMain` expect | raw string/JSON ABI seam |
+| `PortalClient` / `PortalTunnel` | `commonMain` | configuration, snapshots, failures, ownership |
+| `PortalEventHub` | `commonMain` | one native callback → correct session owner |
+| `PortalNativeEngine` | platform adapters | raw string/JSON ABI seam |
 | JNI bridge | `portal-native-android` | `org.gosuda.portal.android.internal.NativeBridge` |
 | cinterop | `nativeMain` | `portaltunnel.def` → `native/include/portaltunnel.h` |
-| Swift facade | `iosMain` | `PortalIosClient`/`PortalIosSession` callbacks |
+| Swift facade | `iosMain` | `PortalIosClient` / `PortalIosSession` callbacks |
 
 ## Platform matrix
 
@@ -100,7 +110,9 @@ linked into the app target — see [samples/ios/README.md](samples/ios/README.md
 The engine archive is rebuilt from `native/bridge` (clean-room Go bridge over
 portal-tunnel v2.4.3 `sdk.Exposure`) and is gitignored.
 
-## Quick start
+## Quick start: expose a local HTTP server
+
+Start your HTTP server on a loopback address, then point Portal at it:
 
 ### Kotlin (Android / common)
 
@@ -109,9 +121,8 @@ val client = PortalClient()
 
 val tunnel = client.open(
     PortalConfig(
-        name = "my-site",
-        staticDir = "/data/app/site",
-        staticIndex = "index.html",
+        name = "device-api",
+        targetAddr = "127.0.0.1:8080",
         discovery = true
     )
 )
@@ -121,8 +132,8 @@ tunnel.state.collect { snapshot ->
     println("${snapshot.phase} ${snapshot.primaryPublicUrl}")
 }
 
-// Or suspend until a capability is confirmed ready.
-val ready = tunnel.awaitReady(Capability.STATIC_SITE)
+// Wait until the HTTP/TLS endpoint is confirmed ready.
+val ready = tunnel.awaitReady(Capability.HTTP_TLS)
 // or: tunnel.awaitActive(15_000)
 
 tunnel.stop()      // retryable on native failure
@@ -130,6 +141,9 @@ client.close()     // stops only the sessions this client owns
 ```
 
 ### Swift (iOS)
+
+Pass the equivalent `PortalConfig` with `targetAddr` set to the app's loopback
+HTTP listener:
 
 ```swift
 let client = PortalIosClient()
@@ -139,28 +153,41 @@ client.open(config: config) { session, failure in
 }
 ```
 
-See [samples/android](samples/android) for a complete Compose app and
+The Android and iOS sample apps use static assets because that makes the demo
+self-contained. Static serving is optional; the same lifecycle API owns HTTP,
+TCP, and UDP tunnels.
+
+See [samples/android](samples/android) for the complete Compose app and
 [samples/ios](samples/ios) for the SwiftUI equivalent.
 
 ## Usage
 
 ### Configuration
 
-`PortalConfig` is the single input. Common shapes:
+`PortalConfig` selects the app-local service and optional relay features:
 
 ```kotlin
-// Static site (the sample)
-PortalConfig(name = "site", staticDir = dir, staticIndex = "index.html")
-
 // Proxy a local HTTP server
 PortalConfig(name = "api", targetAddr = "127.0.0.1:8080")
 
-// Raw UDP / TCP listener
+// Route prefixes to one or more local HTTP services
+PortalConfig(
+    name = "routes",
+    httpRoutes = listOf(
+        PortalHTTPRoute(prefix = "/api", upstream = "http://127.0.0.1:8080"),
+        PortalHTTPRoute(prefix = "/admin", upstream = "http://127.0.0.1:9090")
+    )
+)
+
+// Raw TCP / UDP listeners
+PortalConfig(name = "tcp-service", tcp = true)
 PortalConfig(name = "game", udp = true, udpAddr = "127.0.0.1:7777")
-PortalConfig(name = "tcp",  tcp = true)
+
+// Static assets without an embedded HTTP server
+PortalConfig(name = "site", staticDir = dir, staticIndex = "index.html")
 
 // Discovery off, explicit relays only
-PortalConfig(name = "x", discovery = false,
+PortalConfig(name = "private", discovery = false,
              relays = listOf("https://portal.example.com"))
 
 // Paid route (x402)
@@ -236,7 +263,9 @@ store it in Keystore-wrapped storage / Keychain, never log it.
 
 ```kotlin
 val config = portalConfig {
-    setName("site"); setDiscovery(true); setUdp(true)
+    setName("device-api")
+    setTargetAddress("127.0.0.1:8080")
+    setDiscovery(true)
 }
 
 // Android: defaults identity_path to filesDir/identity.json

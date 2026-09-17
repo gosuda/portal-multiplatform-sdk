@@ -1,32 +1,36 @@
 # Work Checkpoint
 
 ## Active task
-README CI badge status repair — **complete**.
+README tunnel-runtime repositioning — **complete**.
 
 ## State (2026-09-18)
-- GitHub registered `.github/workflows/gradle.yml` as the active `Gradle CI`
-  workflow, but its run history was empty.
-- Repository policy intentionally limits Gradle CI to `release-*` tag pushes
-  and manual `workflow_dispatch`; ordinary `main` pushes do not run it.
-- The README badge additionally filtered runs to `branch=main`. That excluded
-  release-tag runs, so the badge could remain `no status` even after a release
-  build.
-- `README.md` now uses the workflow status endpoint without a branch filter
-  and links directly to the Gradle CI workflow.
+- The SDK implementation already supported loopback HTTP upstreams,
+  route-based HTTP forwarding, TCP, UDP, and static directories, but the
+  README hero and primary quick start made static serving look like the
+  product's main purpose.
+- The README now presents Portal as a mobile tunnel runtime for app-local
+  HTTP/TCP/UDP services. Static directories remain documented as an optional
+  convenience mode.
+- The primary quick start now exposes `127.0.0.1:8080` with `targetAddr` and
+  waits for `Capability.HTTP_TLS`.
+- Added an exposure-mode matrix and an architecture diagram that show local
+  HTTP servers, TCP/UDP listeners, static assets, the native runtime, relays,
+  and public endpoints.
+- Configuration examples now lead with HTTP upstreams and routes, followed by
+  TCP/UDP and then static serving.
 - Changed files: `README.md`, `CHANGELOG.md`, and this checkpoint.
 - Verification:
-  - GitHub Actions API reported workflow `360644633` (`Gradle CI`) active.
-  - GitHub Actions API reported zero Gradle CI runs on `main`, matching the
-    observed `build: no status` badge rather than an endpoint lookup failure.
-  - Both the Shields and GitHub-native badge endpoints returned `no status`,
-    confirming that changing badge providers would not fix the missing run.
-  - The README badge no longer narrows status lookup to `branch=main`.
+  - Examples were checked against `PortalConfig`, `PortalHTTPRoute`, and
+    `Capability` definitions in `commonMain`.
+  - `git diff --check` passed.
+  - README code fences were balanced, every local Markdown link resolved, the
+    HTTP quick start preceded static configuration, and static-first wording
+    from the previous quick start was absent.
 
 ## Next action
 Run `Gradle CI` once via GitHub Actions `workflow_dispatch` (or on the next
-valid `release-*` tag) to seed the first build result; the badge will then
-display that workflow result. No automatic run was added for ordinary pushes,
-preserving the repository CI policy.
+valid `release-*` tag) to seed the README build badge. Product documentation
+work is otherwise complete.
 
 ## Prior environment notes (2026-09-17 macOS session)
 - Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via

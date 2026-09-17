@@ -1,106 +1,111 @@
 package org.gosuda.portal.sample
 
-import android.app.Activity
 import android.os.Bundle
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.gosuda.portal.PortalClient
 import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalException
+import org.gosuda.portal.PortalRelayStatus
 import org.gosuda.portal.PortalSnapshot
 import org.gosuda.portal.PortalTunnel
+import org.gosuda.portal.TunnelPhase
 import java.io.File
 
 /**
- * Minimal Portal sample: extracts a static site from assets, exposes it via a
+ * Portal sample: extracts a static site from assets, exposes it through a
  * tunnel owned by a client that outlives the screen, and renders the
- * authoritative snapshot. The tunnel keeps running across rotation; the Stop
- * button is the explicit owner-driven shutdown.
+ * authoritative [PortalSnapshot] with Compose.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
 
     // The owner scope outlives individual UI collectors; the client owns the
     // native session, not the screen.
     private val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val client = PortalClient()
 
-    // Current tunnel handle; the observer below re-collects on every change.
     private val tunnel = MutableStateFlow<PortalTunnel?>(null)
 
-    private lateinit var statusView: TextView
-    private lateinit var urlView: TextView
-    private lateinit var relaysView: TextView
+    // Snapshot of the active tunnel, or null while idle. flatMapLatest
+    // re-collects whenever a new handle is installed.
+    private val snapshot: StateFlow<PortalSnapshot?> =
+        tunnel.flatMapLatest { it?.state ?: flowOf(null) }
+            .stateIn(ownerScope, SharingStarted.Eagerly, null)
+
+    private val lastError = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        statusView = TextView(this)
-        urlView = TextView(this)
-        relaysView = TextView(this)
-        val startButton = TextView(this).apply {
-            text = "Start tunnel"
-            setOnClickListener { startTunnel() }
-        }
-        val stopButton = TextView(this).apply {
-            text = "Stop tunnel"
-            setOnClickListener { stopTunnel() }
-        }
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(startButton)
-            addView(stopButton)
-            addView(statusView)
-            addView(urlView)
-            addView(relaysView)
-        }
-        setContentView(ScrollView(this).apply { addView(layout) })
-
-        observeTunnel()
-    }
-
-    private fun observeTunnel() {
-        ownerScope.launch {
-            tunnel.flatMapLatest { it?.state ?: flowOf(null) }
-                .collectLatest { snapshot -> render(snapshot) }
-        }
-    }
-
-    private fun render(snapshot: PortalSnapshot?) {
-        if (snapshot == null) {
-            statusView.text = "idle"
-            urlView.text = ""
-            relaysView.text = ""
-            return
-        }
-        statusView.text = buildString {
-            append("phase=${snapshot.phase} rev=${snapshot.revision}")
-            if (snapshot.hasSecurityWarning) append("  SECURITY WARNING")
-            snapshot.lastFailure?.let { append("\nlast failure: ${it.code} ${it.message}") }
-        }
-        urlView.text = snapshot.primaryPublicUrl ?: "no public url yet"
-        relaysView.text = snapshot.relays.joinToString("\n") {
-            "${it.relayUrl} [${it.state}] ${it.publicUrl ?: ""}"
+        setContent {
+            PortalSampleTheme {
+                val snap by snapshot.collectAsState()
+                val error by lastError.collectAsState()
+                SampleScreen(
+                    snapshot = snap,
+                    lastError = error,
+                    onStart = ::startTunnel,
+                    onStop = ::stopTunnel
+                )
+            }
         }
     }
 
     private fun startTunnel() {
         ownerScope.launch {
+            lastError.value = null
             try {
                 val siteDir = extractSite()
+                // The engine loads or creates the identity at this path; the
+                // process CWD is read-only on Android, so use filesDir.
                 val config = PortalConfig(
                     name = "kmp-sample",
+                    identityPath = File(filesDir, "identity.json").absolutePath,
                     staticDir = siteDir.absolutePath,
                     staticIndex = "index.html",
                     discovery = true,
@@ -108,7 +113,7 @@ class MainActivity : Activity() {
                 )
                 tunnel.value = client.open(config)
             } catch (e: PortalException) {
-                statusView.text = "start failed: ${e.code} ${e.message}"
+                lastError.value = "start failed: ${e.code} ${e.message}"
             }
         }
     }
@@ -120,7 +125,7 @@ class MainActivity : Activity() {
             try {
                 t.stop()
             } catch (e: PortalException) {
-                statusView.text = "stop failed: ${e.code} ${e.message}"
+                lastError.value = "stop failed: ${e.code} ${e.message}"
             }
         }
     }
@@ -148,5 +153,207 @@ class MainActivity : Activity() {
                 ownerScope.cancel()
             }
         }
+    }
+}
+
+@Composable
+private fun PortalSampleTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+        content = content
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SampleScreen(
+    snapshot: PortalSnapshot?,
+    lastError: String?,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Portal Sample") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item { ControlsCard(snapshot, lastError, onStart, onStop) }
+            item { PublicUrlCard(snapshot) }
+            item {
+                Text(
+                    "Relays (${snapshot?.relays?.size ?: 0})",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            items(snapshot?.relays.orEmpty()) { relay -> RelayCard(relay) }
+        }
+    }
+}
+
+@Composable
+private fun ControlsCard(
+    snapshot: PortalSnapshot?,
+    lastError: String?,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PhaseChip(snapshot?.phase)
+                Spacer(Modifier.weight(1f))
+                snapshot?.let {
+                    Text(
+                        "rev ${it.revision}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (snapshot?.hasSecurityWarning == true) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        "MITM suspected on a relay — treat endpoints as untrusted",
+                        modifier = Modifier.padding(8.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+            snapshot?.lastFailure?.let { failure ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "${failure.code}: ${failure.message}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            lastError?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = onStart,
+                    enabled = snapshot == null || snapshot.isTerminal
+                ) { Text("Start tunnel") }
+                OutlinedButton(
+                    onClick = onStop,
+                    enabled = snapshot != null && !snapshot.isTerminal
+                ) { Text("Stop tunnel") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhaseChip(phase: TunnelPhase?) {
+    val (label, color) = when (phase) {
+        null -> "idle" to MaterialTheme.colorScheme.surfaceVariant
+        TunnelPhase.ACTIVE -> "active" to MaterialTheme.colorScheme.tertiaryContainer
+        TunnelPhase.FAILED -> "failed" to MaterialTheme.colorScheme.errorContainer
+        TunnelPhase.STOPPED -> "stopped" to MaterialTheme.colorScheme.surfaceVariant
+        else -> phase.name.lowercase() to MaterialTheme.colorScheme.secondaryContainer
+    }
+    Surface(color = color, shape = MaterialTheme.shapes.small) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun PublicUrlCard(snapshot: PortalSnapshot?) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Public URL", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(4.dp))
+            SelectionContainer {
+                Text(
+                    snapshot?.primaryPublicUrl ?: "no public url yet",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RelayCard(relay: PortalRelayStatus) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    relay.relayUrl,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f)
+                )
+                RelayStateChip(relay)
+            }
+            relay.publicUrl?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            relay.error?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RelayStateChip(relay: PortalRelayStatus) {
+    val color = when {
+        relay.isMitm -> MaterialTheme.colorScheme.errorContainer
+        relay.isReady -> MaterialTheme.colorScheme.tertiaryContainer
+        relay.isFailed -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    Surface(color = color, shape = MaterialTheme.shapes.small) {
+        Text(
+            if (relay.isMitm) "mitm" else relay.state,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall
+        )
     }
 }

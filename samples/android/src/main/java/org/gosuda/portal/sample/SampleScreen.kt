@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
@@ -167,6 +168,10 @@ fun SampleScreen(
     val onDeviceEngineStatus by OnDeviceModelContent.engineStatus.collectAsState()
     val context = LocalContext.current
     val modelDownloadState by ModelDownload.state.collectAsState()
+    val selectedModel by ModelDownload.selected.collectAsState()
+    // Re-scan the model directory on entry: the file survives process death
+    // but the in-memory state does not, so without this the UI would offer
+    LaunchedEffect(Unit) { ModelDownload.loadSelection(context); ModelDownload.refresh(context) }
     val running = snapshot != null && !snapshot.isTerminal
     val editable = !running && !busy
     val operable = running && !busy && snapshot?.phase != TunnelPhase.STOPPING
@@ -271,6 +276,7 @@ fun SampleScreen(
                             SampleContents.all.forEach { content ->
                                 ContentChoice(content, contentId, editable,
                                     modelState = if (content.id == "ondevice") modelDownloadState else null,
+                                    modelLabel = if (content.id == "ondevice") selectedModel.sizeLabel else null,
                                     engineStatus = if (content.id == "ondevice") onDeviceEngineStatus else null,
                                     onDownloadModel = if (content.id == "ondevice") ({ ModelDownload.start(context) }) else null
                                 ) { contentId = it }
@@ -361,6 +367,18 @@ fun SampleScreen(
                     item {
                         Panel("05 / On-device model") {
                             Text("Applies to the 'On-device model' content. Takes effect on the next publish, or restarts the engine if it is running.", color = TextSecondary)
+                            ModelDownload.MODELS.forEach { spec ->
+                                ModelRow(
+                                    spec = spec,
+                                    selected = spec.id == selectedModel.id,
+                                    downloaded = ModelDownload.isDownloaded(context, spec),
+                                    enabled = editable && modelDownloadState !is ModelDownload.State.Downloading,
+                                    onClick = {
+                                        ModelDownload.select(context, spec)
+                                        OnDeviceModelContent.onModelChanged(context)
+                                    },
+                                )
+                            }
                             SettingRow("Use GPU for inference", "Tries the GPU backend before CPU. Faster on real devices; on emulators the GPU path compiles slowly then fails — leave off.",
                                 preferGpu, editable) { actions.onPreferGpu(it) }
                         }
@@ -637,6 +655,7 @@ private fun ContentChoice(
     selected: String,
     enabled: Boolean,
     modelState: ModelDownload.State? = null,
+    modelLabel: String? = null,
     engineStatus: OnDeviceModelContent.EngineStatus? = null,
     onDownloadModel: (() -> Unit)? = null,
     onSelect: (String) -> Unit
@@ -668,7 +687,7 @@ private fun ContentChoice(
                         Text("No model installed — a tiny built-in model answers until one lands.",
                             color = TextSecondary, style = MaterialTheme.typography.labelSmall)
                         if (onDownloadModel != null) {
-                            ActionButton("Download model (~140 MB)", onDownloadModel,
+                            ActionButton("Download model (${modelLabel ?: "~140 MB"})", onDownloadModel,
                                 enabled = enabled, modifier = Modifier.fillMaxWidth())
                         }
                     }
@@ -706,6 +725,40 @@ private fun ContentChoice(
                             color = Danger, style = MaterialTheme.typography.labelSmall)
                     OnDeviceModelContent.EngineStatus.Idle -> {}
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelRow(
+    spec: ModelDownload.ModelSpec,
+    selected: Boolean,
+    downloaded: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        color = if (selected) Cyan.copy(alpha = 0.12f) else Bg,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().toggleable(
+            value = selected,
+            enabled = enabled,
+            role = Role.RadioButton,
+            onValueChange = { onClick() }
+        )
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(spec.title,
+                    color = if (selected) Cyan else TextPrimary,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                Text(spec.blurb, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(spec.sizeLabel, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+                if (downloaded) Text("on device", color = Mint, style = MaterialTheme.typography.labelSmall)
             }
         }
     }

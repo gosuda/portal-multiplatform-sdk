@@ -27,6 +27,15 @@
   the configured name differs from the saved identity's, a fresh identity
   is generated and written over the file (Android + iOS). Verified on
   device: `snake-game` → `portaltest` → `https://portaltest.*`
+- fix(sample): model re-download offered after every app kill — the file
+  persisted but `ModelDownload.refresh()` was never called, so state reset
+  to NotDownloaded; now re-scanned on screen entry. Partial downloads also
+  resume via HTTP Range instead of restarting
+- feat(sample): model picker — 5 non-gated `.litertlm` models (SmolLM2
+  135M/1.7B, LFM2.5-VL 450M, OLMo 2 1B, Qwen2.5 1.5B) in Settings →
+  '05 / On-device model'; selection persisted, engine restarts on switch,
+  per-model "on device" badge. Verified on device (olmo2-1b persisted)
+
 
 
 - feat(sample): GPU inference toggle in Settings → '05 / On-device model'

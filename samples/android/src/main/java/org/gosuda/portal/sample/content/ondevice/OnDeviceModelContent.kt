@@ -101,7 +101,14 @@ object OnDeviceModelContent : PublishableContent {
         _preferGpu.value = enabled
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_PREFER_GPU, enabled).apply()
-        // If the engine is already up, restart it on the new backend.
+        restartEngine(context)
+    }
+
+    /** Reloads the engine on the newly selected model, if it is running. */
+    fun onModelChanged(context: Context) = restartEngine(context)
+
+    private fun restartEngine(context: Context) {
+        // If the engine is already up, restart it on the new backend/model.
         if (engine != null || _engineStatus.value is EngineStatus.Loading) {
             scope?.launch {
                 engineMutex.withLock {
@@ -121,6 +128,7 @@ object OnDeviceModelContent : PublishableContent {
 
     override suspend fun start(context: Context) {
         loadPreferGpu(context)
+        ModelDownload.loadSelection(context)
         if (server != null) return
         val socket = ServerSocket(PORT, 50, InetAddress.getByName("127.0.0.1"))
         server = socket

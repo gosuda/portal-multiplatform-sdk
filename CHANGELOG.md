@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-18
+
+- fix(publishing): migrated Maven coordinates, POM metadata, Go module path,
+  documentation, CI badge, and sample links from the former `kimmandoo`
+  namespace to the repository's `gosuda` owner
+
 ## 2026-09-17
 
 - feat(ios): clean-room Go mobile bridge (`native/bridge`) over

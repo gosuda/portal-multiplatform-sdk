@@ -1,4 +1,4 @@
-module github.com/kimmandoo/portal-multiplatform-sdk/native/bridge
+module github.com/gosuda/portal-multiplatform-sdk/native/bridge
 
 go 1.27.0
 

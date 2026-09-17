@@ -1,5 +1,18 @@
 # Troubleshooting Log
 
+### [2026-09-18] Gradle could not locate Android SDK on Windows
+
+- **Context / Symptom:** `publishToMavenLocal` failed with `SDK location not
+  found` because neither `ANDROID_HOME` nor `local.properties` supplied an
+  SDK path.
+- **Root Cause:** The Android SDK was installed at the standard per-user path,
+  but the shell environment did not export it.
+- **Solution:** Ran Gradle with
+  `ANDROID_HOME=C:\Users\mingy\AppData\Local\Android\Sdk`; alternatively set
+  `sdk.dir` in the gitignored `local.properties`.
+- **Prevention / Reference:** Configure one of those paths before running
+  Android Gradle tasks on a fresh Windows checkout.
+
 ### [2026-09-17] `org.jetbrains.kotlin.android` rejected by AGP 9
 
 - **Context / Symptom:** `Failed to apply plugin 'org.jetbrains.kotlin.android'`

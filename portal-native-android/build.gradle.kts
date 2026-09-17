@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
-group = "io.github.kimmandoo"
+group = "io.github.gosuda"
 version = "0.1.0"
 
 android {
@@ -50,7 +50,7 @@ mavenPublishing {
         name = "Portal Native Engine (Android)"
         description = "Prebuilt libportaltunnel binaries and the JNI bridge consumed by the Portal Multiplatform SDK Android target."
         inceptionYear = "2026"
-        url = "https://github.com/kimmandoo/portal-multiplatform-sdk"
+        url = "https://github.com/gosuda/portal-multiplatform-sdk"
         licenses {
             license {
                 name = "Apache-2.0"
@@ -60,15 +60,15 @@ mavenPublishing {
         }
         developers {
             developer {
-                id = "kimmandoo"
-                name = "kimmandoo"
-                url = "https://github.com/kimmandoo"
+                id = "gosuda"
+                name = "gosuda"
+                url = "https://github.com/gosuda"
             }
         }
         scm {
-            url = "https://github.com/kimmandoo/portal-multiplatform-sdk"
-            connection = "scm:git:git://github.com/kimmandoo/portal-multiplatform-sdk.git"
-            developerConnection = "scm:git:ssh://git@github.com/kimmandoo/portal-multiplatform-sdk.git"
+            url = "https://github.com/gosuda/portal-multiplatform-sdk"
+            connection = "scm:git:git://github.com/gosuda/portal-multiplatform-sdk.git"
+            developerConnection = "scm:git:ssh://git@github.com/gosuda/portal-multiplatform-sdk.git"
         }
     }
 }

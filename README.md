@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/kimmandoo/portal-multiplatform-sdk/actions"><img src="https://img.shields.io/github/actions/workflow/status/kimmandoo/portal-multiplatform-sdk/gradle.yml?branch=main" alt="CI"/></a>
+  <a href="https://github.com/gosuda/portal-multiplatform-sdk/actions"><img src="https://img.shields.io/github/actions/workflow/status/gosuda/portal-multiplatform-sdk/gradle.yml?branch=main" alt="CI"/></a>
   <img src="https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4"/>
   <img src="https://img.shields.io/badge/ABI-v1-448AFF" alt="ABI v1"/>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="Apache-2.0"/></a>
@@ -92,7 +92,7 @@ flowchart LR
 ```kotlin
 // settings.gradle.kts — include the modules in your build, or consume the
 // published coordinates once a release is cut.
-implementation("io.github.kimmandoo:portal-sdk:0.1.0")
+implementation("io.github.gosuda:portal-sdk:0.1.0")
 ```
 
 iOS additionally needs the `PortalSDK` XCFramework plus `libportaltunnel.a`

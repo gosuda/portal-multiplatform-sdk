@@ -1,49 +1,40 @@
 # Work Checkpoint
 
 ## Active task
-iOS implementation review + completion — **complete for this session's scope**.
+Repository-owner metadata migration — **complete**.
 
-## State (2026-09-17)
-- Branch `main`; prior sessions produced the KMP SDK, Android sample, and
-  iOS SwiftUI sources. This session made iOS work end-to-end.
-- Go mobile bridge reimplemented: `native/bridge` (clean-room over
-  portal-tunnel v2.4.3 `sdk.Exposure`, `-buildmode=c-archive`).
-  `scripts/build-ios-engine.sh` builds `native/ios/<target>/libportaltunnel.a`
-  for iosArm64 / iosSimulatorArm64 / iosX64 (gitignored).
-- `portal-sdk/build.gradle.kts`: per-target `linkerOpts` (`-lportaltunnel`
-  + `-framework Security`) for the framework and debug test binaries;
-  archive declared as link-task input; iOS link/test tasks disabled only
-  when archives are absent.
-- Verified locally:
-  - `./gradlew :portal-sdk:iosSimulatorArm64Test` — 29 tests green
-    (incl. new `IosEngineSmokeTest` hitting the real Go bridge)
-  - `./gradlew :portal-sdk:assemblePortalSDKReleaseXCFramework` — static
-    XCFramework with ios-arm64 + ios-arm64_x86_64-simulator slices
-  - Real-relay tunnel on the iOS simulator: 2-3 relays ready, public URLs
-    issued, clean stop (temporary test, removed after verification)
-  - `samples/ios` builds for device via xcodegen project; installed and
-    launched on iPhone 15 Pro (PID stable)
-  - `./gradlew :portal-sdk:testAndroidHostTest` — 25 tests green
-- Fixed in the bridge: `PortalStop`/`serveErr` consumer race (done channel),
-  `STARTED`/`STATUS_CHANGED`/`STOPPED`/`ERROR`/`MITM_SUSPECTED` events,
-  `PortalStatus` JSON synthesized from `exposure.Relays()`.
-- Fixed in the sample: `PortalIosClient(allowRemoteTargets:defaultIdentityPath:)`
-  (K/N exports no default-arg init), missing `id`/`listener` fields,
-  `Self`/instance-member property-initializer errors, `htonl` →
-  `INADDR_LOOPBACK.bigEndian`, folder resources for `site/`/`site-explainer/`.
-- Fixed on both platforms: the "Public name" field never changed the public
-  address because `identity_path` loads the saved identity and ignores the
-  new name. `resolveIdentityFile` now regenerates the identity when the
-  configured name differs from the saved one. Verified on the Galaxy:
-  `snake-game` → `portaltest` → `https://portaltest.*` live.
+## State (2026-09-18)
+- `origin` points to `git@github.com:gosuda/portal-multiplatform-sdk.git`;
+  GitHub API lookup confirmed `gosuda/portal-multiplatform-sdk`.
+- Maven group and published coordinates now use `io.github.gosuda` in
+  `portal-sdk`, `portal-native-android`, and `portal-android-lifecycle`.
+- Generated POM metadata now uses the `gosuda` repository, SCM URLs, and
+  developer identity. Inter-module POM dependencies also resolve under
+  `io.github.gosuda`.
+- README dependency examples and CI badge, sample-site links, and the Go
+  bridge module path now match the remote owner.
+- Changed files: `README.md`, `native/bridge/go.mod`,
+  `portal-sdk/build.gradle.kts`,
+  `portal-native-android/build.gradle.kts`,
+  `portal-android-lifecycle/build.gradle.kts`,
+  `samples/android/src/main/assets/site-explainer/index.html`,
+  `samples/ios/site-explainer/index.html`, `CHANGELOG.md`,
+  `docs/TROUBLESHOOTING.md`, and this checkpoint.
+- Verification:
+  - `go test ./...` in `native/bridge` — passed (package compiled; no tests).
+  - `ANDROID_HOME=C:\Users\mingy\AppData\Local\Android\Sdk cmd.exe /c
+    gradlew.bat publishToMavenLocal` — passed; 107 actionable tasks.
+  - Generated POMs for all three published modules contain
+    `io.github.gosuda` and `https://github.com/gosuda/portal-multiplatform-sdk`.
+  - Repository-wide stale-owner scan found the former owner only in the
+    historical changelog entry describing this migration.
 
 ## Next action
-If continuing: exercise a real tunnel from the on-device app UI (manual —
-no UI automation available), then resolve `license_review` and
-`android_ndk_revision` in `native/source-lock.json` before any release.
-See TASKS.md "Blocked / next".
+Exercise a real tunnel from the on-device app UI (manual — no UI automation
+available), then resolve `license_review` and `android_ndk_revision` in
+`native/source-lock.json` before any release. See TASKS.md "Blocked / next".
 
-## Environment notes
+## Prior environment notes (2026-09-17 macOS session)
 - Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via
   `local.properties` (gitignored).
 - JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10, AGP 9.1.0.

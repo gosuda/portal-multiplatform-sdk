@@ -35,6 +35,17 @@
   135M/1.7B, LFM2.5-VL 450M, OLMo 2 1B, Qwen2.5 1.5B) in Settings →
   '05 / On-device model'; selection persisted, engine restarts on switch,
   per-model "on device" badge. Verified on device (olmo2-1b persisted)
+- fix(sample): truncated model responses — `max_tokens` defaulted to 128
+  and the playground never passed it; default raised to 256, playground
+  requests 512, KV cache `maxNumTokens` raised to 2048
+- feat(sample): settings persist across force-stops — all publish config
+  (name, description, tags, relays, discovery, protocols, visibility,
+  content, keep-alive) now writes to SharedPreferences via
+  `rememberPersisted*`; `rememberSaveable` only survived rotation
+- docs(sample): `samples/android/README.md` — on-device model API
+  (`/v1/generate`, `/v1/model`, `/v1/health`), parameters, error codes,
+  curl examples
+
 
 
 

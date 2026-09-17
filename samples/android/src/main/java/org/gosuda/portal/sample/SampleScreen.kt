@@ -140,21 +140,21 @@ fun SampleScreen(
 ) {
     // Drafts belong to the screen, not a destination. Saveable state also survives rotation.
     var destination by rememberSaveable { mutableStateOf(0) }
-    var name by rememberSaveable { mutableStateOf("snake-game") }
-    var description by rememberSaveable { mutableStateOf("Snake game served from this device") }
-    var tags by rememberSaveable { mutableStateOf("game,snake") }
-    var relays by rememberSaveable { mutableStateOf("") }
-    var discovery by rememberSaveable { mutableStateOf(true) }
-    var udp by rememberSaveable { mutableStateOf(false) }
-    var tcp by rememberSaveable { mutableStateOf(false) }
-    var ech by rememberSaveable { mutableStateOf(false) }
-    var banMitm by rememberSaveable { mutableStateOf(false) }
-    var hide by rememberSaveable { mutableStateOf(false) }
-    var liveDescription by rememberSaveable { mutableStateOf("") }
-    var liveTags by rememberSaveable { mutableStateOf("") }
-    var liveOwner by rememberSaveable { mutableStateOf("") }
-    var liveHide by rememberSaveable { mutableStateOf(false) }
-    var contentId by rememberSaveable { mutableStateOf("snake") }
+    var name by rememberPersistedString("name", "snake-game")
+    var description by rememberPersistedString("description", "Snake game served from this device")
+    var tags by rememberPersistedString("tags", "game,snake")
+    var relays by rememberPersistedString("relays", "")
+    var discovery by rememberPersistedBoolean("discovery", true)
+    var udp by rememberPersistedBoolean("udp", false)
+    var tcp by rememberPersistedBoolean("tcp", false)
+    var ech by rememberPersistedBoolean("ech", false)
+    var banMitm by rememberPersistedBoolean("banMitm", false)
+    var hide by rememberPersistedBoolean("hide", false)
+    var liveDescription by rememberPersistedString("liveDescription", "")
+    var liveTags by rememberPersistedString("liveTags", "")
+    var liveOwner by rememberPersistedString("liveOwner", "")
+    var liveHide by rememberPersistedBoolean("liveHide", false)
+    var contentId by rememberPersistedString("contentId", "snake")
     var newRelay by rememberSaveable { mutableStateOf("") }
     var activityPanel by rememberSaveable { mutableStateOf("session") }
     val publishScroll = rememberLazyListState()

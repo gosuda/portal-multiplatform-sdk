@@ -122,6 +122,7 @@ class MainActivity : ComponentActivity() {
                 stopService(Intent(this, KeepAliveService::class.java))
             }
             app.keepAlive.value = enabled
+            SampleSettings.putBoolean(this, "keepAlive", enabled)
         } catch (e: RuntimeException) {
             lastError.value = "Could not start background execution: ${e.message}"
             app.keepAlive.value = false

@@ -195,14 +195,14 @@ object OnDeviceModelContent : PublishableContent {
                     add(EngineConfig(
                         modelPath = modelFile.absolutePath,
                         backend = Backend.GPU(),
-                        maxNumTokens = 1024,
+                        maxNumTokens = 2048,
                         cacheDir = context.cacheDir.absolutePath
                     ))
                 }
                 add(EngineConfig(
                     modelPath = modelFile.absolutePath,
                     backend = Backend.CPU(threadCount = 2),
-                    maxNumTokens = 1024,
+                    maxNumTokens = 2048,
                     cacheDir = context.cacheDir.absolutePath
                 ))
             }
@@ -306,7 +306,7 @@ object OnDeviceModelContent : PublishableContent {
                 urlDecode(k) to urlDecode(v)
             }
         val prompt = params["prompt"].orEmpty().ifBlank { "Portal" }
-        val maxTokens = (params["max_tokens"]?.toIntOrNull() ?: 128).coerceIn(1, MAX_TOKENS_CAP)
+        val maxTokens = (params["max_tokens"]?.toIntOrNull() ?: 256).coerceIn(1, MAX_TOKENS_CAP)
         val seed = params["seed"]?.toIntOrNull()
 
         if (!inflight.tryAcquire()) {
@@ -408,7 +408,7 @@ button{background:#64dcec;color:#080f1d;font-weight:700;border:none;cursor:point
 async function go(){
   const out = document.getElementById('out');
   out.style.display='block'; out.textContent='…';
-  const r = await fetch('/v1/generate?prompt='+encodeURIComponent(document.getElementById('p').value));
+  const r = await fetch('/v1/generate?max_tokens=512&prompt='+encodeURIComponent(document.getElementById('p').value));
   const j = await r.json();
   out.textContent = j.text + '\n\n— ' + j.model + ' (' + j.backend + ') · ' + j.served_from;
 }

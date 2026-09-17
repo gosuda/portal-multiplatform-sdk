@@ -308,6 +308,7 @@ portal-native-android/    JNI bridge + prebuilt libportaltunnel.so
 portal-android-lifecycle/ Process-scoped client + foreground-service base
 native/                   portaltunnel.h, C test stub, source provenance
 samples/android/          Compose sample (config, identity, relays, events, diagnostics)
+                          — see samples/android/README.md for the on-device model API
 samples/ios/              SwiftUI sample + XCFramework instructions
 docs/                     DESIGN_RULES, TROUBLESHOOTING, WORK_CHECKPOINT
 .agents/skills/           agent skill: API reference, examples, troubleshooting

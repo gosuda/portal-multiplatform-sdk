@@ -13,10 +13,10 @@ import org.gosuda.portal.internal.PortalNativeEngine
  * emitted inside `start` before the tunnel id is known, blocking starts for
  * cancellation tests, and failing stops.
  */
+@OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
 internal class FakeEngine : PortalNativeEngine {
 
     var listener: ((String, String, String) -> Unit)? = null
-    var nextTunnelId = 0
     val stoppedIds = mutableListOf<String>()
     val startedConfigs = mutableListOf<PortalConfig>()
 
@@ -54,7 +54,7 @@ internal class FakeEngine : PortalNativeEngine {
         }
         val config = PortalJson.decodeFromString<PortalConfig>(configJson)
         startedConfigs.add(config)
-        val id = "fake-tunnel-${++nextTunnelId}"
+        val id = "fake-tunnel-${idCounter.addAndFetch(1)}"
         if (emitEventsInsideStart) {
             emit(id, "STARTED", """{"name":"${config.name ?: ""}"}""")
             emit(id, "STATUS_CHANGED", statusJson(id, config))
@@ -101,5 +101,11 @@ internal class FakeEngine : PortalNativeEngine {
                 )
             )
         )
+    }
+    private companion object {
+        // Process-unique ids: PortalEventHub routes globally, so two fake
+        // engines must never mint the same tunnel id.
+        @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+        val idCounter = kotlin.concurrent.atomics.AtomicLong(0)
     }
 }

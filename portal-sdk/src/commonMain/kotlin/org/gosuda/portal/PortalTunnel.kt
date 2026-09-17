@@ -32,13 +32,13 @@ import org.gosuda.portal.internal.PortalNativeEngine
  * overwrite a newer snapshot.
  */
 @OptIn(ExperimentalAtomicApi::class)
-class PortalTunnel internal constructor(
-    val tunnelId: String,
-    val config: PortalConfig,
-    private val client: PortalClient,
+public class PortalTunnel internal constructor(
+    public val tunnelId: String,
+    public val config: PortalConfig,
+    internal val owner: PortalClient,
     internal val generation: Int
 ) {
-    private val engine: PortalNativeEngine get() = client.nativeEngine
+    private val engine: PortalNativeEngine get() = owner.nativeEngine
 
     private val requestedCaps = ConfigValidation.requestedCapabilities(config)
 
@@ -59,7 +59,7 @@ class PortalTunnel internal constructor(
     )
 
     /** Authoritative session state. Safe to collect from any thread. */
-    val state: StateFlow<PortalSnapshot> = _state.asStateFlow()
+    public val state: StateFlow<PortalSnapshot> = _state.asStateFlow()
 
     private val _events = MutableSharedFlow<PortalEvent>(extraBufferCapacity = EVENT_BUFFER)
 
@@ -67,7 +67,7 @@ class PortalTunnel internal constructor(
      * Auxiliary event stream (bounded, no replay). Late subscribers do not
      * receive past events; durable information lives in [state].
      */
-    val events: SharedFlow<PortalEvent> = _events.asSharedFlow()
+    public val events: SharedFlow<PortalEvent> = _events.asSharedFlow()
 
     private val opsMutex = Mutex()
     private val revisionCounter = AtomicLong(0)
@@ -80,7 +80,7 @@ class PortalTunnel internal constructor(
      *   requested; STOP_TIMEOUT on timeout; TUNNEL_CLOSED if the session ends
      *   first. Cancellation propagates as `CancellationException`.
      */
-    suspend fun awaitReady(capability: Capability, timeoutMillis: Long = 30_000): PortalSnapshot {
+    public suspend fun awaitReady(capability: Capability, timeoutMillis: Long = 30_000): PortalSnapshot {
         if (capability !in requestedCaps) {
             throw PortalException(
                 PortalFailure.Codes.UNSUPPORTED_CAPABILITY,
@@ -109,7 +109,7 @@ class PortalTunnel internal constructor(
     }
 
     /** Fetches the authoritative native status and merges it into [state]. */
-    suspend fun refresh(): PortalSnapshot {
+    public suspend fun refresh(): PortalSnapshot {
         ensureUsable("refresh")
         return opsMutex.withLock {
             val raw = nativeCall("getStatus") { engine.getStatus(tunnelId) }
@@ -119,24 +119,25 @@ class PortalTunnel internal constructor(
         }
     }
 
-    suspend fun addRelay(relayUrl: String) {
+    public suspend fun addRelay(relayUrl: String) {
         ensureUsable("addRelay")
         opsMutex.withLock {
             nativeCall("addRelay") { engine.addRelay(tunnelId, relayUrl) }
         }
     }
 
-    suspend fun removeRelay(relayUrl: String) {
+    public suspend fun removeRelay(relayUrl: String) {
         ensureUsable("removeRelay")
         opsMutex.withLock {
             nativeCall("removeRelay") { engine.removeRelay(tunnelId, relayUrl) }
         }
     }
+
     /**
      * Updates public metadata (description, tags, owner, thumbnail, hide)
      * without restarting the session.
      */
-    suspend fun updateMetadata(metadata: PortalMetadata) {
+    public suspend fun updateMetadata(metadata: PortalMetadata) {
         ensureUsable("updateMetadata")
         val json = PortalJson.encodeToString(metadata)
         ConfigValidation.validateMetadataJson(json)
@@ -145,7 +146,6 @@ class PortalTunnel internal constructor(
         }
     }
 
-
     /**
      * Stops the session. Transitions to STOPPING first; on native success the
      * terminal snapshot is recorded and the handle is unregistered. On native
@@ -153,7 +153,7 @@ class PortalTunnel internal constructor(
      * retried — ownership is not released while the native side may still be
      * alive. Concurrent calls converge on the same outcome.
      */
-    suspend fun stop() {
+    public suspend fun stop() {
         while (true) {
             if (state.value.isTerminal) return
             if (stopRequested.compareAndSet(false, true)) break
@@ -180,9 +180,13 @@ class PortalTunnel internal constructor(
         markTerminal(TunnelPhase.STOPPED, null)
     }
 
-    // ---- event ingress (called by the owning client) -----------------------
+    // ---- event ingress (called by the event hub) ----------------------------
 
-    internal fun handleRawEvent(eventType: String, payloadJson: String) {
+    /**
+     * Reduces one raw native event into state and returns the parsed event
+     * for fan-out to [events] and the owning client's aggregate stream.
+     */
+    internal fun handleRawEvent(eventType: String, payloadJson: String): PortalEvent {
         val event = try {
             when (eventType) {
                 "STATUS_CHANGED" -> {
@@ -237,6 +241,7 @@ class PortalTunnel internal constructor(
             val dropped = droppedEvents.addAndFetch(1)
             _state.update { it.copy(droppedEventCount = dropped) }
         }
+        return event
     }
 
     internal fun markTerminal(phase: TunnelPhase, failure: PortalFailure?) {
@@ -248,14 +253,16 @@ class PortalTunnel internal constructor(
                 revision = nextRevision()
             )
         }
-        client.unregisterTunnel(tunnelId)
+        owner.unregisterTunnel(tunnelId)
     }
 
     // ---- internals ----------------------------------------------------------
 
     private fun mergeStatus(status: PortalStatus) {
         _state.update { current ->
-            if (current.isTerminal) return@update current
+            // Terminal sessions never resurrect; STOPPING keeps its phase so
+            // a late status cannot flicker the session back to ACTIVE.
+            if (current.isTerminal || current.phase == TunnelPhase.STOPPING) return@update current
             val phase = if (status.active) TunnelPhase.ACTIVE else TunnelPhase.CONNECTING
             current.copy(
                 phase = phase,

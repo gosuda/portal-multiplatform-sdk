@@ -11,10 +11,14 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import org.gosuda.portal.internal.ConfigValidation
+import org.gosuda.portal.internal.PortalEventHub
 import org.gosuda.portal.internal.PortalJson
 import org.gosuda.portal.internal.PortalNativeEngine
 import org.gosuda.portal.internal.platformNativeEngine
@@ -23,7 +27,7 @@ import org.gosuda.portal.internal.platformNativeEngine
  * Read-only diagnostic snapshot of a client. Never contains identity
  * documents, keys, tokens, or request bodies.
  */
-data class PortalDiagnostics(
+public data class PortalDiagnostics(
     val sdkVersion: String,
     val abiVersion: Int,
     val wireSchemaVersion: Int,
@@ -31,7 +35,7 @@ data class PortalDiagnostics(
     val droppedOrphanEvents: Long,
     val sessions: List<SessionDiagnostics>
 ) {
-    data class SessionDiagnostics(
+    public data class SessionDiagnostics(
         val sessionId: String,
         val generation: Int,
         val phase: TunnelPhase,
@@ -41,43 +45,45 @@ data class PortalDiagnostics(
 }
 
 /**
- * Owner of tunnel sessions. A client serializes native operations, routes
- * native events to the owning session, and guarantees that sessions it opened
- * are closed by [close] — never by unrelated clients.
+ * Owner of tunnel sessions. A client serializes native operations, receives
+ * events routed by the process-global [PortalEventHub], and guarantees that
+ * sessions it opened are closed by [close] — never by unrelated clients.
  *
  * Construct once per app (or per long-lived component) and keep it alive for
  * the tunnels' lifetime; the screen observing a tunnel must not own it.
  *
- * @param allowInsecureLocalRelays permits `http://`/`ws://` relay URLs for
- *   local relay development. Keep false in production.
  * @param allowRemoteTargets permits non-loopback `target_addr`/`udp_addr`.
  *   Keep false unless the app intentionally proxies to remote hosts.
  */
 @OptIn(ExperimentalAtomicApi::class)
-class PortalClient internal constructor(
+public class PortalClient internal constructor(
     internal val engine: PortalNativeEngine,
-    private val allowInsecureLocalRelays: Boolean = false,
     private val allowRemoteTargets: Boolean = false
 ) {
     /**
      * Creates a client backed by the platform `libportaltunnel` engine.
      * Tests inject a fake engine through the internal primary constructor.
      */
-    constructor(
-        allowInsecureLocalRelays: Boolean = false,
+    public constructor(
         allowRemoteTargets: Boolean = false
-    ) : this(platformNativeEngine(), allowInsecureLocalRelays, allowRemoteTargets)
+    ) : this(platformNativeEngine(), allowRemoteTargets)
 
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val closed = AtomicBoolean(false)
-    private val listenerInstalled = AtomicBoolean(false)
     private val tunnels = AtomicReference<Map<String, PortalTunnel>>(emptyMap())
-    private val orphanEvents = AtomicReference<Map<String, List<RawNativeEvent>>>(emptyMap())
     private val generationCounter = AtomicLong(0)
-    private val droppedOrphanCount = AtomicLong(0)
 
-    fun capabilities(): Set<Capability> = SUPPORTED_CAPABILITIES
+    private val _events = MutableSharedFlow<PortalEvent>(extraBufferCapacity = EVENT_BUFFER)
+
+    /**
+     * Aggregated events from every session this client owns. Bounded and not
+     * replayed; per-session state lives on [PortalTunnel.state].
+     */
+    public val events: SharedFlow<PortalEvent> = _events.asSharedFlow()
+
+    /** Capabilities the bundled v1 engine can nominally provide. */
+    public fun capabilities(): Set<Capability> = SUPPORTED_CAPABILITIES
 
     /**
      * Starts a tunnel and returns its handle once ownership is registered.
@@ -87,10 +93,10 @@ class PortalClient internal constructor(
      * Cancellation after the native start rolls the session back: the native
      * handle is stopped before the exception propagates.
      */
-    suspend fun open(config: PortalConfig): PortalTunnel {
+    public suspend fun open(config: PortalConfig): PortalTunnel {
         ensureOpen()
-        ConfigValidation.validate(config, allowInsecureLocalRelays, allowRemoteTargets, capabilities())
-        ensureListener()
+        ConfigValidation.validate(config, allowRemoteTargets, capabilities())
+        PortalEventHub.install(engine)
 
         val configJson = PortalJson.encodeToString(config)
 
@@ -117,13 +123,15 @@ class PortalClient internal constructor(
                 operation = "start"
             )
         }
+
         val tunnel = PortalTunnel(
             tunnelId = tunnelId,
             config = config,
-            client = this,
+            owner = this,
             generation = (generationCounter.addAndFetch(1)).toInt()
         )
-        registerTunnel(tunnel)
+        PortalEventHub.register(tunnel)
+        tunnels.update { it + (tunnelId to tunnel) }
 
         try {
             // Reconcile state that may have been emitted between the native
@@ -142,7 +150,7 @@ class PortalClient internal constructor(
      * Stops every session owned by this client and releases the owner scope.
      * Idempotent. Sessions owned by other clients are unaffected.
      */
-    suspend fun close() {
+    public suspend fun close() {
         if (!closed.compareAndSet(false, true)) return
         val owned = tunnels.load().values.toList()
         var firstFailure: PortalException? = null
@@ -157,7 +165,7 @@ class PortalClient internal constructor(
         firstFailure?.let { throw it }
     }
 
-    fun diagnostics(): PortalDiagnostics {
+    public fun diagnostics(): PortalDiagnostics {
         val sessions = tunnels.load().values.map {
             val s = it.state.value
             PortalDiagnostics.SessionDiagnostics(
@@ -173,7 +181,7 @@ class PortalClient internal constructor(
             abiVersion = ABI_VERSION,
             wireSchemaVersion = WIRE_SCHEMA_VERSION,
             activeSessions = sessions.size,
-            droppedOrphanEvents = droppedOrphanCount.load(),
+            droppedOrphanEvents = PortalEventHub.droppedOrphanEvents,
             sessions = sessions
         )
     }
@@ -182,67 +190,19 @@ class PortalClient internal constructor(
 
     internal val nativeEngine: PortalNativeEngine get() = engine
 
-    internal fun registerTunnel(tunnel: PortalTunnel) {
-        tunnels.update { it + (tunnel.tunnelId to tunnel) }
-        drainOrphans(tunnel.tunnelId)
+    /** Called by the hub after a tunnel reduced a raw event. */
+    internal fun onTunnelEvent(event: PortalEvent) {
+        _events.tryEmit(event)
     }
 
     internal fun unregisterTunnel(tunnelId: String) {
         tunnels.update { it - tunnelId }
-        orphanEvents.update { it - tunnelId }
-    }
-
-    internal fun dispatchRawEvent(tunnelId: String, eventType: String, payloadJson: String) {
-        val tunnel = tunnels.load()[tunnelId]
-        if (tunnel != null) {
-            tunnel.handleRawEvent(eventType, payloadJson)
-        } else {
-            bufferOrphan(tunnelId, eventType, payloadJson)
-        }
+        PortalEventHub.unregister(tunnelId)
     }
 
     private fun ensureOpen() {
         if (closed.load()) {
             throw PortalException(PortalFailure.Codes.CLIENT_CLOSED, "client is closed")
-        }
-    }
-
-    private fun ensureListener() {
-        if (!listenerInstalled.compareAndSet(false, true)) return
-        try {
-            engine.setEventListener { tunnelId, eventType, payloadJson ->
-                dispatchRawEvent(tunnelId, eventType, payloadJson)
-            }
-        } catch (t: Throwable) {
-            listenerInstalled.store(false)
-            throw t
-        }
-    }
-
-    private fun bufferOrphan(tunnelId: String, eventType: String, payloadJson: String) {
-        while (true) {
-            val current = orphanEvents.load()
-            val list = current[tunnelId]
-            if (list == null && current.size >= MAX_ORPHAN_SESSIONS) {
-                droppedOrphanCount.addAndFetch(1)
-                return
-            }
-            val events = list.orEmpty()
-            if (events.size >= MAX_ORPHAN_EVENTS_PER_SESSION) {
-                droppedOrphanCount.addAndFetch(1)
-                return
-            }
-            val next = current + (tunnelId to events + RawNativeEvent(eventType, payloadJson))
-            if (orphanEvents.compareAndSet(current, next)) return
-        }
-    }
-
-    private fun drainOrphans(tunnelId: String) {
-        val pending = orphanEvents.load()[tunnelId] ?: return
-        orphanEvents.update { it - tunnelId }
-        val tunnel = tunnels.load()[tunnelId] ?: return
-        for (event in pending) {
-            tunnel.handleRawEvent(event.eventType, event.payloadJson)
         }
     }
 
@@ -254,15 +214,11 @@ class PortalClient internal constructor(
                 // Best effort: the caller never received the handle.
             }
             tunnel.markTerminal(TunnelPhase.STOPPED, null)
-            unregisterTunnel(tunnel.tunnelId)
         }
     }
 
-    private data class RawNativeEvent(val eventType: String, val payloadJson: String)
-
     private companion object {
-        const val MAX_ORPHAN_SESSIONS = 32
-        const val MAX_ORPHAN_EVENTS_PER_SESSION = 64
+        const val EVENT_BUFFER = 128
 
         const val SDK_VERSION = "0.1.0"
         const val ABI_VERSION = 1

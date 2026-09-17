@@ -169,6 +169,30 @@ class PortalClientTest {
     }
 
     @Test
+    fun eventsRouteToOwningClientWhenSeveralClientsExist() = runTest {
+        // The v1 ABI has one process-global callback; the hub must route by
+        // tunnel id so a second client cannot steal the first client's events.
+        // One shared engine simulates that single global listener slot.
+        val engine = FakeEngine()
+        val clientA = clientWith(engine)
+        val clientB = clientWith(engine)
+        val tunnelA = clientA.open(siteConfig("a"))
+        clientB.open(siteConfig("b"))
+
+        val received = CompletableDeferred<PortalEvent>()
+        val job = launch { received.complete(clientA.events.first()) }
+        yield()
+        engine.emit(tunnelA.tunnelId, "ERROR", """{"error":"a-relay down"}""")
+
+        val event = received.await()
+        kotlin.test.assertIs<PortalEvent.Error>(event)
+        assertEquals(tunnelA.tunnelId, event.tunnelId)
+        clientA.close()
+        clientB.close()
+    }
+
+
+    @Test
     fun closeStopsOnlyOwnedSessions() = runTest {
         val engineA = FakeEngine()
         val engineB = FakeEngine()
@@ -222,10 +246,18 @@ class PortalClientTest {
         assertFailsWith<PortalException> {
             client.open(siteConfig().copy(identityJson = "x", identityPath = "/p"))
         }
-        // insecure relay without opt-in
+        // insecure remote relay (upstream allows http only for loopback)
         assertFailsWith<PortalException> {
             client.open(siteConfig().copy(relays = listOf("http://relay.example")))
         }
+        // ws/wss are not valid relay schemes upstream
+        assertFailsWith<PortalException> {
+            client.open(siteConfig().copy(relays = listOf("wss://relay.example")))
+        }
+        // local http relay is accepted (engine upgrades to https)
+        client.open(siteConfig().copy(relays = listOf("http://localhost:8080"))).stop()
+        // bare host defaults to https
+        client.open(siteConfig().copy(relays = listOf("relay.example"))).stop()
         // path escape
         assertFailsWith<PortalException> {
             client.open(siteConfig().copy(staticDir = "/data/../secrets"))

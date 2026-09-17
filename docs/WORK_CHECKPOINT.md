@@ -17,6 +17,9 @@ SDK improvement pass — **complete for this session's scope**.
   cleanup-scope/mutex/dispatch-guard hardening, Compose + SwiftUI samples,
   R8 + Maven Local verification, Context-aware PortalClient, sessions
   StateFlow, portalConfig DSL, 4 new tests.
+- Session 4 changes: SessionRegistry extraction, Portal.builder() entry
+  point, relay editor + keep-alive toggle in sample, vertical config list,
+  sync-portal-tunnel.sh, mascot logo.
 - Not verified locally (needs macOS): `compileKotlinIos*`, XCFramework.
 
 ## Next action

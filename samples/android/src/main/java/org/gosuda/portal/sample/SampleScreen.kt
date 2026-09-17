@@ -41,8 +41,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,7 @@ data class SampleActions(
     val onAddRelay: (String) -> Unit,
     val onRemoveRelay: (String) -> Unit,
     val onDiagnostics: () -> Unit,
+    val onKeepAlive: (Boolean) -> Unit,
 )
 
 // ---- palette ---------------------------------------------------------------
@@ -125,8 +127,7 @@ fun SampleScreen(
             item { HeroHeader(snapshot) }
             item { SessionCard(snapshot, lastError, actions) }
             item { PublicUrlCard(snapshot) }
-            item { ConfigCard(snapshot, actions.onStart) }
-            item { IdentityCard(identity, actions.onGenerateIdentity) }
+            item { ConfigCard(snapshot, actions.onStart, actions.onKeepAlive) }
             item { MetadataCard(snapshot, actions.onUpdateMetadata) }
             item { RelayManagerCard(snapshot, actions) }
             item { EventLogCard(eventLog) }
@@ -279,7 +280,11 @@ private fun ActionButton(
 // ---- config ----------------------------------------------------------------
 
 @Composable
-private fun ConfigCard(snapshot: PortalSnapshot?, onStart: (PortalConfig) -> Unit) {
+private fun ConfigCard(
+    snapshot: PortalSnapshot?,
+    onStart: (PortalConfig) -> Unit,
+    onKeepAlive: (Boolean) -> Unit
+) {
     var name by remember { mutableStateOf("snake-game") }
     var discovery by remember { mutableStateOf(true) }
     var udp by remember { mutableStateOf(false) }
@@ -289,6 +294,9 @@ private fun ConfigCard(snapshot: PortalSnapshot?, onStart: (PortalConfig) -> Uni
     var hide by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf("Snake served from this device") }
     var tags by remember { mutableStateOf("game,snake") }
+    var relays by remember { mutableStateOf("") }
+    var keepAlive by remember { mutableStateOf(false) }
+
 
     val editable = snapshot == null || snapshot.isTerminal
 
@@ -297,27 +305,30 @@ private fun ConfigCard(snapshot: PortalSnapshot?, onStart: (PortalConfig) -> Uni
         Column(modifier = Modifier.padding(18.dp)) {
             SectionTitle("Tunnel config")
             Hint("Serve a site or game from this device. The URL rotates as relays join/leave.")
+            PortalField(relays, { relays = it }, "relays", "comma-separated relay URLs; empty = public pool", editable)
             PortalField(name, { name = it }, "name", "public name — becomes <name>.portal.<relay>", editable)
             PortalField(description, { description = it }, "description", "shown in the public directory", editable)
             PortalField(tags, { tags = it }, "tags", "comma-separated search keywords", editable)
             Spacer(Modifier.height(4.dp))
-            Row(Modifier.fillMaxWidth()) {
-                FlagChip("discovery", discovery, editable, Modifier.weight(1f),
-                    "list in public directory") { discovery = it }
-                FlagChip("udp", udp, editable, Modifier.weight(1f),
-                    "relay UDP (games, QUIC)") { udp = it }
-                FlagChip("tcp", tcp, editable, Modifier.weight(1f),
-                    "relay raw TCP") { tcp = it }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                FlagChip("discovery", discovery, editable,
+                    hint = "list in the public directory") { discovery = it }
+                FlagChip("udp", udp, editable,
+                    hint = "relay UDP traffic (games, QUIC)") { udp = it }
+                FlagChip("tcp", tcp, editable,
+                    hint = "relay raw TCP ports") { tcp = it }
+                FlagChip("ech", ech, editable,
+                    hint = "hide SNI from relays (privacy)") { ech = it }
+                FlagChip("ban_mitm", banMitm, editable,
+                    hint = "refuse relays that intercept TLS") { banMitm = it }
+                FlagChip("hide", hide, editable,
+                    hint = "unlisted; only reachable by direct URL") { hide = it }
             }
-            Row(Modifier.fillMaxWidth()) {
-                FlagChip("ech", ech, editable, Modifier.weight(1f),
-                    "hide SNI from relays") { ech = it }
-                FlagChip("ban_mitm", banMitm, editable, Modifier.weight(1f),
-                    "refuse MITM relays") { banMitm = it }
-                FlagChip("hide", hide, editable, Modifier.weight(1f),
-                    "unlisted; URL-only") { hide = it }
+            FlagChip("keep_alive", keepAlive, editable,
+                hint = "foreground service keeps the tunnel running in background") {
+                keepAlive = it
+                onKeepAlive(it)
             }
-            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = {
                     onStart(
@@ -328,10 +339,13 @@ private fun ConfigCard(snapshot: PortalSnapshot?, onStart: (PortalConfig) -> Uni
                             banMitm = banMitm, hide = hide,
                             description = description.ifBlank { null },
                             tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                                .ifEmpty { null },
+                            relays = relays.split(',').map { it.trim() }.filter { it.isNotEmpty() }
                                 .ifEmpty { null }
                         )
                     )
                 },
+
                 enabled = editable,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),

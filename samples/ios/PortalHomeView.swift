@@ -15,6 +15,7 @@ final class PortalHomeModel: ObservableObject {
     @Published var hide = false
     @Published var configDescription = "Portal KMP iOS sample"
     @Published var configTags = "demo,kmp"
+    @Published var relays = ""
 
     // Session state
     @Published var phase: String = "idle"
@@ -54,7 +55,7 @@ final class PortalHomeModel: ObservableObject {
             name: name.isEmpty ? nil : name,
             identityJson: nil,
             identityPath: identityPath,
-            relays: nil,
+            relays: relays.isEmpty ? nil : relays.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
             discovery: discovery,
             maxActiveRelays: 3,
             banMitm: banMitm, ech: ech, overlay: false,
@@ -218,6 +219,9 @@ struct PortalHomeView: View {
             TextField("tags (comma-separated)", text: $model.configTags)
             Text("search keywords for discovery")
                 .font(.caption2).foregroundStyle(.secondary)
+            TextField("relays (comma-separated)", text: $model.relays)
+            Text("relay URLs; empty = public pool")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("discovery", isOn: $model.discovery)
             Text("list in the public directory")
                 .font(.caption2).foregroundStyle(.secondary)
@@ -240,6 +244,8 @@ struct PortalHomeView: View {
                 model.start(siteDir: siteDir, identityPath: identityPath)
             }
             .disabled(model.hasSession)
+            Text("iOS suspends apps in the background — the tunnel stops when the app is backgrounded. Keep the app in the foreground to serve.")
+                .font(.caption2).foregroundStyle(.secondary)
         } header: {
             Text("Tunnel config")
         } footer: {

@@ -27,6 +27,7 @@ import org.gosuda.portal.internal.PortalEventHub
 import org.gosuda.portal.internal.PortalJson
 import org.gosuda.portal.internal.PortalNativeEngine
 import org.gosuda.portal.internal.platformNativeEngine
+import org.gosuda.portal.internal.SessionRegistry
 
 /**
  * Read-only diagnostic snapshot of a client. Never contains identity
@@ -83,9 +84,8 @@ public class PortalClient internal constructor(
 
     private val closed = AtomicBoolean(false)
     private val closeMutex = Mutex()
-    private val tunnels = AtomicReference<Map<String, PortalTunnel>>(emptyMap())
+    private val registry = SessionRegistry()
     private val _events = MutableSharedFlow<PortalEvent>(extraBufferCapacity = EVENT_BUFFER)
-    private val _sessions = MutableStateFlow<List<PortalTunnel>>(emptyList())
     private val generationCounter = AtomicLong(0)
     private val droppedAggregateEvents = AtomicLong(0)
 
@@ -96,7 +96,7 @@ public class PortalClient internal constructor(
     public val events: SharedFlow<PortalEvent> = _events.asSharedFlow()
 
     /** Live sessions owned by this client, in open order. */
-    public val sessions: StateFlow<List<PortalTunnel>> = _sessions.asStateFlow()
+    public val sessions: StateFlow<List<PortalTunnel>> = registry.sessions
 
     /** True after [close] has been called. */
     public val isClosed: Boolean get() = closed.load()
@@ -162,8 +162,7 @@ public class PortalClient internal constructor(
             generation = (generationCounter.addAndFetch(1)).toInt()
         )
         PortalEventHub.register(tunnel)
-        tunnels.update { it + (tunnelId to tunnel) }
-        _sessions.value = tunnels.load().values.toList()
+        registry.register(tunnel)
 
         try {
             // Reconcile state that may have been emitted between the native
@@ -182,7 +181,7 @@ public class PortalClient internal constructor(
         closeMutex.withLock {
             if (!closed.compareAndSet(false, true)) return
             try {
-                val owned = tunnels.load().values.toList()
+                val owned = registry.all()
                 var firstFailure: PortalException? = null
                 for (tunnel in owned) {
                     try {
@@ -199,7 +198,7 @@ public class PortalClient internal constructor(
     }
 
     public fun diagnostics(): PortalDiagnostics {
-        val sessions = tunnels.load().values.map {
+        val sessions = registry.all().map {
             val s = it.state.value
             PortalDiagnostics.SessionDiagnostics(
                 sessionId = it.tunnelId,
@@ -232,8 +231,7 @@ public class PortalClient internal constructor(
     }
 
     internal fun unregisterTunnel(tunnelId: String) {
-        tunnels.update { it - tunnelId }
-        _sessions.value = tunnels.load().values.toList()
+        registry.unregister(tunnelId)
         PortalEventHub.unregister(tunnelId)
     }
 
@@ -274,10 +272,32 @@ public class PortalClient internal constructor(
     }
 }
 
-@OptIn(ExperimentalAtomicApi::class)
-private inline fun <T> AtomicReference<T>.update(crossinline transform: (T) -> T) {
-    while (true) {
-        val current = load()
-        if (compareAndSet(current, transform(current))) return
-    }
+/**
+ * Entry point for constructing a [PortalClient] with named options.
+ * Prefer this over the raw constructor for readability.
+ */
+public object Portal {
+    /** Creates a client backed by the platform `libportaltunnel` engine. */
+    public fun client(allowRemoteTargets: Boolean = false): PortalClient =
+        PortalClient(allowRemoteTargets)
+
+    /** Fluent builder for a client. */
+    public fun builder(): PortalClientBuilder = PortalClientBuilder()
 }
+
+/** Fluent builder for [PortalClient]. */
+public class PortalClientBuilder internal constructor() {
+    private var allowRemoteTargets = false
+    private var defaultIdentityPath: String? = null
+
+    public fun allowRemoteTargets(value: Boolean): PortalClientBuilder =
+        apply { allowRemoteTargets = value }
+
+    public fun defaultIdentityPath(path: String): PortalClientBuilder =
+        apply { defaultIdentityPath = path }
+
+    public fun build(): PortalClient =
+        PortalClient(platformNativeEngine(), allowRemoteTargets, defaultIdentityPath)
+}
+
+

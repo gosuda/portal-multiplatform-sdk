@@ -333,6 +333,25 @@ class PortalClientTest {
         client.close()
     }
 
+    @Test
+    fun builderCreatesWorkingClient() = runTest {
+        val client = Portal.builder()
+            .allowRemoteTargets(false)
+            .defaultIdentityPath("/tmp/test-identity.json")
+            .build()
+        assertFalse(client.isClosed)
+        assertTrue(client.capabilities().isNotEmpty())
+        client.close()
+        assertTrue(client.isClosed)
+    }
+
+    @Test
+    fun portalEntryPointCreatesClient() = runTest {
+        val client = Portal.client()
+        assertFalse(client.isClosed)
+        client.close()
+    }
+
 
     @Test
     fun identityRoundTripAndRedaction() {

@@ -1,6 +1,7 @@
 package org.gosuda.portal.sample
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
@@ -28,6 +29,7 @@ import org.gosuda.portal.PortalMetadata
 import org.gosuda.portal.PortalSnapshot
 import org.gosuda.portal.PortalTunnel
 import java.io.File
+import org.gosuda.portal.lifecycle.PortalClientHolder
 
 /**
  * Feature-rich Portal sample: config editor, identity management, session
@@ -38,7 +40,7 @@ import java.io.File
 class MainActivity : ComponentActivity() {
 
     private val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val client = PortalClient()
+    private val client get() = PortalClientHolder.client
 
     private val tunnel = MutableStateFlow<PortalTunnel?>(null)
 
@@ -83,7 +85,17 @@ class MainActivity : ComponentActivity() {
         onAddRelay = ::addRelay,
         onRemoveRelay = ::removeRelay,
         onDiagnostics = ::loadDiagnostics,
+        onKeepAlive = ::setKeepAlive,
     )
+
+    private fun setKeepAlive(enabled: Boolean) {
+        val intent = Intent(this, KeepAliveService::class.java)
+        if (enabled) {
+            startForegroundService(intent)
+        } else {
+            stopService(intent)
+        }
+    }
 
     // ---- actions -----------------------------------------------------------
 

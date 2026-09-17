@@ -2,6 +2,13 @@
 
 ## 2026-09-17
 
+- feat(sdk): `SessionRegistry` extracted from `PortalClient`;
+  `Portal.client()`/`Portal.builder()` entry points
+- feat(sample): relay list editor, keep-alive foreground-service toggle,
+  vertical config list; `PortalClientHolder` for process-scoped ownership
+- chore(scripts): `sync-portal-tunnel.sh` for upstream binary updates
+- docs(readme): mascot logo, upstream-sync section
+
 - feat(sample): per-config explanations on both UIs; copy button on public
   URL card; URL-rotation note
 

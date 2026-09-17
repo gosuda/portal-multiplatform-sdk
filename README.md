@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" width="120" alt="Portal SDK logo"/>
+  <img src="docs/logo.svg" width="140" alt="Portal SDK mascot"/>
 </p>
 
 <h1 align="center">Portal Multiplatform SDK</h1>
@@ -282,6 +282,21 @@ Full contract: [docs/DESIGN_RULES.md](docs/DESIGN_RULES.md) ·
 Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) ·
 Known gaps & release gates: [TASKS.md](TASKS.md),
 [native/source-lock.json](native/source-lock.json).
+
+## Updating the native engine
+
+The bundled `libportaltunnel.so` comes from
+[gosuda/portal-tunnel](https://github.com/gosuda/portal-tunnel) releases.
+To sync to a new release:
+
+```bash
+./scripts/sync-portal-tunnel.sh          # latest
+./scripts/sync-portal-tunnel.sh v1.2.3   # specific tag
+```
+
+The script downloads the Android ABI artifacts, swaps them into
+`portal-native-android/src/main/jniLibs/`, and updates `portal-tunnel.version`.
+Rebuild and run the ABI smoke test after syncing.
 
 ## Repository layout
 

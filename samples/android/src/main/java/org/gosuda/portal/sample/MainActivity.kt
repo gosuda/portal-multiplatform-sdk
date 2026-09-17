@@ -35,6 +35,8 @@ import org.gosuda.portal.PortalSnapshot
 import org.gosuda.portal.PortalTunnel
 import java.io.File
 import org.gosuda.portal.lifecycle.PortalClientHolder
+import org.gosuda.portal.sample.content.PublishableContent
+import org.gosuda.portal.sample.content.SampleContents
 
 /**
  * Feature-rich Portal sample: config editor, identity management, session
@@ -59,6 +61,8 @@ class MainActivity : ComponentActivity() {
     val identity = MutableStateFlow<PortalIdentity?>(null)
     val eventLog = MutableStateFlow<List<String>>(emptyList())
     val diagnostics = MutableStateFlow<PortalDiagnostics?>(null)
+    /** Content whose local payload is live for the current tunnel. */
+    private var activeContent: PublishableContent? = null
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -125,25 +129,27 @@ class MainActivity : ComponentActivity() {
 
     // ---- actions -----------------------------------------------------------
 
-    private fun startTunnel(config: PortalConfig, siteChoice: String) {
+    private fun startTunnel(config: PortalConfig, contentId: String) {
         if (app.busy.value || tunnel.value?.state?.value?.isTerminal == false) return
         app.busy.value = true
         app.scope.launch {
             lastError.value = null
+            val content = SampleContents.byId(contentId)
             try {
                 if (app.keepAlive.value) {
                     startForegroundService(Intent(this@MainActivity, KeepAliveService::class.java))
                 }
-                val siteDir = withContext(Dispatchers.IO) { extractSite(siteChoice) }
-                val resolved = config.copy(
-                    identityPath = config.identityPath ?: File(filesDir, "identity.json").absolutePath,
-                    staticDir = config.staticDir ?: siteDir.absolutePath,
-                    staticIndex = config.staticIndex ?: "index.html"
-                )
+                content.start(this@MainActivity)
+                val resolved = content.applyTo(config.copy(
+                    identityPath = config.identityPath ?: File(filesDir, "identity.json").absolutePath
+                ), this@MainActivity)
                 tunnel.value = client.open(resolved)
+                activeContent = content
             } catch (e: CancellationException) {
+                content.stop()
                 throw e
             } catch (e: Exception) {
+                content.stop()
                 lastError.value = "Could not start publishing: ${e.message}"
                 stopService(Intent(this@MainActivity, KeepAliveService::class.java))
             } finally {
@@ -247,6 +253,17 @@ class MainActivity : ComponentActivity() {
                     if (event != null) appendLog(describe(event))
                 }
         }
+        // Stop the content's local payload when the session ends for any
+        // reason (user stop, native failure, process teardown).
+        ownerScope.launch {
+            tunnel.flatMapLatest { it?.state ?: flowOf(null) }
+                .collect { snap ->
+                    if (snap?.isTerminal == true) {
+                        activeContent?.stop()
+                        activeContent = null
+                    }
+                }
+        }
     }
 
     private fun appendLog(line: String) {
@@ -263,16 +280,6 @@ class MainActivity : ComponentActivity() {
         is PortalEvent.Unknown -> "UNKNOWN ${event.type}"
     }
 
-    private fun extractSite(assetDir: String = "site"): File {
-        val out = File(filesDir, "portal-public/$assetDir")
-        out.mkdirs()
-        assets.list(assetDir)?.forEach { name ->
-            assets.open("$assetDir/$name").use { input ->
-                File(out, name).outputStream().use { input.copyTo(it) }
-            }
-        }
-        return out
-    }
 
     override fun onDestroy() {
         super.onDestroy()

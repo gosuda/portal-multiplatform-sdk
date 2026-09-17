@@ -5,18 +5,19 @@ SwiftUI via the `PortalIosClient` callback facade.
 
 The sample has three destinations: Publish, Settings, and Activity.
 Configuration and session state remain in one `StateObject` when switching
-destinations. The publish screen offers a site picker (Snake game or Portal
-explainer), every current public URL with clipboard feedback and browser
-links; terminal-session URLs are hidden.
+destinations. The publish screen offers a content picker (Snake game, Portal
+explainer, API server, Minecraft server), every current public URL with
+clipboard feedback and browser links; terminal-session URLs are hidden.
 
 ## Host app requirements
 
 This directory is a SwiftUI source sample, not a standalone Xcode project.
-Create an iOS 16+ SwiftUI app target on macOS, include `PortalHomeView.swift`,
-and present `PortalHomeView(siteDir:explainerDir:identityPath:)` with two
-existing local site directories (`site/` for the Snake game, `site-explainer/`
-for the Portal explainer) containing `index.html`, and a writable
-identity-file path. Keep the
+Create an iOS 16+ SwiftUI app target on macOS, include `PortalHomeView.swift`
+and `Contents.swift`, and present
+`PortalHomeView(contents: SampleContents(siteDir:explainerDir:), identityPath:)`
+with two existing local site directories (`site/` for the Snake game,
+`site-explainer/` for the Portal explainer) containing `index.html`, and a
+writable identity-file path. Keep the
 view/model alive for the intended session lifetime and stop publishing before
 discarding it. There is no simulated connection or preview engine.
 

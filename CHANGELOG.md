@@ -2,6 +2,18 @@
 
 ## 2026-09-17
 
+- feat(sample): four publishable contents as packages — snake (static),
+  explainer (static), ondevice (LiteRT-LM LLM + Markov fallback), minecraft
+  (hybrid TCP/HTTP server); each owns its payload + PortalConfig fields
+- feat(sample): LiteRT-LM integration per Google's official tutorial —
+  cascading GPU→CPU fallback, Engine/Conversation/sendMessageAsync flow,
+  model download on demand (~500 MB), OOM/ANR guards (memory check,
+  maxNumTokens cap, thread cap, 120s inference timeout, largeHeap)
+- feat(sample): ModelDownload manager — on-demand fetch, progress StateFlow,
+  disk-space guard, partial-file cleanup
+- feat(sample): iOS Contents.swift — same content protocol, POSIX socket
+  servers, Markov fallback (LiteRT-LM is Android-only)
+
 - feat(sample): site picker on Publish screen — choose between Snake game
   and "How Portal works" explainer page; both bundled as assets
 - feat(sample): Portal explainer page — static site explaining the device→

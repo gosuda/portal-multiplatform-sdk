@@ -43,6 +43,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,6 +60,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -75,6 +77,9 @@ import org.gosuda.portal.PortalMetadata
 import org.gosuda.portal.PortalRelayStatus
 import org.gosuda.portal.PortalSnapshot
 import org.gosuda.portal.TunnelPhase
+import org.gosuda.portal.sample.content.PublishableContent
+import org.gosuda.portal.sample.content.SampleContents
+import org.gosuda.portal.sample.content.ondevice.ModelDownload
 
 /** Action callbacks wired by [MainActivity]. */
 data class SampleActions(
@@ -146,7 +151,7 @@ fun SampleScreen(
     var liveTags by rememberSaveable { mutableStateOf("") }
     var liveOwner by rememberSaveable { mutableStateOf("") }
     var liveHide by rememberSaveable { mutableStateOf(false) }
-    var siteChoice by rememberSaveable { mutableStateOf("site") }
+    var contentId by rememberSaveable { mutableStateOf("snake") }
     var newRelay by rememberSaveable { mutableStateOf("") }
     var activityPanel by rememberSaveable { mutableStateOf("session") }
     val publishScroll = rememberLazyListState()
@@ -156,6 +161,8 @@ fun SampleScreen(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val modelDownloadState by ModelDownload.state.collectAsState()
     val running = snapshot != null && !snapshot.isTerminal
     val editable = !running && !busy
     val operable = running && !busy && snapshot?.phase != TunnelPhase.STOPPING
@@ -186,7 +193,7 @@ fun SampleScreen(
                                     tags = commaValues(tags), relays = commaValues(relays),
                                     discovery = discovery, udp = udp, tcp = tcp,
                                     ech = ech, banMitm = banMitm, hide = hide,
-                                ), siteChoice)
+                                ), contentId)
                             },
                             enabled = !busy && (running || !missingRelay),
                             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
@@ -257,9 +264,11 @@ fun SampleScreen(
                     item { PublishHero(snapshot?.nativeStatus?.name ?: name, snapshot?.phase, running) }
                     item {
                         Panel("What to publish") {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SiteChoice("Snake game", "site", siteChoice, editable, Modifier.weight(1f)) { siteChoice = it }
-                                SiteChoice("How Portal works", "site-explainer", siteChoice, editable, Modifier.weight(1f)) { siteChoice = it }
+                            SampleContents.all.forEach { content ->
+                                ContentChoice(content, contentId, editable,
+                                    modelState = if (content.id == "ondevice") modelDownloadState else null,
+                                    onDownloadModel = if (content.id == "ondevice") ({ ModelDownload.start(context) }) else null
+                                ) { contentId = it }
                             }
                         }
                     }
@@ -611,31 +620,63 @@ private fun RelayRow(relay: PortalRelayStatus, running: Boolean, operable: Boole
 }
 
 @Composable
-private fun SiteChoice(
-    label: String,
-    value: String,
+private fun ContentChoice(
+    content: PublishableContent,
     selected: String,
     enabled: Boolean,
-    modifier: Modifier = Modifier,
+    modelState: ModelDownload.State? = null,
+    onDownloadModel: (() -> Unit)? = null,
     onSelect: (String) -> Unit
 ) {
-    val active = selected == value
+    val active = selected == content.id
     Surface(
-        color = if (active) Cyan.copy(alpha = 0.15f) else Bg,
+        color = if (active) Cyan.copy(alpha = 0.12f) else Bg,
         shape = RoundedCornerShape(14.dp),
-        modifier = modifier.toggleable(
+        modifier = Modifier.fillMaxWidth().toggleable(
             value = active,
             enabled = enabled,
             role = Role.RadioButton,
-            onValueChange = { onSelect(value) }
+            onValueChange = { onSelect(content.id) }
         )
     ) {
-        Text(
-            label,
-            modifier = Modifier.padding(14.dp),
-            color = if (active) Cyan else TextSecondary,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(content.title,
+                color = if (active) Cyan else TextPrimary,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                style = MaterialTheme.typography.bodyLarge)
+            Text(content.summary, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+            content.detail?.let {
+                Text(it, color = Mint, fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall)
+            }
+            if (modelState != null) {
+                when (modelState) {
+                    is ModelDownload.State.NotDownloaded -> {
+                        Text("No model installed — a tiny built-in model answers until one lands.",
+                            color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+                        if (onDownloadModel != null) {
+                            ActionButton("Download model (~500 MB)", onDownloadModel,
+                                enabled = enabled, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                    is ModelDownload.State.Downloading -> {
+                        Text("Downloading model… ${(modelState.progress * 100).toInt()}%",
+                            color = Cyan, style = MaterialTheme.typography.labelSmall)
+                    }
+                    is ModelDownload.State.Ready -> {
+                        Text("Model ready — real LLM inference on this device.",
+                            color = Mint, style = MaterialTheme.typography.labelSmall)
+                    }
+                    is ModelDownload.State.Failed -> {
+                        Text("Download failed: ${modelState.message}",
+                            color = Danger, style = MaterialTheme.typography.labelSmall)
+                        if (onDownloadModel != null) {
+                            ActionButton("Retry download", onDownloadModel,
+                                enabled = enabled, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+        }
     }
 }

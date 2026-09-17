@@ -16,7 +16,7 @@ final class PortalHomeModel: ObservableObject {
     @Published var configDescription = "Portal KMP iOS sample"
     @Published var configTags = "demo,kmp"
     @Published var relayInput = ""
-    @Published var siteChoice = "site"
+    @Published var contentId = "snake"
 
     @Published private(set) var phase = "idle"
     @Published private(set) var revision: Int64 = 0
@@ -43,6 +43,7 @@ final class PortalHomeModel: ObservableObject {
     private var stateSub: PortalSubscription?
     private var eventSub: PortalSubscription?
     private var startOp: PortalOperation?
+    private var activeContent: SampleContent?
     private var observing = false
 
     var hasSession: Bool { session != nil && !isTerminal }
@@ -60,7 +61,7 @@ final class PortalHomeModel: ObservableObject {
         default: return "Ready to publish"
         }
     }
-    func start(siteDir: String, explainerDir: String, identityPath: String) {
+    func start(contents: SampleContents, identityPath: String) {
         guard busy == nil, !hasSession else { return }
         guard !missingRelay else {
             lastError = "Enable discovery or enter a relay URL."
@@ -79,6 +80,11 @@ final class PortalHomeModel: ObservableObject {
         busy = "Preparing your site"
         let relayUrls = commaSeparated(relayInput)
         let initialMetadata = (description: configDescription, tags: configTags, hide: hide)
+        guard let content = contents.byId(contentId) else {
+            lastError = "Unknown content: \(contentId)"
+            return
+        }
+        content.start()
         let config = PortalConfig(
             name: name.isEmpty ? nil : name,
             identityJson: nil,
@@ -87,17 +93,19 @@ final class PortalHomeModel: ObservableObject {
             discovery: KotlinBoolean(bool: discovery),
             maxActiveRelays: 3,
             banMitm: banMitm, ech: ech, overlay: false,
-            udp: udp, tcp: tcp,
+            udp: udp, tcp: content.tcp,
             description: configDescription.isEmpty ? nil : configDescription,
             tags: commaSeparated(configTags),
             owner: nil, thumbnail: nil, hide: hide,
-            staticDir: siteChoice == "explainer" ? explainerDir : siteDir, staticIndex: "index.html",
+            staticDir: content.staticDir, staticIndex: content.staticIndex,
+            targetAddr: content.targetAddr, udpAddr: nil, httpRoutes: nil, x402: nil
         )
         startOp = client.open(config: config) { [weak self] session, failure in
             guard let self else { return }
             self.startOp = nil
             self.busy = nil
             if let failure {
+                content.stop()
                 self.phase = "failed"
                 self.lastError = self.failureText("Start publishing", failure)
                 return
@@ -107,6 +115,7 @@ final class PortalHomeModel: ObservableObject {
                 self.lastError = "Start publishing: the SDK did not return a session."
                 return
             }
+            self.activeContent = content
             self.session = session
             self.metaDescription = initialMetadata.description
             self.metaTags = initialMetadata.tags
@@ -240,6 +249,10 @@ final class PortalHomeModel: ObservableObject {
         phase = "\(snapshot.phase)".lowercased()
         revision = snapshot.revision
         isTerminal = snapshot.isTerminal
+        if snapshot.isTerminal {
+            activeContent?.stop()
+            activeContent = nil
+        }
         relayStatuses = snapshot.relays
         // Terminal snapshots can retain old endpoints. Never offer those as live links.
         var seen = Set<String>()
@@ -290,7 +303,7 @@ final class PortalHomeModel: ObservableObject {
 }
 
 private enum PortalStyle {
-    static let background = Color(red: 8 / 255, green: 19 / 255, blue: 33 / 255)
+    static let background = Color(red: 8 / 255, green: 15 / 255, blue: 29 / 255)
     static let card = Color(red: 18 / 255, green: 34 / 255, blue: 56 / 255)
     static let cyan = Color(red: 100 / 255, green: 216 / 255, blue: 242 / 255)
     static let mint = Color(red: 117 / 255, green: 227 / 255, blue: 189 / 255)
@@ -302,10 +315,8 @@ struct PortalHomeView: View {
     @StateObject private var model = PortalHomeModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var destination = 0
-    let siteDir: String
-    let explainerDir: String
+    let contents: SampleContents
     let identityPath: String
-
     var body: some View {
         TabView(selection: $destination) {
             page(title: "From your device to the web", subtitle: "PORTAL / PUBLISH") {
@@ -383,7 +394,7 @@ struct PortalHomeView: View {
                 }
                 Button {
                     if model.hasSession { model.stop() }
-                    else { model.start(siteDir: siteDir, explainerDir: explainerDir, identityPath: identityPath) }
+                    else { model.start(contents: contents, identityPath: identityPath) }
                 } label: {
                     Label(model.hasSession ? (model.phase == "stopping" ? "Retry shutdown" : "Stop publishing") : "Publish your site",
                           systemImage: model.hasSession ? "stop.fill" : "arrow.up.right")
@@ -401,10 +412,11 @@ struct PortalHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 26))
 
             card {
-                sectionHeading("What to publish", "Choose which bundled site to serve.")
-                HStack(spacing: 10) {
-                    siteChoiceButton("Snake game", value: "site")
-                    siteChoiceButton("How Portal works", value: "explainer")
+                sectionHeading("What to publish", "Choose which bundled content to serve.")
+                VStack(spacing: 10) {
+                    ForEach(contents.all, id: \.id) { content in
+                        contentChoiceRow(content)
+                    }
                 }
             }
             feedback
@@ -681,12 +693,30 @@ struct PortalHomeView: View {
         }
     }
 
-    private func siteChoiceButton(_ label: String, value: String) -> some View {
-        let active = model.siteChoice == value
-        return Button(label) { model.siteChoice = value }
-            .buttonStyle(.bordered)
-            .tint(active ? PortalStyle.cyan : PortalStyle.muted)
-            .disabled(model.hasSession || model.busy != nil)
+    private func contentChoiceRow(_ content: SampleContent) -> some View {
+        let active = model.contentId == content.id
+        return Button {
+            model.contentId = content.id
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(content.title)
+                    .font(.headline)
+                    .foregroundStyle(active ? PortalStyle.cyan : Color.white)
+                Text(content.summary)
+                    .font(.subheadline)
+                    .foregroundStyle(PortalStyle.muted)
+                if let detail = content.detail {
+                    Text(detail)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(PortalStyle.mint)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(active ? PortalStyle.cyan.opacity(0.12) : PortalStyle.background)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .disabled(model.hasSession || model.busy != nil)
     }
 }
 

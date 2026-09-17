@@ -26,6 +26,9 @@ README tunnel-runtime repositioning — **complete**.
   - README code fences were balanced, every local Markdown link resolved, the
     HTTP quick start preceded static configuration, and static-first wording
     from the previous quick start was absent.
+  - GitHub rendered the new section order, exposure table, Mermaid diagram,
+    and loopback HTTP quick start; the hero/runtime copy was present and no
+    rendered images were broken.
 
 ## Next action
 Run `Gradle CI` once via GitHub Actions `workflow_dispatch` (or on the next

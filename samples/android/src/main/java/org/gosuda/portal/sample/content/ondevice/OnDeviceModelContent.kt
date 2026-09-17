@@ -13,6 +13,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -75,6 +78,17 @@ object OnDeviceModelContent : PublishableContent {
 
     private val fallbackModel = MarkovModel(CORPUS)
 
+    /** Observable engine lifecycle for the picker card. */
+    sealed interface EngineStatus {
+        data object Idle : EngineStatus
+        data class Loading(val backend: String) : EngineStatus
+        data class Ready(val backend: String) : EngineStatus
+        data object LowMemory : EngineStatus
+        data object Failed : EngineStatus
+    }
+    private val _engineStatus = MutableStateFlow<EngineStatus>(EngineStatus.Idle)
+    val engineStatus: StateFlow<EngineStatus> = _engineStatus.asStateFlow()
+
     override suspend fun start(context: Context) {
         if (server != null) return
         val socket = ServerSocket(PORT)
@@ -107,6 +121,7 @@ object OnDeviceModelContent : PublishableContent {
         engine = null
         engineBackend = "none"
         engineModelPath = null
+        _engineStatus.value = EngineStatus.Idle
     }
 
     override fun applyTo(config: PortalConfig, context: Context): PortalConfig =
@@ -125,43 +140,61 @@ object OnDeviceModelContent : PublishableContent {
         val needed = modelFile.length() * 3 / 2
         if (mem.lowMemory || mem.availMem < needed) {
             engineBackend = "skipped:low-memory"
+            _engineStatus.value = EngineStatus.LowMemory
             return@withContext
         }
 
         engineMutex.withLock {
             if (engine != null) return@withLock
             // Cascading fallback per the official tutorial: GPU → CPU.
-            // maxNumTokens caps the KV cache; threadCount caps CPU workers —
-            // both keep a small model from evicting the rest of the system.
-            val candidates = listOf(
-                EngineConfig(
-                    modelPath = modelFile.absolutePath,
-                    backend = Backend.GPU(),
-                    maxNumTokens = 1024,
-                    cacheDir = context.cacheDir.absolutePath
-                ),
-                EngineConfig(
+            // On emulators the GPU delegate compiles (WebGPU→Vulkan→host) but
+            // inference fails (no OpenCL) after ~90 s of wasted work — skip it.
+            // maxNumTokens caps the KV cache; threadCount caps CPU workers.
+            val isEmulator = android.os.Build.FINGERPRINT.contains("generic") ||
+                android.os.Build.MODEL.contains("Emulator") ||
+                android.os.Build.MODEL.contains("sdk_gphone")
+            val candidates = buildList {
+                if (!isEmulator) {
+                    add(EngineConfig(
+                        modelPath = modelFile.absolutePath,
+                        backend = Backend.GPU(),
+                        maxNumTokens = 1024,
+                        cacheDir = context.cacheDir.absolutePath
+                    ))
+                }
+                add(EngineConfig(
                     modelPath = modelFile.absolutePath,
                     backend = Backend.CPU(threadCount = 2),
                     maxNumTokens = 1024,
                     cacheDir = context.cacheDir.absolutePath
-                ),
-            )
+                ))
+            }
             for (config in candidates) {
+                _engineStatus.value = EngineStatus.Loading(config.backend.name)
+                var e: Engine? = null
                 try {
-                    val e = Engine(config)
+                    e = Engine(config)
                     e.initialize()
+                    // Init succeeding is not enough: on emulators the GPU
+                    // delegate compiles but inference fails (no OpenCL).
+                    // A 1-token smoke test proves the backend actually runs.
+                    e.createConversation(ConversationConfig()).use { conv ->
+                        conv.sendMessage(Contents.of("hi"), maxOutputToken = 1)
+                    }
                     engine = e
                     engineBackend = config.backend.name
                     engineModelPath = modelFile.absolutePath
+                    _engineStatus.value = EngineStatus.Ready(config.backend.name)
                     android.util.Log.i("PortalSample", "LiteRT-LM engine ready on ${config.backend.name}")
                     return@withLock
                 } catch (t: Throwable) {
                     android.util.Log.w("PortalSample",
-                        "LiteRT-LM ${config.backend.name} init failed: ${t.message}")
+                        "LiteRT-LM ${config.backend.name} failed: ${t.message}")
+                    runCatching { e?.close() }
                 }
             }
             engineBackend = "init-failed"
+            _engineStatus.value = EngineStatus.Failed
         }
     }
 

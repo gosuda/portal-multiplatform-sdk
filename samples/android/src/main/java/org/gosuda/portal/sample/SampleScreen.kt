@@ -80,6 +80,7 @@ import org.gosuda.portal.TunnelPhase
 import org.gosuda.portal.sample.content.PublishableContent
 import org.gosuda.portal.sample.content.SampleContents
 import org.gosuda.portal.sample.content.ondevice.ModelDownload
+import org.gosuda.portal.sample.content.ondevice.OnDeviceModelContent
 
 /** Action callbacks wired by [MainActivity]. */
 data class SampleActions(
@@ -161,6 +162,7 @@ fun SampleScreen(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
+    val onDeviceEngineStatus by OnDeviceModelContent.engineStatus.collectAsState()
     val context = LocalContext.current
     val modelDownloadState by ModelDownload.state.collectAsState()
     val running = snapshot != null && !snapshot.isTerminal
@@ -267,6 +269,7 @@ fun SampleScreen(
                             SampleContents.all.forEach { content ->
                                 ContentChoice(content, contentId, editable,
                                     modelState = if (content.id == "ondevice") modelDownloadState else null,
+                                    engineStatus = if (content.id == "ondevice") onDeviceEngineStatus else null,
                                     onDownloadModel = if (content.id == "ondevice") ({ ModelDownload.start(context) }) else null
                                 ) { contentId = it }
                             }
@@ -625,6 +628,7 @@ private fun ContentChoice(
     selected: String,
     enabled: Boolean,
     modelState: ModelDownload.State? = null,
+    engineStatus: OnDeviceModelContent.EngineStatus? = null,
     onDownloadModel: (() -> Unit)? = null,
     onSelect: (String) -> Unit
 ) {
@@ -655,7 +659,7 @@ private fun ContentChoice(
                         Text("No model installed — a tiny built-in model answers until one lands.",
                             color = TextSecondary, style = MaterialTheme.typography.labelSmall)
                         if (onDownloadModel != null) {
-                            ActionButton("Download model (~500 MB)", onDownloadModel,
+                            ActionButton("Download model (~300 MB)", onDownloadModel,
                                 enabled = enabled, modifier = Modifier.fillMaxWidth())
                         }
                     }
@@ -675,6 +679,23 @@ private fun ContentChoice(
                                 enabled = enabled, modifier = Modifier.fillMaxWidth())
                         }
                     }
+                }
+            }
+            if (engineStatus != null) {
+                when (val s = engineStatus) {
+                    is OnDeviceModelContent.EngineStatus.Loading ->
+                        Text("Loading model on ${s.backend}… (first load can take a minute)",
+                            color = Cyan, style = MaterialTheme.typography.labelSmall)
+                    is OnDeviceModelContent.EngineStatus.Ready ->
+                        Text("Engine ready: ${s.backend}",
+                            color = Mint, style = MaterialTheme.typography.labelSmall)
+                    OnDeviceModelContent.EngineStatus.LowMemory ->
+                        Text("Not enough free memory — using built-in fallback model.",
+                            color = Danger, style = MaterialTheme.typography.labelSmall)
+                    OnDeviceModelContent.EngineStatus.Failed ->
+                        Text("Model failed to load — using built-in fallback model.",
+                            color = Danger, style = MaterialTheme.typography.labelSmall)
+                    OnDeviceModelContent.EngineStatus.Idle -> {}
                 }
             }
         }

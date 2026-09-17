@@ -17,17 +17,18 @@ import java.net.URL
 /**
  * On-demand download of the `.litertlm` model file.
  *
- * The model is ~500 MB, so it is never fetched implicitly: the user taps
- * "Download model" in the picker, progress is reported through [state], and
- * the file lands in `getExternalFilesDir("models")` — the same directory an
- * `adb push` can target. A partial download is deleted on failure/cancel.
+ * The model is ~300 MB (Gemma 3 270M q8), so it is never fetched implicitly:
+ * the user taps "Download model" in the picker, progress is reported through
+ * [state], and the file lands in `getExternalFilesDir("models")` — the same
+ * directory an `adb push` can target. A partial download is deleted on
+ * failure/cancel.
  */
 object ModelDownload {
 
     const val MODEL_URL =
-        "https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/qwen3_0_6b_mixed_int4.litertlm"
-    const val MODEL_FILE = "qwen3_0_6b_mixed_int4.litertlm"
-    const val MODEL_BYTES = 497_664_000L
+        "https://huggingface.co/litert-community/gemma-3-270m-it/resolve/main/gemma3-270m-it-q8.litertlm"
+    const val MODEL_FILE = "gemma3-270m-it-q8.litertlm"
+    const val MODEL_BYTES = 304_005_120L
 
     sealed interface State {
         data object NotDownloaded : State

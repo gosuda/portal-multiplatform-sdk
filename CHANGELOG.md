@@ -2,6 +2,16 @@
 
 ## 2026-09-17
 
+- fix(sample): LiteRT-LM backend selection — init success is not enough;
+  a 1-token smoke test proves inference works, else fall back (emulator
+  GPU compiles but fails with 'Can not find OpenCL library')
+- fix(sample): skip GPU backend on emulators — WebGPU→Vulkan→host path
+  wastes ~90 s compiling then fails; CPU/XNNPACK is the only working path
+- feat(sample): EngineStatus StateFlow — Loading/Ready/LowMemory/Failed
+  surfaced on the picker card so the 90 s init is no longer invisible
+- feat(sample): default model switched to Gemma 3 270M q8 (~300 MB) —
+  smaller download, faster CPU inference than Qwen3-0.6B
+
 - fix(sdk): SessionRegistry race — register/unregister now use
   MutableStateFlow.update for atomic read-modify-write
 - fix(sdk): PortalClient.open — engine.start moved to non-cancellable

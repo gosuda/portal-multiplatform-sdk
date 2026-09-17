@@ -326,7 +326,7 @@ fun SampleScreen(
                     }
                     item {
                         Panel("01 / Basics") {
-                            PortalField(name, { name = it }, "Public name", "Name for a new identity. A saved identity may keep its existing name.", editable)
+                            PortalField(name, { name = it }, "Public name", "Becomes the address prefix (<name>.<relay>). Changing it creates a new identity on next publish.", editable)
                             PortalField(description, { description = it }, "Description", "A sentence describing the game. May appear in the public directory.", editable)
                             PortalField(tags, { tags = it }, "Tags", "Comma-separated. e.g. game, snake", editable)
                             SettingRow("Keep alive in background", "Keeps running via a foreground service and notification. Subject to the device's power-saving policy.",

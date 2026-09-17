@@ -22,6 +22,11 @@
 - fix(sample): iOS Swift sources compile — `PortalIosClient` needs
   explicit args (K/N exports no default-arg init), missing `id`/`listener`
   fields restored, `htonl` → `INADDR_LOOPBACK.bigEndian`
+- fix(sample): public name now controls the address — the saved identity's
+  name was silently kept, so editing the name never changed the URL; when
+  the configured name differs from the saved identity's, a fresh identity
+  is generated and written over the file (Android + iOS). Verified on
+  device: `snake-game` → `portaltest` → `https://portaltest.*`
 
 
 - feat(sample): GPU inference toggle in Settings → '05 / On-device model'

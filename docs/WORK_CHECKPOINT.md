@@ -31,6 +31,11 @@ iOS implementation review + completion — **complete for this session's scope**
   (K/N exports no default-arg init), missing `id`/`listener` fields,
   `Self`/instance-member property-initializer errors, `htonl` →
   `INADDR_LOOPBACK.bigEndian`, folder resources for `site/`/`site-explainer/`.
+- Fixed on both platforms: the "Public name" field never changed the public
+  address because `identity_path` loads the saved identity and ignores the
+  new name. `resolveIdentityFile` now regenerates the identity when the
+  configured name differs from the saved one. Verified on the Galaxy:
+  `snake-game` → `portaltest` → `https://portaltest.*` live.
 
 ## Next action
 If continuing: exercise a real tunnel from the on-device app UI (manual —

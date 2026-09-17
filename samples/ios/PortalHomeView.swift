@@ -73,10 +73,21 @@ final class PortalHomeModel: ObservableObject {
             return
         }
         pendingContent = content
+        let resolvedIdentityPath: String
+        do {
+            resolvedIdentityPath = try resolveIdentityFile(path: identityPath)
+        } catch {
+            busy = false
+            starting = false
+            pendingContent = nil
+            content.stop()
+            lastError = "Could not prepare identity: \(error.localizedDescription)"
+            return
+        }
         let config = PortalConfig(
             name: name.trimmingCharacters(in: .whitespaces).isEmpty ? nil : name.trimmingCharacters(in: .whitespaces),
             identityJson: nil,
-            identityPath: identityPath,
+            identityPath: resolvedIdentityPath,
             relays: commaValues(relayInput),
             discovery: KotlinBoolean(bool: discovery),
             maxActiveRelays: 3,
@@ -113,6 +124,29 @@ final class PortalHomeModel: ObservableObject {
             self.apply(session.snapshot)
             if self.observing { self.attach() }
         }
+    }
+
+    /// The public URL is `<identity-name>.<relay-domain>`, so the name field
+    /// only takes effect when the identity itself changes. When the saved
+    /// identity's name differs from the configured name, a fresh identity is
+    /// generated and written over the file; an empty name keeps whatever is
+    /// on disk (or lets the engine create one).
+    private func resolveIdentityFile(path: String) throws -> String {
+        let wanted = name.trimmingCharacters(in: .whitespaces)
+        guard !wanted.isEmpty else { return path }
+        let url = URL(fileURLWithPath: path)
+        let current: String? = try? {
+            guard FileManager.default.fileExists(atPath: path) else { return nil }
+            let data = try Data(contentsOf: url)
+            return try PortalIdentity.companion.parse(identityJson: String(decoding: data, as: UTF8.self)).name
+        }()
+        if current != wanted {
+            let fresh = try PortalIdentity.companion.generate(name: wanted)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fresh.document.write(to: url, atomically: true, encoding: .utf8)
+        }
+        return path
     }
 
     /// Cancels an in-flight start; the SDK rolls the native handle back.
@@ -543,7 +577,7 @@ struct PortalHomeView: View {
              : "Change what you need, then publish with the button below.")
             .foregroundStyle(PortalStyle.textSecondary)
         panel("01 / Basics") {
-            portalField("Public name", hint: "Name for a new identity. A saved identity may keep its existing name.",
+            portalField("Public name", hint: "Becomes the address prefix (<name>.<relay>). Changing it creates a new identity on next publish.",
                         text: $model.name, enabled: model.editable)
             portalField("Description", hint: "A sentence describing the site. May appear in the public directory.",
                         text: $model.configDescription, enabled: model.editable)

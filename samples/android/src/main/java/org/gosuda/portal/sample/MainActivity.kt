@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
                 }
                 content.start(this@MainActivity)
                 val resolved = content.applyTo(config.copy(
-                    identityPath = config.identityPath ?: File(filesDir, "identity.json").absolutePath
+                    identityPath = resolveIdentityFile(config)
                 ), this@MainActivity)
                 tunnel.value = client.open(resolved)
                 activeContent = content
@@ -158,6 +158,32 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /**
+     * The public URL is `<identity-name>.<relay-domain>`, so the name field
+     * only takes effect when the identity itself changes. When the saved
+     * identity's name differs from the configured name, a fresh identity is
+     * generated and written over the file; an empty name keeps whatever is
+     * on disk (or lets the engine create one).
+     */
+    private suspend fun resolveIdentityFile(config: PortalConfig): String {
+        val path = config.identityPath ?: File(filesDir, "identity.json").absolutePath
+        val wanted = config.name?.trim().orEmpty()
+        if (wanted.isEmpty()) return path
+        return withContext(Dispatchers.Default) {
+            val file = File(path)
+            val current = runCatching {
+                if (file.isFile) PortalIdentity.parse(file.readText()).name else null
+            }.getOrNull()
+            if (current != wanted) {
+                val fresh = PortalIdentity.generate(wanted)
+                file.parentFile?.mkdirs()
+                file.writeText(fresh.document)
+            }
+            path
+        }
+    }
+
 
     private fun stopTunnel() {
         val t = tunnel.value ?: return

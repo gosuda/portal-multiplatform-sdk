@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * Per-relay snapshot as reported by the native runtime.
  */
 @Serializable
-data class PortalRelayStatus(
+public data class PortalRelayStatus(
     @SerialName("relay_url") val relayUrl: String,
     @SerialName("public_url") val publicUrl: String? = null,
     @SerialName("udp_addr") val udpAddr: String? = null,
@@ -20,6 +20,13 @@ data class PortalRelayStatus(
     val isReady: Boolean get() = state.equals("ready", ignoreCase = true)
     val isConnecting: Boolean get() = state.equals("connecting", ignoreCase = true)
     val isFailed: Boolean get() = state.equals("failed", ignoreCase = true)
+
+    /** True when the relay failed the MITM self-probe (upstream `RelayFailureMITM`). */
+    val isMitm: Boolean get() = failure.equals("mitm", ignoreCase = true)
+
+    /** Mirrors upstream `RelayStatus.Active`: usable registered listener. */
+    val isActive: Boolean
+        get() = !isFailed && (isReady || publicUrl != null || udpAddr != null || tcpAddr != null)
 }
 
 /**
@@ -27,7 +34,7 @@ data class PortalRelayStatus(
  * Wire-compatible with the Android/iOS/Flutter Portal SDKs.
  */
 @Serializable
-data class PortalStatus(
+public data class PortalStatus(
     @SerialName("tunnel_id") val tunnelId: String,
     @SerialName("name") val name: String,
     @SerialName("address") val address: String,

@@ -25,22 +25,21 @@ internal object ConfigValidation {
 
     fun validate(
         config: PortalConfig,
-        allowInsecureLocalRelays: Boolean,
         allowRemoteTargets: Boolean,
         supported: Set<Capability>
     ) {
         if (!config.identityJson.isNullOrEmpty() && !config.identityPath.isNullOrEmpty()) {
             fail("identity_json and identity_path are mutually exclusive")
         }
-        if (config.maxActiveRelays !in 1..MAX_RELAYS) {
-            fail("max_active_relays must be in 1..$MAX_RELAYS, got ${config.maxActiveRelays}")
+        if (config.maxActiveRelays !in 0..MAX_RELAYS) {
+            fail("max_active_relays must be in 0..$MAX_RELAYS (0 = engine default), got ${config.maxActiveRelays}")
         }
 
         val relays = config.relays.orEmpty()
         if (config.discovery == false && relays.isEmpty()) {
             fail("discovery=false requires at least one explicit relay")
         }
-        relays.forEach { validateRelayUrl(it, allowInsecureLocalRelays) }
+        relays.forEach { validateRelayUrl(it) }
 
         config.staticDir?.let { dir ->
             if (dir.isBlank()) fail("static_dir must not be blank")
@@ -97,21 +96,54 @@ internal object ConfigValidation {
         if (config.overlay) add(Capability.OVERLAY)
     }
 
-    private fun validateRelayUrl(url: String, allowInsecure: Boolean) {
-        val match = urlPattern.matchEntire(url)
-            ?: fail("relay URL is malformed: $url")
+    /**
+     * Mirrors `utils.NormalizeRelayURL` in portal-tunnel: https only, bare
+     * hosts default to https, `http` is accepted only for loopback hosts
+     * (the engine upgrades it), credentials and invalid ports are rejected.
+     */
+    private fun validateRelayUrl(url: String) {
+        var candidate = url.trim()
+        if (candidate.isEmpty()) fail("relay url is empty")
+        if (!candidate.contains("://")) {
+            candidate = "https://" + candidate.removePrefix("//")
+        }
+        val match = urlPattern.matchEntire(candidate)
+            ?: fail("relay url is invalid: $url")
         val scheme = match.groupValues[1].lowercase()
         val authority = match.groupValues[2]
-        if (authority.contains('@')) fail("relay URL must not contain user-info: $url")
-        val host = authority.substringBeforeLast(':').removeSurrounding("[", "]")
-        if (host.isEmpty()) fail("relay URL has no host: $url")
-        when (scheme) {
-            "https", "wss" -> Unit
-            "http", "ws" -> if (!allowInsecure) {
-                fail("insecure relay scheme '$scheme' requires allowInsecureLocalRelays: $url")
+        if (authority.contains('@')) fail("relay url must not include credentials: $url")
+        val host: String
+        val port: String?
+        if (authority.startsWith('[')) {
+            val close = authority.indexOf(']')
+            if (close < 0) fail("relay url has an invalid host: $url")
+            host = authority.substring(1, close)
+            val rest = authority.substring(close + 1)
+            if (rest.isNotEmpty() && !rest.startsWith(':')) {
+                fail("relay url has an invalid host: $url")
             }
-            else -> fail("unsupported relay scheme '$scheme': $url")
+            port = rest.removePrefix(":").ifEmpty { null }
+        } else {
+            host = authority.substringBeforeLast(':')
+            port = authority.substringAfterLast(':', "").ifEmpty { null }
         }
+        if (host.isEmpty()) fail("relay url host is empty: $url")
+        if (authority.endsWith(':')) fail("relay url has an invalid port: $url")
+        if (port != null) {
+            val n = port.toIntOrNull() ?: fail("relay url port must be between 1 and 65535: $url")
+            if (n !in 1..65535) fail("relay url port must be between 1 and 65535: $url")
+        }
+        if (scheme == "http" && isLocalRelayHost(host)) return // upgraded to https upstream
+        if (scheme != "https") fail("relay url must use https: $url")
+    }
+
+    /** Mirrors `utils.IsLocalRelayHost`: localhost, *.localhost, loopback IPs. */
+    private fun isLocalRelayHost(host: String): Boolean {
+        val h = host.lowercase().trimEnd('.')
+        if (h == "localhost" || h.endsWith(".localhost")) return true
+        if (h == "::1" || h == "0:0:0:0:0:0:0:1") return true
+        return h.startsWith("127.") && h.split('.').size == 4 &&
+            h.split('.').all { it.toIntOrNull() != null && it.toInt() in 0..255 }
     }
 
     private fun validateTarget(addr: String, field: String, allowRemote: Boolean) {

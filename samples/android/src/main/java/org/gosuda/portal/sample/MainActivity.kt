@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity() {
 
     // ---- actions -----------------------------------------------------------
 
-    private fun startTunnel(config: PortalConfig) {
+    private fun startTunnel(config: PortalConfig, siteChoice: String) {
         if (app.busy.value || tunnel.value?.state?.value?.isTerminal == false) return
         app.busy.value = true
         app.scope.launch {
@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity() {
                 if (app.keepAlive.value) {
                     startForegroundService(Intent(this@MainActivity, KeepAliveService::class.java))
                 }
-                val siteDir = withContext(Dispatchers.IO) { extractSite() }
+                val siteDir = withContext(Dispatchers.IO) { extractSite(siteChoice) }
                 val resolved = config.copy(
                     identityPath = config.identityPath ?: File(filesDir, "identity.json").absolutePath,
                     staticDir = config.staticDir ?: siteDir.absolutePath,
@@ -263,11 +263,11 @@ class MainActivity : ComponentActivity() {
         is PortalEvent.Unknown -> "UNKNOWN ${event.type}"
     }
 
-    private fun extractSite(): File {
-        val out = File(filesDir, "portal-public/site")
+    private fun extractSite(assetDir: String = "site"): File {
+        val out = File(filesDir, "portal-public/$assetDir")
         out.mkdirs()
-        assets.list("site")?.forEach { name ->
-            assets.open("site/$name").use { input ->
+        assets.list(assetDir)?.forEach { name ->
+            assets.open("$assetDir/$name").use { input ->
                 File(out, name).outputStream().use { input.copyTo(it) }
             }
         }

@@ -78,7 +78,7 @@ import org.gosuda.portal.TunnelPhase
 
 /** Action callbacks wired by [MainActivity]. */
 data class SampleActions(
-    val onStart: (PortalConfig) -> Unit,
+    val onStart: (PortalConfig, String) -> Unit,
     val onStop: () -> Unit,
     val onRefresh: () -> Unit,
     val onAwaitReady: () -> Unit,
@@ -146,6 +146,7 @@ fun SampleScreen(
     var liveTags by rememberSaveable { mutableStateOf("") }
     var liveOwner by rememberSaveable { mutableStateOf("") }
     var liveHide by rememberSaveable { mutableStateOf(false) }
+    var siteChoice by rememberSaveable { mutableStateOf("site") }
     var newRelay by rememberSaveable { mutableStateOf("") }
     var activityPanel by rememberSaveable { mutableStateOf("session") }
     val publishScroll = rememberLazyListState()
@@ -185,7 +186,7 @@ fun SampleScreen(
                                     tags = commaValues(tags), relays = commaValues(relays),
                                     discovery = discovery, udp = udp, tcp = tcp,
                                     ech = ech, banMitm = banMitm, hide = hide,
-                                ))
+                                ), siteChoice)
                             },
                             enabled = !busy && (running || !missingRelay),
                             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
@@ -254,6 +255,14 @@ fun SampleScreen(
             when (destination) {
                 0 -> {
                     item { PublishHero(snapshot?.nativeStatus?.name ?: name, snapshot?.phase, running) }
+                    item {
+                        Panel("What to publish") {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SiteChoice("Snake game", "site", siteChoice, editable, Modifier.weight(1f)) { siteChoice = it }
+                                SiteChoice("How Portal works", "site-explainer", siteChoice, editable, Modifier.weight(1f)) { siteChoice = it }
+                            }
+                        }
+                    }
                     item {
                         Panel(if (urls.isEmpty()) "Waiting for a public link" else "Share this link now") {
                             if (urls.isEmpty()) {
@@ -452,6 +461,7 @@ private fun GameIllustration() {
         for (x in 0..10) for (y in 0..5) {
             drawCircle(TextSecondary.copy(alpha = 0.17f), 1.dp.toPx(), Offset(left + x * cell, top + y * cell))
         }
+
         val snake = listOf(1 to 4, 2 to 4, 3 to 4, 3 to 3, 3 to 2, 4 to 2, 5 to 2, 6 to 2, 7 to 2)
         snake.forEachIndexed { index, (x, y) ->
             drawRoundRect(if (index == snake.lastIndex) Mint else Cyan.copy(alpha = 0.45f + index * 0.05f),
@@ -597,5 +607,35 @@ private fun RelayRow(relay: PortalRelayStatus, running: Boolean, operable: Boole
             if (running) ActionButton("Remove this relay", { onRemove(relay.relayUrl) }, operable,
                 Modifier.semantics { contentDescription = "Remove relay ${relay.relayUrl}" })
         }
+    }
+}
+
+@Composable
+private fun SiteChoice(
+    label: String,
+    value: String,
+    selected: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onSelect: (String) -> Unit
+) {
+    val active = selected == value
+    Surface(
+        color = if (active) Cyan.copy(alpha = 0.15f) else Bg,
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.toggleable(
+            value = active,
+            enabled = enabled,
+            role = Role.RadioButton,
+            onValueChange = { onSelect(value) }
+        )
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(14.dp),
+            color = if (active) Cyan else TextSecondary,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }

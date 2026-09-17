@@ -16,6 +16,7 @@ final class PortalHomeModel: ObservableObject {
     @Published var configDescription = "Portal KMP iOS sample"
     @Published var configTags = "demo,kmp"
     @Published var relayInput = ""
+    @Published var siteChoice = "site"
 
     @Published private(set) var phase = "idle"
     @Published private(set) var revision: Int64 = 0
@@ -59,8 +60,7 @@ final class PortalHomeModel: ObservableObject {
         default: return "Ready to publish"
         }
     }
-
-    func start(siteDir: String, identityPath: String) {
+    func start(siteDir: String, explainerDir: String, identityPath: String) {
         guard busy == nil, !hasSession else { return }
         guard !missingRelay else {
             lastError = "Enable discovery or enter a relay URL."
@@ -91,8 +91,7 @@ final class PortalHomeModel: ObservableObject {
             description: configDescription.isEmpty ? nil : configDescription,
             tags: commaSeparated(configTags),
             owner: nil, thumbnail: nil, hide: hide,
-            staticDir: siteDir, staticIndex: "index.html",
-            targetAddr: nil, udpAddr: nil, httpRoutes: nil, x402: nil
+            staticDir: siteChoice == "explainer" ? explainerDir : siteDir, staticIndex: "index.html",
         )
         startOp = client.open(config: config) { [weak self] session, failure in
             guard let self else { return }
@@ -304,6 +303,7 @@ struct PortalHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var destination = 0
     let siteDir: String
+    let explainerDir: String
     let identityPath: String
 
     var body: some View {
@@ -383,7 +383,7 @@ struct PortalHomeView: View {
                 }
                 Button {
                     if model.hasSession { model.stop() }
-                    else { model.start(siteDir: siteDir, identityPath: identityPath) }
+                    else { model.start(siteDir: siteDir, explainerDir: explainerDir, identityPath: identityPath) }
                 } label: {
                     Label(model.hasSession ? (model.phase == "stopping" ? "Retry shutdown" : "Stop publishing") : "Publish your site",
                           systemImage: model.hasSession ? "stop.fill" : "arrow.up.right")
@@ -400,6 +400,13 @@ struct PortalHomeView: View {
             .background(LinearGradient(colors: [PortalStyle.card, Color(red: 14 / 255, green: 48 / 255, blue: 62 / 255)], startPoint: .topLeading, endPoint: .bottomTrailing))
             .clipShape(RoundedRectangle(cornerRadius: 26))
 
+            card {
+                sectionHeading("What to publish", "Choose which bundled site to serve.")
+                HStack(spacing: 10) {
+                    siteChoiceButton("Snake game", value: "site")
+                    siteChoiceButton("How Portal works", value: "explainer")
+                }
+            }
             feedback
 
             card {
@@ -672,6 +679,14 @@ struct PortalHomeView: View {
             Text(title).font(.caption).foregroundStyle(PortalStyle.muted)
             Text(path).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
         }
+    }
+
+    private func siteChoiceButton(_ label: String, value: String) -> some View {
+        let active = model.siteChoice == value
+        return Button(label) { model.siteChoice = value }
+            .buttonStyle(.bordered)
+            .tint(active ? PortalStyle.cyan : PortalStyle.muted)
+            .disabled(model.hasSession || model.busy != nil)
     }
 }
 

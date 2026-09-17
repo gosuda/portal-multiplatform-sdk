@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How Portal Works</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: #080f1d;
+      color: #f0f5fc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* hero */
+    .hero {
+      min-height: 70vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; gap: 20px;
+      background: radial-gradient(ellipse at 50% 40%, rgba(100,220,236,.08), transparent 60%);
+    }
+    .badge {
+      font-size: 12px; letter-spacing: .3em; text-transform: uppercase;
+      color: #64dcec; font-weight: 600;
+    }
+    h1 {
+      font-size: clamp(36px, 6vw, 56px);
+      font-weight: 800; line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      font-size: 18px; color: #a7b8ce; max-width: 480px;
+    }
+    .scroll-hint {
+      margin-top: 40px; font-size: 24px; color: #64dcec;
+      animation: bounce 2s infinite;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(8px); }
+    }
+
+    /* flow diagram */
+    .flow {
+      display: flex; flex-direction: column; gap: 0;
+      margin: 60px 0;
+    }
+    .step {
+      display: flex; gap: 20px; align-items: flex-start;
+      padding: 28px 0;
+      border-bottom: 1px solid rgba(100,220,236,.1);
+    }
+    .step:last-child { border-bottom: none; }
+    .num {
+      flex-shrink: 0;
+      width: 48px; height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #64dcec, #a0f0cc);
+      color: #080f1d;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 800;
+    }
+    .step h3 { font-size: 20px; margin-bottom: 6px; }
+    .step p { color: #a7b8ce; font-size: 15px; }
+    .step code {
+      background: rgba(100,220,236,.12); color: #64dcec;
+      padding: 2px 6px; border-radius: 4px; font-size: 13px;
+    }
+
+    /* diagram */
+    .diagram {
+      margin: 60px 0;
+      padding: 32px;
+      background: #111e30;
+      border-radius: 20px;
+      text-align: center;
+    }
+    .diagram svg { max-width: 100%; height: auto; }
+    .diagram-label {
+      font-size: 13px; color: #a7b8ce; margin-top: 16px;
+    }
+
+    /* cards */
+    .cards {
+      display: grid; gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      margin: 40px 0;
+    }
+    .card {
+      background: #111e30;
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .card h4 { font-size: 16px; margin-bottom: 8px; color: #64dcec; }
+    .card p { font-size: 14px; color: #a7b8ce; }
+
+    /* code block */
+    .code {
+      background: #0a0e1e;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 24px 0;
+      font-family: "SF Mono", Monaco, monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      color: #a0f0cc;
+      line-height: 1.5;
+    }
+    .code .kw { color: #64dcec; }
+    .code .str { color: #ffcc80; }
+    .code .cm { color: #5a628a; }
+
+    /* footer */
+    .footer {
+      text-align: center;
+      padding: 60px 0 40px;
+      color: #5a628a;
+      font-size: 13px;
+    }
+    .footer a { color: #64dcec; text-decoration: none; }
+
+    section { margin: 80px 0; }
+    h2 {
+      font-size: 28px; font-weight: 700;
+      margin-bottom: 24px;
+      letter-spacing: -0.01em;
+    }
+    h2 .accent { color: #64dcec; }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="badge">Portal</div>
+  <h1>Your device is<br/>the server.</h1>
+  <p class="sub">No cloud, no port forwarding, no public IP.<br/>This page is being served from a phone right now.</p>
+  <div class="scroll-hint">↓</div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <h2>The <span class="accent">flow</span></h2>
+  <div class="flow">
+    <div class="step">
+      <div class="num">1</div>
+      <div>
+        <h3>Your app starts a tunnel</h3>
+        <p>The SDK opens a session with a <code>PortalConfig</code> — name, relays, what to serve. The native engine (<code>libportaltunnel</code>) handles the transport.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <div>
+        <h3>Relays connect you to the world</h3>
+        <p>Portal relays are public servers that forward traffic. Your device registers with one or more relays and gets a public URL like <code>https://name.portal.relay.com</code>.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <div>
+        <h3>Visitors reach your device</h3>
+        <p>Anyone with the URL can load your site, play your game, or hit your API. Traffic flows through the relay to your app — no server needed.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">4</div>
+      <div>
+        <h3>You stay in control</h3>
+        <p>Stop the tunnel and the URL dies instantly. Rotate relays, update metadata, or hide from the directory — all live, no restart.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The <span class="accent">path</span></h2>
+  <div class="diagram">
+    <svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#64dcec"/>
+          <stop offset="1" stop-color="#a0f0cc"/>
+        </linearGradient>
+      </defs>
+      <!-- device -->
+      <rect x="20" y="60" width="120" height="80" rx="16" fill="#1b2d42" stroke="#64dcec" stroke-width="2"/>
+      <text x="80" y="95" text-anchor="middle" fill="#f0f5fc" font-size="14" font-weight="600">Your app</text>
+      <text x="80" y="115" text-anchor="middle" fill="#a7b8ce" font-size="11">site / game / API</text>
+      <!-- arrow 1 -->
+      <line x1="140" y1="100" x2="220" y2="100" stroke="url(#g1)" stroke-width="2" stroke-dasharray="6,4"/>
+      <polygon points="220,100 212,96 212,104" fill="#64dcec"/>
+      <text x="180" y="88" text-anchor="middle" fill="#64dcec" font-size="11">tunnel</text>
+      <!-- relay -->
+      <rect x="220" y="60" width="120" height="80" rx="16" fill="#1b2d42" stroke="#a0f0cc" stroke-width="2"/>
+      <text x="280" y="95" text-anchor="middle" fill="#f0f5fc" font-size="14" font-weight="600">Relay</text>
+      <text x="280" y="115" text-anchor="middle" fill="#a7b8ce" font-size="11">public endpoint</text>
+      <!-- arrow 2 -->
+      <line x1="340" y1="100" x2="420" y2="100" stroke="url(#g1)" stroke-width="2" stroke-dasharray="6,4"/>
+      <polygon points="420,100 412,96 412,104" fill="#a0f0cc"/>
+      <text x="380" y="88" text-anchor="middle" fill="#a0f0cc" font-size="11">HTTPS</text>
+      <!-- visitor -->
+      <rect x="420" y="60" width="120" height="80" rx="16" fill="#1b2d42" stroke="#64dcec" stroke-width="2"/>
+      <text x="480" y="95" text-anchor="middle" fill="#f0f5fc" font-size="14" font-weight="600">Visitor</text>
+      <text x="480" y="115" text-anchor="middle" fill="#a7b8ce" font-size="11">any browser</text>
+      <!-- labels -->
+      <text x="80" y="170" text-anchor="middle" fill="#5a628a" font-size="11">Android / iOS</text>
+      <text x="280" y="170" text-anchor="middle" fill="#5a628a" font-size="11">portal.damn.it.com</text>
+      <text x="480" y="170" text-anchor="middle" fill="#5a628a" font-size="11">https://name.portal.*</text>
+    </svg>
+    <div class="diagram-label">Traffic flows through the relay — your device never needs a public IP.</div>
+  </div>
+</section>
+
+<section>
+  <h2>What you can <span class="accent">serve</span></h2>
+  <div class="cards">
+    <div class="card">
+      <h4>Static sites</h4>
+      <p>Bundle HTML/CSS/JS in your app and serve it instantly. This page is an example.</p>
+    </div>
+    <div class="card">
+      <h4>Games</h4>
+      <p>HTML5 games, multiplayer lobbies, leaderboards — all from the device.</p>
+    </div>
+    <div class="card">
+      <h4>APIs</h4>
+      <p>Forward to a local HTTP server for webhooks, demos, or mobile backends.</p>
+    </div>
+    <div class="card">
+      <h4>UDP / TCP</h4>
+      <p>Game servers, QUIC, custom protocols — not just HTTP.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The <span class="accent">code</span></h2>
+  <div class="code">
+<span class="cm">// Kotlin — one API, every platform</span><br/>
+<span class="kw">val</span> client = PortalClient(context)<br/>
+<span class="kw">val</span> tunnel = client.<span class="kw">open</span>(PortalConfig(<br/>
+&nbsp;&nbsp;name = <span class="str">"my-site"</span>,<br/>
+&nbsp;&nbsp;staticDir = siteDir,<br/>
+&nbsp;&nbsp;discovery = <span class="kw">true</span><br/>
+))<br/>
+<span class="cm">// → https://my-site.portal.relay.com</span>
+  </div>
+  <p style="color:#a7b8ce;font-size:15px;">
+    The same <code style="background:rgba(100,220,236,.12);color:#64dcec;padding:2px 6px;border-radius:4px;font-size:13px;">PortalClient</code> API works on Android (JNI → <code style="background:rgba(100,220,236,.12);color:#64dcec;padding:2px 6px;border-radius:4px;font-size:13px;">libportaltunnel.so</code>) and iOS (cinterop → <code style="background:rgba(100,220,236,.12);color:#64dcec;padding:2px 6px;border-radius:4px;font-size:13px;">libportaltunnel.a</code>). One Kotlin Multiplatform library, one native engine, every platform.
+  </p>
+</section>
+
+<section>
+  <h2>Why <span class="accent">Portal</span>?</h2>
+  <div class="cards">
+    <div class="card">
+      <h4>No infrastructure</h4>
+      <p>No VPS, no domain, no DNS, no TLS certs. The relay handles the public endpoint.</p>
+    </div>
+    <div class="card">
+      <h4>Instant on/off</h4>
+      <p>Start and stop programmatically. The URL lives only while your app runs.</p>
+    </div>
+    <div class="card">
+      <h4>Privacy options</h4>
+      <p>ECH hides SNI from relays. MITM detection rejects intercepting relays. Hide from the directory for URL-only access.</p>
+    </div>
+    <div class="card">
+      <h4>Multi-relay</h4>
+      <p>Connect to multiple relays for redundancy. URLs rotate as relays join and leave.</p>
+    </div>
+  </div>
+</section>
+
+<div class="footer">
+  <p>Served from a mobile device via <a href="https://github.com/gosuda/portal-tunnel">Portal</a></p>
+  <p style="margin-top:8px"><a href="https://github.com/kimmandoo/portal-multiplatform-sdk">portal-multiplatform-sdk</a></p>
+</div>
+
+</div>
+</body>
+</html>

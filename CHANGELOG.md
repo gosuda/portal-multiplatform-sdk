@@ -2,6 +2,11 @@
 
 ## 2026-09-17
 
+- feat(sample): site picker on Publish screen — choose between Snake game
+  and "How Portal works" explainer page; both bundled as assets
+- feat(sample): Portal explainer page — static site explaining the device→
+  relay→visitor flow, SDK architecture, and use cases
+
 - feat(sample): redesigned Android + iOS UIs — three destinations (Publish,
   Settings, Activity), Korean→English strings, vertical config with
   explanations, URL copy/open, keep-alive toggle, relay editor, busy

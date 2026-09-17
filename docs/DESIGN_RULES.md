@@ -69,8 +69,9 @@ app (Kotlin / Swift)
 ## 5. Validation & security
 
 - `identity_json` XOR `identity_path`; `discovery=false` requires >=1 relay.
-- Relay URLs: `https`/`wss` only unless `allowInsecureLocalRelays`; no
-  user-info; host required.
+- Relay URLs: `https` only; bare hosts default to `https`; `http` is
+  accepted only for loopback hosts (the engine upgrades it); no user-info;
+  port 1-65535. Mirrors `utils.NormalizeRelayURL` in portal-tunnel.
 - `target_addr`/`udp_addr` are loopback-only unless `allowRemoteTargets`.
 - `static_dir` rejects `..` segments; `static_index` is a plain file name.
 - A route needs exactly one of `upstream`/`static_root`; `amount` is a

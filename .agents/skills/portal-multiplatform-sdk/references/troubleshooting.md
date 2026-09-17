@@ -26,8 +26,9 @@
   `state.value.lastFailure`.
 - **iOS link failure** — consumer must provide `libportaltunnel`; the
   archive is not embedded in the klib yet (native/source-lock.json).
-- **Insecure relay rejected** — `http://`/`ws://` relays need
-  `PortalClient(allowInsecureLocalRelays = true)`; intended for local dev.
+- **Insecure relay rejected** — relays are `https`-only; `http://` is
+  accepted only for loopback hosts (upgraded to https); `ws://`/`wss://`
+  are not valid relay schemes.
 - **Remote target rejected** — non-loopback `target_addr`/`udp_addr` need
   `PortalClient(allowRemoteTargets = true)`.
 - **16KB page-size devices** — shipped `.so`s have 0x4000-aligned LOAD

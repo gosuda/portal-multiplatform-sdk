@@ -2,6 +2,19 @@
 
 ## 2026-09-17
 
+- fix(sdk): route native events through a process-global `PortalEventHub` so
+  multiple `PortalClient`s can coexist; add `PortalClient.events` aggregate
+  stream and keep STOPPING stable against late status merges
+- fix(sdk): align relay URL rules with `utils.NormalizeRelayURL` upstream
+  (https-only, loopback http upgrade, port range); drop
+  `allowInsecureLocalRelays`; allow `maxActiveRelays=0`
+- feat(sdk): add `PortalRelayStatus.isMitm`/`isActive` matching upstream
+  `RelayStatus` semantics
+- build(sdk): enable `explicitApi()` mode across the public surface
+- fix(sample): observe the tunnel via `StateFlow`/`flatMapLatest`; add
+  `kotlinx-coroutines-android`
+- docs: add logo, CONTRIBUTING.md, and expand README
+
 - feat(sdk): add `PortalClient`/`PortalTunnel` common API with `StateFlow`
   snapshots, bounded event stream, `awaitReady`, typed metadata, and
   per-client session ownership

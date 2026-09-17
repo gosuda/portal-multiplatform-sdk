@@ -4,7 +4,6 @@
 
 ```kotlin
 class PortalClient(
-    allowInsecureLocalRelays: Boolean = false,
     allowRemoteTargets: Boolean = false
 )
 fun capabilities(): Set<Capability>
@@ -83,7 +82,7 @@ CLIENT_CLOSED, TUNNEL_CLOSED, INTERNAL_ERROR.
 ## iOS facade (iosMain)
 
 ```kotlin
-class PortalIosClient(allowInsecureLocalRelays, allowRemoteTargets) {
+class PortalIosClient(allowRemoteTargets) {
     fun open(config, completion: (PortalIosSession?, PortalFailure?) -> Unit): PortalOperation
     fun close(completion: (PortalFailure?) -> Unit)
 }

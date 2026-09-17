@@ -16,6 +16,10 @@
       linuxX64 native stub test — all green locally
 - [x] `native/source-lock.json` provenance (SHA-256, 16KB alignment verified)
 - [x] Sample Android app builds; APK contains both `.so`s
+- [x] Process-global `PortalEventHub` event routing (multi-client safe)
+- [x] Relay rules aligned with `utils.NormalizeRelayURL` upstream
+- [x] `explicitApi()` mode; `PortalRelayStatus.isMitm`/`isActive`
+- [x] README logo + full docs, CONTRIBUTING.md
 
 ## Blocked / next
 

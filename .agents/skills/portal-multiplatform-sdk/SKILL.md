@@ -28,7 +28,7 @@ in `org.gosuda.portal`; the engine boundary is `internal PortalNativeEngine`.
 ## Rules
 
 1. Validate before open: identity_json XOR identity_path; discovery=false
-   needs >=1 relay; https/wss relays unless `allowInsecureLocalRelays`;
+   needs >=1 relay; https-only relays (http allowed for loopback);
    loopback targets unless `allowRemoteTargets`; route = upstream XOR
    static_root; `overlay` is unsupported in v1 (UNSUPPORTED_CAPABILITY).
 2. `PortalIdentity.document` is secret — never log it; `toString` redacts.

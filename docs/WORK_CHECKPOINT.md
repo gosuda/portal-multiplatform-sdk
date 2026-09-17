@@ -1,15 +1,18 @@
 # Work Checkpoint
 
 ## Active task
-Initial KMP SDK implementation — **complete for this session's scope**.
+Multiplatform hardening + docs pass — **complete for this session's scope**.
 
 ## State (2026-09-17)
 - Branch `main`, no prior commits; this session produces the first commit.
 - All modules compile and test green locally:
-  - `./gradlew :portal-sdk:testAndroidHostTest` — 20 tests pass
+  - `./gradlew :portal-sdk:testAndroidHostTest` — 21 tests pass (incl.
+    multi-client event routing regression)
   - `./gradlew :portal-sdk:linuxX64Test` — native stub tests pass
   - `./gradlew :samples:android:assembleDebug` — APK with both `.so`s
-  - `./gradlew :portal-sdk:compileIosMainKotlinMetadata` — iOS metadata OK
+  - `explicitApi()` enabled; public surface fully declared
+- Session 2 changes: PortalEventHub routing, upstream-aligned relay rules,
+  isMitm/isActive helpers, sample StateFlow rewrite, logo + CONTRIBUTING.
 - Not verified locally (needs macOS): `compileKotlinIos*`, XCFramework.
 
 ## Next action

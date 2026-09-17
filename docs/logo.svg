@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C4DFF"/>
+      <stop offset="1" stop-color="#448AFF"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#448AFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#69F0AE"/>
+    </linearGradient>
+  </defs>
+  <!-- portal ring -->
+  <circle cx="52" cy="64" r="34" fill="none" stroke="url(#ring)" stroke-width="9"/>
+  <circle cx="52" cy="64" r="34" fill="none" stroke="#0B1020" stroke-opacity="0.18" stroke-width="9" stroke-dasharray="4 10"/>
+  <!-- tunnel beam through the portal -->
+  <rect x="52" y="58" width="58" height="12" rx="6" fill="url(#beam)"/>
+  <!-- local service node entering the portal -->
+  <circle cx="52" cy="64" r="10" fill="#69F0AE"/>
+  <circle cx="52" cy="64" r="4.5" fill="#0B1020"/>
+  <!-- public endpoint node -->
+  <circle cx="110" cy="64" r="7" fill="#69F0AE"/>
+</svg>

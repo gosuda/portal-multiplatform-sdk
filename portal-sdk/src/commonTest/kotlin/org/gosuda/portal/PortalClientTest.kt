@@ -285,6 +285,56 @@ class PortalClientTest {
     }
 
     @Test
+    fun sessionsFlowTracksLiveTunnels() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+
+        assertTrue(client.sessions.value.isEmpty())
+        val a = client.open(siteConfig("a"))
+        val b = client.open(siteConfig("b"))
+        assertEquals(listOf(a.tunnelId, b.tunnelId), client.sessions.value.map { it.tunnelId })
+
+        a.stop()
+        assertEquals(listOf(b.tunnelId), client.sessions.value.map { it.tunnelId })
+        client.close()
+        assertTrue(client.sessions.value.isEmpty())
+    }
+
+    @Test
+    fun awaitActiveTimesOut() = runTest {
+        val engine = FakeEngine().apply { statusActive = false }
+        val client = clientWith(engine)
+        val tunnel = client.open(siteConfig())
+
+        val e = assertFailsWith<PortalException> {
+            tunnel.awaitActive(timeoutMillis = 50)
+        }
+        assertEquals(PortalFailure.Codes.STOP_TIMEOUT, e.code)
+        client.close()
+    }
+
+    @Test
+    fun isClosedReflectsClose() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        assertFalse(client.isClosed)
+        client.close()
+        assertTrue(client.isClosed)
+        assertFailsWith<PortalException> { client.open(siteConfig()) }
+    }
+
+    @Test
+    fun relayUrlsAreNormalizedBeforeStart() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        client.open(siteConfig().copy(relays = listOf("relay.example", " https://r2.example ")))
+        val sent = engine.startedConfigs.last()
+        assertEquals(listOf("https://relay.example", "https://r2.example"), sent.relays)
+        client.close()
+    }
+
+
+    @Test
     fun identityRoundTripAndRedaction() {
         val engine = FakeEngine()
         val identity = PortalIdentity.generate(engine, "alice")

@@ -14,6 +14,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -61,7 +64,8 @@ public data class PortalDiagnostics(
 @OptIn(ExperimentalAtomicApi::class)
 public class PortalClient internal constructor(
     internal val engine: PortalNativeEngine,
-    private val allowRemoteTargets: Boolean = false
+    private val allowRemoteTargets: Boolean = false,
+    private val defaultIdentityPath: String? = null
 ) {
     /**
      * Creates a client backed by the platform `libportaltunnel` engine.
@@ -70,6 +74,7 @@ public class PortalClient internal constructor(
     public constructor(
         allowRemoteTargets: Boolean = false
     ) : this(platformNativeEngine(), allowRemoteTargets)
+
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // Fire-and-forget cleanup must survive client close: a scope whose job is
@@ -79,16 +84,19 @@ public class PortalClient internal constructor(
     private val closed = AtomicBoolean(false)
     private val closeMutex = Mutex()
     private val tunnels = AtomicReference<Map<String, PortalTunnel>>(emptyMap())
+    private val _events = MutableSharedFlow<PortalEvent>(extraBufferCapacity = EVENT_BUFFER)
+    private val _sessions = MutableStateFlow<List<PortalTunnel>>(emptyList())
     private val generationCounter = AtomicLong(0)
     private val droppedAggregateEvents = AtomicLong(0)
-
-    private val _events = MutableSharedFlow<PortalEvent>(extraBufferCapacity = EVENT_BUFFER)
 
     /**
      * Aggregated events from every session this client owns. Bounded and not
      * replayed; per-session state lives on [PortalTunnel.state].
      */
     public val events: SharedFlow<PortalEvent> = _events.asSharedFlow()
+
+    /** Live sessions owned by this client, in open order. */
+    public val sessions: StateFlow<List<PortalTunnel>> = _sessions.asStateFlow()
 
     /** True after [close] has been called. */
     public val isClosed: Boolean get() = closed.load()
@@ -106,10 +114,14 @@ public class PortalClient internal constructor(
      */
     public suspend fun open(config: PortalConfig): PortalTunnel {
         ensureOpen()
-        ConfigValidation.validate(config, allowRemoteTargets, capabilities())
+        val resolved = config.copy(
+            identityPath = config.identityPath ?: defaultIdentityPath,
+            relays = config.relays?.map { ConfigValidation.normalizeRelayUrl(it) }
+        )
+        ConfigValidation.validate(resolved, allowRemoteTargets, capabilities())
         PortalEventHub.install(engine)
 
-        val configJson = PortalJson.encodeToString(config)
+        val configJson = PortalJson.encodeToString(resolved)
 
         // The native start runs on the owner scope so a caller cancellation
         // cannot orphan a created handle: if the await is cancelled after the
@@ -151,6 +163,7 @@ public class PortalClient internal constructor(
         )
         PortalEventHub.register(tunnel)
         tunnels.update { it + (tunnelId to tunnel) }
+        _sessions.value = tunnels.load().values.toList()
 
         try {
             // Reconcile state that may have been emitted between the native
@@ -220,6 +233,7 @@ public class PortalClient internal constructor(
 
     internal fun unregisterTunnel(tunnelId: String) {
         tunnels.update { it - tunnelId }
+        _sessions.value = tunnels.load().values.toList()
         PortalEventHub.unregister(tunnelId)
     }
 

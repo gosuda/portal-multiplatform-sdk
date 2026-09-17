@@ -97,6 +97,21 @@ internal object ConfigValidation {
     }
 
     /**
+     * Mirrors `utils.NormalizeRelayURL`: trims, defaults a missing scheme to
+     * `https://`, and returns the canonical form. Throws INVALID_CONFIG on
+     * malformed input.
+     */
+    fun normalizeRelayUrl(url: String): String {
+        var candidate = url.trim()
+        if (candidate.isEmpty()) fail("relay url is empty")
+        if (!candidate.contains("://")) {
+            candidate = "https://" + candidate.removePrefix("//")
+        }
+        validateRelayUrl(candidate)
+        return candidate
+    }
+
+    /**
      * Mirrors `utils.NormalizeRelayURL` in portal-tunnel: https only, bare
      * hosts default to https, `http` is accepted only for loopback hosts
      * (the engine upgrades it), credentials and invalid ports are rejected.

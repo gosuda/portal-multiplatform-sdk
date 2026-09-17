@@ -203,6 +203,9 @@ tunnel.events.collect { event -> /* Started / StatusChanged / … */ }
 
 // Aggregate stream across all sessions this client owns.
 client.events.collect { event -> … }
+
+// Live session list (open order).
+client.sessions.collect { list -> … }
 ```
 
 ### Live updates without restart
@@ -226,6 +229,17 @@ PortalConfig(identityPath = File(filesDir, "identity.json").absolutePath, ...)
 
 `PortalIdentity.document` contains key material — redacted from `toString`;
 store it in Keystore-wrapped storage / Keychain, never log it.
+
+### Kotlin DSL + Android Context
+
+```kotlin
+val config = portalConfig {
+    setName("site"); setDiscovery(true); setUdp(true)
+}
+
+// Android: defaults identity_path to filesDir/identity.json
+val client = PortalClient(context)
+```
 
 ### Android: surviving background & rotation
 

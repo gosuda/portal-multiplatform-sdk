@@ -1,7 +1,7 @@
 # Work Checkpoint
 
 ## Active task
-Multiplatform hardening + docs pass — **complete for this session's scope**.
+SDK improvement pass — **complete for this session's scope**.
 
 ## State (2026-09-17)
 - Branch `main`, no prior commits; this session produces the first commit.
@@ -13,6 +13,10 @@ Multiplatform hardening + docs pass — **complete for this session's scope**.
   - `explicitApi()` enabled; public surface fully declared
 - Session 2 changes: PortalEventHub routing, upstream-aligned relay rules,
   isMitm/isActive helpers, sample StateFlow rewrite, logo + CONTRIBUTING.
+- Session 3 changes: portal-android-lifecycle module, iOS session parity,
+  cleanup-scope/mutex/dispatch-guard hardening, Compose + SwiftUI samples,
+  R8 + Maven Local verification, Context-aware PortalClient, sessions
+  StateFlow, portalConfig DSL, 4 new tests.
 - Not verified locally (needs macOS): `compileKotlinIos*`, XCFramework.
 
 ## Next action

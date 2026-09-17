@@ -6,7 +6,12 @@
 class PortalClient(
     allowRemoteTargets: Boolean = false
 )
+// Android: PortalClient(context, allowRemoteTargets) — defaults
+// identity_path to context.filesDir/identity.json
 fun capabilities(): Set<Capability>
+val events: SharedFlow<PortalEvent>      // aggregate across owned sessions
+val sessions: StateFlow<List<PortalTunnel>>  // live sessions, open order
+val isClosed: Boolean
 suspend fun open(config: PortalConfig): PortalTunnel
 suspend fun close()
 fun diagnostics(): PortalDiagnostics
@@ -23,7 +28,11 @@ val tunnelId: String
 val config: PortalConfig
 val state: StateFlow<PortalSnapshot>
 val events: SharedFlow<PortalEvent>
+val isActive: Boolean
+val name: String?     // native status name, else config.name
+val address: String?  // native status address
 suspend fun awaitReady(capability: Capability, timeoutMillis: Long = 30_000): PortalSnapshot
+suspend fun awaitActive(timeoutMillis: Long = 30_000): PortalSnapshot
 suspend fun refresh(): PortalSnapshot
 suspend fun addRelay(relayUrl: String)
 suspend fun removeRelay(relayUrl: String)
@@ -83,8 +92,11 @@ CLIENT_CLOSED, TUNNEL_CLOSED, INTERNAL_ERROR.
 
 ```kotlin
 class PortalIosClient(allowRemoteTargets) {
+    fun diagnostics(): PortalDiagnostics
     fun open(config, completion: (PortalIosSession?, PortalFailure?) -> Unit): PortalOperation
     fun close(completion: (PortalFailure?) -> Unit)
+// PortalIosSession adds: refresh, addRelay, removeRelay, updateMetadata,
+// awaitReady — all completion-based.
 }
 class PortalIosSession {
     val sessionId: String; val snapshot: PortalSnapshot

@@ -143,3 +143,10 @@ public data class PortalConfig(
         )
     }
 }
+
+/**
+ * Kotlin DSL entry point mirroring [PortalConfig.Builder]:
+ * `portalConfig { setName("x"); setDiscovery(true) }`.
+ */
+public fun portalConfig(block: PortalConfig.Builder.() -> Unit): PortalConfig =
+    PortalConfig.Builder().apply(block).build()

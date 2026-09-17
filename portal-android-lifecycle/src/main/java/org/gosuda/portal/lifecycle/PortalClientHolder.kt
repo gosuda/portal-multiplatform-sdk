@@ -54,10 +54,10 @@ public object PortalClientHolder {
     /**
      * Opens a tunnel on the process-wide client. The returned handle is owned
      * by the process, not the caller — closing the caller's scope does not
-     * stop it.
+     * stop it. The callback fires on the main dispatcher.
      */
     public fun open(config: PortalConfig, onResult: (Result<PortalTunnel>) -> Unit) {
-        scope.launch {
+        scope.launch(Dispatchers.Main) {
             onResult(runCatching { client.open(config) })
         }
     }

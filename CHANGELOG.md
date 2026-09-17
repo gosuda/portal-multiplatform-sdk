@@ -2,6 +2,13 @@
 
 ## 2026-09-17
 
+- feat(sdk): `PortalClient(context)` on Android defaults `identity_path` to
+  `filesDir/identity.json`; relay URLs normalized at `open` mirroring
+  `utils.NormalizeRelayURL`; `PortalClient.sessions` StateFlow;
+  `portalConfig { }` DSL; `PortalClientHolder.open` callback on Main
+- test(sdk): sessions flow tracking, awaitActive timeout, isClosed, relay
+  normalization
+
 - feat(sdk): add `portal-android-lifecycle` module — `PortalClientHolder`
   (process-scoped client) + `PortalTunnelService` (foreground-service base)
 - feat(sdk): `PortalIosSession` parity — refresh/addRelay/removeRelay/

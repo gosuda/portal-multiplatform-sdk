@@ -26,4 +26,5 @@ android {
 
 dependencies {
     implementation(project(":portal-sdk"))
+    implementation(libs.kotlinx.coroutines.android)
 }

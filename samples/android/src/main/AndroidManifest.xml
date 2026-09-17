@@ -7,8 +7,11 @@
 
     <application
         android:name=".SampleApp"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="Portal Sample"
         android:largeHeap="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.PortalSample">
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
         <activity
             android:name=".MainActivity"

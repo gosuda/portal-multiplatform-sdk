@@ -45,6 +45,11 @@
 - docs(sample): `samples/android/README.md` — on-device model API
   (`/v1/generate`, `/v1/model`, `/v1/health`), parameters, error codes,
   curl examples
+- feat(sample): app icon + splash — gopher-explorer logo on both platforms;
+  Android adaptive icon (foreground + `#080F1D` background), legacy
+  mipmaps, `windowSplashScreen*` (API 31+) + `windowBackground` splash;
+  iOS `AppIcon` asset catalog + `LaunchScreen.storyboard`
+
 
 
 

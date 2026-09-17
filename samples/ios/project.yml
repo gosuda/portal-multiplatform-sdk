@@ -12,6 +12,8 @@ targets:
       - path: PortalSampleApp.swift
       - path: PortalHomeView.swift
       - path: Contents.swift
+      - path: LaunchScreen.storyboard
+      - path: Assets.xcassets
       - path: site
         type: folder
         buildPhase: resources
@@ -26,6 +28,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
         PRODUCT_BUNDLE_IDENTIFIER: org.gosuda.portal.sample
         DEVELOPMENT_TEAM: 37FAA8L9Q7
         CODE_SIGN_STYLE: Automatic

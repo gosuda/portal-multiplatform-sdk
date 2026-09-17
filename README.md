@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/gosuda/portal-multiplatform-sdk/actions"><img src="https://img.shields.io/github/actions/workflow/status/gosuda/portal-multiplatform-sdk/gradle.yml?branch=main" alt="CI"/></a>
+  <a href="https://github.com/gosuda/portal-multiplatform-sdk/actions/workflows/gradle.yml"><img src="https://img.shields.io/github/actions/workflow/status/gosuda/portal-multiplatform-sdk/gradle.yml" alt="CI"/></a>
   <img src="https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4"/>
   <img src="https://img.shields.io/badge/ABI-v1-448AFF" alt="ABI v1"/>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="Apache-2.0"/></a>

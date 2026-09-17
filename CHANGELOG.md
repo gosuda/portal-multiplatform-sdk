@@ -2,6 +2,9 @@
 
 ## 2026-09-18
 
+- fix(ci): removed the `main` branch filter from the README build badge so
+  release-tag and manually dispatched Gradle CI runs could supply its status
+
 - fix(publishing): migrated Maven coordinates, POM metadata, Go module path,
   documentation, CI badge, and sample links from the former `kimmandoo`
   namespace to the repository's `gosuda` owner

@@ -1,38 +1,32 @@
 # Work Checkpoint
 
 ## Active task
-Repository-owner metadata migration — **complete**.
+README CI badge status repair — **complete**.
 
 ## State (2026-09-18)
-- `origin` points to `git@github.com:gosuda/portal-multiplatform-sdk.git`;
-  GitHub API lookup confirmed `gosuda/portal-multiplatform-sdk`.
-- Maven group and published coordinates now use `io.github.gosuda` in
-  `portal-sdk`, `portal-native-android`, and `portal-android-lifecycle`.
-- Generated POM metadata now uses the `gosuda` repository, SCM URLs, and
-  developer identity. Inter-module POM dependencies also resolve under
-  `io.github.gosuda`.
-- README dependency examples and CI badge, sample-site links, and the Go
-  bridge module path now match the remote owner.
-- Changed files: `README.md`, `native/bridge/go.mod`,
-  `portal-sdk/build.gradle.kts`,
-  `portal-native-android/build.gradle.kts`,
-  `portal-android-lifecycle/build.gradle.kts`,
-  `samples/android/src/main/assets/site-explainer/index.html`,
-  `samples/ios/site-explainer/index.html`, `CHANGELOG.md`,
-  `docs/TROUBLESHOOTING.md`, and this checkpoint.
+- GitHub registered `.github/workflows/gradle.yml` as the active `Gradle CI`
+  workflow, but its run history was empty.
+- Repository policy intentionally limits Gradle CI to `release-*` tag pushes
+  and manual `workflow_dispatch`; ordinary `main` pushes do not run it.
+- The README badge additionally filtered runs to `branch=main`. That excluded
+  release-tag runs, so the badge could remain `no status` even after a release
+  build.
+- `README.md` now uses the workflow status endpoint without a branch filter
+  and links directly to the Gradle CI workflow.
+- Changed files: `README.md`, `CHANGELOG.md`, and this checkpoint.
 - Verification:
-  - `go test ./...` in `native/bridge` — passed (package compiled; no tests).
-  - `ANDROID_HOME=C:\Users\mingy\AppData\Local\Android\Sdk cmd.exe /c
-    gradlew.bat publishToMavenLocal` — passed; 107 actionable tasks.
-  - Generated POMs for all three published modules contain
-    `io.github.gosuda` and `https://github.com/gosuda/portal-multiplatform-sdk`.
-  - Repository-wide stale-owner scan found the former owner only in the
-    historical changelog entry describing this migration.
+  - GitHub Actions API reported workflow `360644633` (`Gradle CI`) active.
+  - GitHub Actions API reported zero Gradle CI runs on `main`, matching the
+    observed `build: no status` badge rather than an endpoint lookup failure.
+  - Both the Shields and GitHub-native badge endpoints returned `no status`,
+    confirming that changing badge providers would not fix the missing run.
+  - The README badge no longer narrows status lookup to `branch=main`.
 
 ## Next action
-Exercise a real tunnel from the on-device app UI (manual — no UI automation
-available), then resolve `license_review` and `android_ndk_revision` in
-`native/source-lock.json` before any release. See TASKS.md "Blocked / next".
+Run `Gradle CI` once via GitHub Actions `workflow_dispatch` (or on the next
+valid `release-*` tag) to seed the first build result; the badge will then
+display that workflow result. No automatic run was added for ordinary pushes,
+preserving the repository CI policy.
 
 ## Prior environment notes (2026-09-17 macOS session)
 - Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via

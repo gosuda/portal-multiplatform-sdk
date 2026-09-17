@@ -1,0 +1,29 @@
+{
+  "abi_version": 1,
+  "wire_schema_version": 1,
+  "core_repository": "https://github.com/gosuda/portal-tunnel",
+  "core_commit": "UNRESOLVED",
+  "mobile_bridge_source": "UNRESOLVED: portal-tunnel/mobile was removed from upstream; the Go bridge that produced these binaries is not publicly available",
+  "go_toolchain": "UNRESOLVED",
+  "android_ndk_revision": "UNRESOLVED",
+  "xcode_version": "26.0",
+  "license_review": "PENDING: portal-tunnel is MIT; binary redistribution terms for these artifacts are unverified",
+  "artifacts": {
+    "android/arm64-v8a/libportaltunnel.so": {
+      "source_repo": "https://github.com/gosuda/portal-android-sdk",
+      "source_path": "portal-sdk/src/main/jniLibs/arm64-v8a/libportaltunnel.so",
+      "sha256": "9a98717a1881fa29995e4a790ae98ecd825eb7edfae6e5d13a34521f2c939e49",
+      "elf_max_page_size": "16384"
+    },
+    "android/x86_64/libportaltunnel.so": {
+      "source_repo": "https://github.com/gosuda/portal-android-sdk",
+      "source_path": "portal-sdk/src/main/jniLibs/x86_64/libportaltunnel.so",
+      "sha256": "a99a924cfde1fb6c221376c4a2b0a1566cba5247cf866aa7d998f693f825e7ab",
+      "elf_max_page_size": "16384"
+    },
+    "ios/libportaltunnel.a": {
+      "status": "MISSING: no iOS archive is shipped; consumers must build it from the Go mobile bridge once recovered"
+    }
+  },
+  "release_gate": "Do not publish a release while any field reads UNRESOLVED, PENDING, MISSING, or TO_BE_FILLED."
+}

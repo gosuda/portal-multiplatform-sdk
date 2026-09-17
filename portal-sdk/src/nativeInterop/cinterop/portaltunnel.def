@@ -1,0 +1,10 @@
+headers = portaltunnel.h
+headerFilter = portaltunnel.h
+package = portaltunnel
+
+# The real engine archive is intentionally NOT embedded here: the Go mobile
+# bridge sources are not yet recovered (see native/source-lock.json), so iOS
+# consumers must link libportaltunnel themselves. Once the archive is built
+# per target, embed it with:
+#   staticLibraries = libportaltunnel.a
+#   libraryPaths = <generated per-target archive dir>

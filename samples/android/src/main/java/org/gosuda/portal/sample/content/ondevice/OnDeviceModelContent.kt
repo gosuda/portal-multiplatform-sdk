@@ -60,6 +60,8 @@ object OnDeviceModelContent : PublishableContent {
     override val summary = "LiteRT-LM LLM on this device — real inference, no cloud"
     override val detail: String
         get() = "target_addr → 127.0.0.1:$PORT · /v1/generate · engine: $engineBackend"
+    private const val MAX_INFLIGHT = 8
+    private const val REQUEST_TIMEOUT_MS = 120_000L
 
     const val PORT = 18080
     private const val MAX_TOKENS_CAP = 512
@@ -205,6 +207,14 @@ object OnDeviceModelContent : PublishableContent {
 
     // ---- HTTP handling ------------------------------------------------------
 
+    /** Status line, content type, extra headers, body. */
+    private data class HttpResponse(
+        val status: String,
+        val contentType: String,
+        val body: String,
+        val headers: Map<String, String> = emptyMap()
+    )
+
     private fun handle(client: Socket) {
         client.soTimeout = 30_000
         client.use { socket ->
@@ -218,27 +228,37 @@ object OnDeviceModelContent : PublishableContent {
             val path = target.substringBefore('?')
             val query = target.substringAfter('?', "")
             requests.incrementAndGet()
-            val (status, contentType, body) = route(path, query)
+            val res = route(path, query)
             val writer = OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8)
-            writer.write("HTTP/1.1 $status\r\n")
-            writer.write("Content-Type: $contentType\r\n")
-            writer.write("Content-Length: ${body.toByteArray(Charsets.UTF_8).size}\r\n")
+            writer.write("HTTP/1.1 ${res.status}\r\n")
+            writer.write("Content-Type: ${res.contentType}\r\n")
+            writer.write("Content-Length: ${res.body.toByteArray(Charsets.UTF_8).size}\r\n")
+            for ((k, v) in res.headers) writer.write("$k: $v\r\n")
             writer.write("Connection: close\r\n\r\n")
-            writer.write(body)
+            writer.write(res.body)
             writer.flush()
         }
     }
 
-    private fun route(path: String, query: String): Triple<String, String, String> = when (path) {
-        "/" -> Triple("200 OK", "text/html; charset=utf-8", indexHtml())
-        "/v1/generate" -> json("200 OK", generateJsonBlocking(query))
+    private fun route(path: String, query: String): HttpResponse = when (path) {
+        "/" -> HttpResponse("200 OK", "text/html; charset=utf-8", indexHtml())
+        "/v1/generate" -> generateResponse(query)
         "/v1/model" -> json("200 OK", modelJson())
         "/v1/health" -> json("200 OK", healthJson())
         else -> json("404 Not Found",
             """{"error":"not_found","path":${jsonString(path)},"endpoints":["/","/v1/generate","/v1/model","/v1/health"]}""")
     }
 
-    private fun generateJsonBlocking(query: String): String {
+    // ---- concurrency model --------------------------------------------------
+    // Inference slots bound the whole queue+execution: at most MAX_INFLIGHT
+    // requests hold a slot; the rest get an immediate 429 instead of piling
+    // up. Inside a slot, the LiteRT-LM engine serializes generation on
+    // engineMutex (conversations can't run concurrently); the Markov fallback
+    // is stateless and runs in parallel. Every wait is time-boxed.
+    private val inflight = java.util.concurrent.Semaphore(MAX_INFLIGHT)
+    private val queued = AtomicLong(0)
+
+    private fun generateResponse(query: String): HttpResponse {
         val params = query.split('&')
             .filter { it.contains('=') }
             .associate {
@@ -249,19 +269,39 @@ object OnDeviceModelContent : PublishableContent {
         val maxTokens = (params["max_tokens"]?.toIntOrNull() ?: 128).coerceIn(1, MAX_TOKENS_CAP)
         val seed = params["seed"]?.toIntOrNull()
 
-        val text = runCatching {
-            kotlinx.coroutines.runBlocking { generate(prompt, maxTokens, seed) }
-        }.getOrElse { "(inference failed: ${it.message})" }
-
-        val engineName = if (engine != null) "litert-lm" else "markov-fallback"
-        return """{"model":"$engineName","backend":"$engineBackend","prompt":${jsonString(prompt)},"text":${jsonString(text)},"max_tokens":$maxTokens,"seed":${seed ?: "null"},"served_from":"this device"}"""
+        if (!inflight.tryAcquire()) {
+            rejected.incrementAndGet()
+            return json("429 Too Many Requests",
+                """{"error":"busy","detail":"$MAX_INFLIGHT requests already in flight","retry_after_ms":1000}""",
+                mapOf("Retry-After" to "1"))
+        }
+        queued.incrementAndGet()
+        try {
+            val text = try {
+                kotlinx.coroutines.runBlocking { generate(prompt, maxTokens, seed) }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                return json("504 Gateway Timeout",
+                    """{"error":"timeout","detail":"inference exceeded ${REQUEST_TIMEOUT_MS / 1000}s"}""")
+            } catch (e: Exception) {
+                return json("500 Internal Server Error",
+                    """{"error":"inference_failed","detail":${jsonString(e.message ?: "unknown")}}""")
+            }
+            val engineName = if (engine != null) "litert-lm" else "markov-fallback"
+            return json("200 OK",
+                """{"model":"$engineName","backend":"$engineBackend","prompt":${jsonString(prompt)},"text":${jsonString(text)},"max_tokens":$maxTokens,"seed":${seed ?: "null"},"served_from":"this device"}""")
+        } finally {
+            queued.decrementAndGet()
+            inflight.release()
+        }
     }
+
+    private val rejected = AtomicLong(0)
 
     private suspend fun generate(prompt: String, maxTokens: Int, seed: Int?): String {
         val e = engine
         if (e != null) {
-            // Serialized + time-boxed: one request at a time, never a hang.
-            return withTimeout(120_000) {
+            // Serialized + time-boxed: one generation at a time, never a hang.
+            return withTimeout(REQUEST_TIMEOUT_MS) {
                 engineMutex.withLock {
                     val config = ConversationConfig(
                         samplerConfig = seed?.let { SamplerConfig(topK = 40, topP = 0.95, temperature = 0.8, seed = it) }
@@ -275,6 +315,7 @@ object OnDeviceModelContent : PublishableContent {
                 }
             }
         }
+        // Markov fallback is stateless — safe to run in parallel.
         return fallbackModel.generate(prompt, maxTokens.coerceAtMost(200), seed?.toLong())
     }
 
@@ -287,10 +328,11 @@ object OnDeviceModelContent : PublishableContent {
     private fun healthJson(): String {
         val uptime = (System.currentTimeMillis() - startedAt) / 1000
         val engineName = if (engine != null) "litert-lm" else "markov-fallback"
-        return """{"status":"ok","engine":"$engineName","backend":"$engineBackend","uptime_seconds":$uptime,"requests":${requests.get()}}"""
+        return """{"status":"ok","engine":"$engineName","backend":"$engineBackend","uptime_seconds":$uptime,"requests":${requests.get()},"inflight":${queued.get()},"rejected":${rejected.get()},"max_inflight":$MAX_INFLIGHT}"""
     }
 
-    private fun json(status: String, body: String) = Triple(status, "application/json", body)
+    private fun json(status: String, body: String, headers: Map<String, String> = emptyMap()) =
+        HttpResponse(status, "application/json", body, headers)
 
     private fun jsonString(value: String): String =
         "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"")

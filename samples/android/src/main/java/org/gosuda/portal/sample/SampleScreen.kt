@@ -659,7 +659,7 @@ private fun ContentChoice(
                         Text("No model installed — a tiny built-in model answers until one lands.",
                             color = TextSecondary, style = MaterialTheme.typography.labelSmall)
                         if (onDownloadModel != null) {
-                            ActionButton("Download model (~300 MB)", onDownloadModel,
+                            ActionButton("Download model (~140 MB)", onDownloadModel,
                                 enabled = enabled, modifier = Modifier.fillMaxWidth())
                         }
                     }

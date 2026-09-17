@@ -2,6 +2,15 @@
 
 ## 2026-09-17
 
+- fix(sample): model download — switched to non-gated
+  litert-community/SmolLM2-135M-Instruct (~140 MB); Gemma repos are
+  gated (HF auth required) and returned 401
+- feat(sample): bounded request concurrency — Semaphore(8) bounds
+  queue+execution, excess gets 429 + Retry-After; per-request 120 s
+  deadline → 504; inference errors → 500 (was 200 with error text);
+  Markov fallback runs in parallel (stateless); /v1/health exposes
+  inflight/rejected/max_inflight
+
 - fix(sample): LiteRT-LM backend selection — init success is not enough;
   a 1-token smoke test proves inference works, else fall back (emulator
   GPU compiles but fails with 'Can not find OpenCL library')

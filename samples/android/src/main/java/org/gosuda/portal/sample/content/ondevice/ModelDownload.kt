@@ -17,7 +17,8 @@ import java.net.URL
 /**
  * On-demand download of the `.litertlm` model file.
  *
- * The model is ~300 MB (Gemma 3 270M q8), so it is never fetched implicitly:
+ * The model is ~140 MB (SmolLM2-135M, non-gated — anonymous download works;
+ * Gemma repos are gated and need HF auth). It is never fetched implicitly:
  * the user taps "Download model" in the picker, progress is reported through
  * [state], and the file lands in `getExternalFilesDir("models")` — the same
  * directory an `adb push` can target. A partial download is deleted on
@@ -26,9 +27,9 @@ import java.net.URL
 object ModelDownload {
 
     const val MODEL_URL =
-        "https://huggingface.co/litert-community/gemma-3-270m-it/resolve/main/gemma3-270m-it-q8.litertlm"
-    const val MODEL_FILE = "gemma3-270m-it-q8.litertlm"
-    const val MODEL_BYTES = 304_005_120L
+        "https://huggingface.co/litert-community/SmolLM2-135M-Instruct/resolve/main/SmolLM2_135M_Instruct.litertlm"
+    const val MODEL_FILE = "SmolLM2_135M_Instruct.litertlm"
+    const val MODEL_BYTES = 142_819_328L
 
     sealed interface State {
         data object NotDownloaded : State

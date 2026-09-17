@@ -5,28 +5,28 @@ package org.gosuda.portal
  * [PortalFailure.Codes]; [nativeCode] preserves the raw return code of the
  * underlying `libportaltunnel` call for diagnostics.
  */
-data class PortalFailure(
+public data class PortalFailure(
     val code: String,
     val message: String,
     val retryable: Boolean = false,
     val operation: String? = null,
     val nativeCode: Int? = null
 ) {
-    object Codes {
-        const val NATIVE_UNAVAILABLE = "NATIVE_UNAVAILABLE"
-        const val ABI_MISMATCH = "ABI_MISMATCH"
-        const val INVALID_CONFIG = "INVALID_CONFIG"
-        const val IDENTITY_INVALID = "IDENTITY_INVALID"
-        const val RELAY_UNAVAILABLE = "RELAY_UNAVAILABLE"
-        const val NETWORK_UNAVAILABLE = "NETWORK_UNAVAILABLE"
-        const val PERMISSION_DENIED = "PERMISSION_DENIED"
-        const val UNSUPPORTED_CAPABILITY = "UNSUPPORTED_CAPABILITY"
-        const val PROTOCOL_ERROR = "PROTOCOL_ERROR"
-        const val STOP_TIMEOUT = "STOP_TIMEOUT"
-        const val SECURITY_WARNING = "SECURITY_WARNING"
-        const val CLIENT_CLOSED = "CLIENT_CLOSED"
-        const val TUNNEL_CLOSED = "TUNNEL_CLOSED"
-        const val INTERNAL_ERROR = "INTERNAL_ERROR"
+    public object Codes {
+        public const val NATIVE_UNAVAILABLE: String = "NATIVE_UNAVAILABLE"
+        public const val ABI_MISMATCH: String = "ABI_MISMATCH"
+        public const val INVALID_CONFIG: String = "INVALID_CONFIG"
+        public const val IDENTITY_INVALID: String = "IDENTITY_INVALID"
+        public const val RELAY_UNAVAILABLE: String = "RELAY_UNAVAILABLE"
+        public const val NETWORK_UNAVAILABLE: String = "NETWORK_UNAVAILABLE"
+        public const val PERMISSION_DENIED: String = "PERMISSION_DENIED"
+        public const val UNSUPPORTED_CAPABILITY: String = "UNSUPPORTED_CAPABILITY"
+        public const val PROTOCOL_ERROR: String = "PROTOCOL_ERROR"
+        public const val STOP_TIMEOUT: String = "STOP_TIMEOUT"
+        public const val SECURITY_WARNING: String = "SECURITY_WARNING"
+        public const val CLIENT_CLOSED: String = "CLIENT_CLOSED"
+        public const val TUNNEL_CLOSED: String = "TUNNEL_CLOSED"
+        public const val INTERNAL_ERROR: String = "INTERNAL_ERROR"
     }
 }
 
@@ -34,8 +34,8 @@ data class PortalFailure(
  * Single exception type thrown by the SDK. `CancellationException` is never
  * wrapped: coroutine cancellation always propagates as cancellation.
  */
-class PortalException(val failure: PortalFailure) : Exception(failure.message) {
-    constructor(
+public class PortalException(public val failure: PortalFailure) : Exception(failure.message) {
+    public constructor(
         code: String,
         message: String,
         retryable: Boolean = false,
@@ -43,5 +43,5 @@ class PortalException(val failure: PortalFailure) : Exception(failure.message) {
         nativeCode: Int? = null
     ) : this(PortalFailure(code, message, retryable, operation, nativeCode))
 
-    val code: String get() = failure.code
+    public val code: String get() = failure.code
 }

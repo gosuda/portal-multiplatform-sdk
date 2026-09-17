@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  * dispatch incoming requests to an upstream server or a static directory.
  */
 @Serializable
-data class PortalHTTPRoute(
+public data class PortalHTTPRoute(
     @SerialName("prefix") val prefix: String,
     @SerialName("upstream") val upstream: String? = null,
     @SerialName("static_root") val staticRoot: String? = null,
@@ -21,7 +21,7 @@ data class PortalHTTPRoute(
  * x402 micropayment configuration (Sui USDC, Casper wCSPR).
  */
 @Serializable
-data class PortalX402Config(
+public data class PortalX402Config(
     @SerialName("pay_to") val payTo: String,
     @SerialName("testnet") val testnet: Boolean = false,
     @SerialName("network") val network: String? = null,
@@ -38,7 +38,7 @@ data class PortalX402Config(
  * Flutter Portal SDKs so a config produces identical behavior everywhere.
  */
 @Serializable
-data class PortalConfig(
+public data class PortalConfig(
     @SerialName("name") val name: String? = null,
     @SerialName("identity_json") val identityJson: String? = null,
     @SerialName("identity_path") val identityPath: String? = null,
@@ -66,7 +66,7 @@ data class PortalConfig(
      * Fluent builder mirroring `PortalConfig.Builder` in the Android SDK,
      * for Java callers and parity with existing Portal codebases.
      */
-    class Builder {
+    public class Builder {
         private var name: String? = null
         private var identityJson: String? = null
         private var identityPath: String? = null
@@ -90,34 +90,34 @@ data class PortalConfig(
         private var httpRoutes: MutableList<PortalHTTPRoute> = mutableListOf()
         private var x402: PortalX402Config? = null
 
-        fun setName(name: String) = apply { this.name = name }
-        fun setIdentityJson(json: String) = apply { this.identityJson = json }
-        fun setIdentityPath(path: String) = apply { this.identityPath = path }
-        fun addRelay(url: String) = apply { this.relays.add(url) }
-        fun setRelays(urls: List<String>) = apply { this.relays = urls.toMutableList() }
-        fun setDiscovery(enabled: Boolean) = apply { this.discovery = enabled }
-        fun setMaxActiveRelays(max: Int) = apply { this.maxActiveRelays = max }
-        fun setBanMitm(enabled: Boolean) = apply { this.banMitm = enabled }
-        fun setEch(enabled: Boolean) = apply { this.ech = enabled }
-        fun setOverlay(enabled: Boolean) = apply { this.overlay = enabled }
-        fun setUdp(enabled: Boolean) = apply { this.udp = enabled }
-        fun setTcp(enabled: Boolean) = apply { this.tcp = enabled }
-        fun setDescription(desc: String) = apply { this.description = desc }
-        fun addTag(tag: String) = apply { this.tags.add(tag) }
-        fun setTags(tags: List<String>) = apply { this.tags = tags.toMutableList() }
-        fun setOwner(owner: String) = apply { this.owner = owner }
-        fun setThumbnail(url: String) = apply { this.thumbnail = url }
-        fun setHide(hide: Boolean) = apply { this.hide = hide }
-        fun setStaticSite(dir: String, index: String = "index.html") = apply {
+        public fun setName(name: String): Builder = apply { this.name = name }
+        public fun setIdentityJson(json: String): Builder = apply { this.identityJson = json }
+        public fun setIdentityPath(path: String): Builder = apply { this.identityPath = path }
+        public fun addRelay(url: String): Builder = apply { this.relays.add(url) }
+        public fun setRelays(urls: List<String>): Builder = apply { this.relays = urls.toMutableList() }
+        public fun setDiscovery(enabled: Boolean): Builder = apply { this.discovery = enabled }
+        public fun setMaxActiveRelays(max: Int): Builder = apply { this.maxActiveRelays = max }
+        public fun setBanMitm(enabled: Boolean): Builder = apply { this.banMitm = enabled }
+        public fun setEch(enabled: Boolean): Builder = apply { this.ech = enabled }
+        public fun setOverlay(enabled: Boolean): Builder = apply { this.overlay = enabled }
+        public fun setUdp(enabled: Boolean): Builder = apply { this.udp = enabled }
+        public fun setTcp(enabled: Boolean): Builder = apply { this.tcp = enabled }
+        public fun setDescription(desc: String): Builder = apply { this.description = desc }
+        public fun addTag(tag: String): Builder = apply { this.tags.add(tag) }
+        public fun setTags(tags: List<String>): Builder = apply { this.tags = tags.toMutableList() }
+        public fun setOwner(owner: String): Builder = apply { this.owner = owner }
+        public fun setThumbnail(url: String): Builder = apply { this.thumbnail = url }
+        public fun setHide(hide: Boolean): Builder = apply { this.hide = hide }
+        public fun setStaticSite(dir: String, index: String = "index.html"): Builder = apply {
             this.staticDir = dir
             this.staticIndex = index
         }
-        fun setTargetAddress(addr: String) = apply { this.targetAddr = addr }
-        fun setUdpAddress(addr: String) = apply { this.udpAddr = addr }
-        fun addHttpRoute(route: PortalHTTPRoute) = apply { this.httpRoutes.add(route) }
-        fun setX402(config: PortalX402Config) = apply { this.x402 = config }
+        public fun setTargetAddress(addr: String): Builder = apply { this.targetAddr = addr }
+        public fun setUdpAddress(addr: String): Builder = apply { this.udpAddr = addr }
+        public fun addHttpRoute(route: PortalHTTPRoute): Builder = apply { this.httpRoutes.add(route) }
+        public fun setX402(config: PortalX402Config): Builder = apply { this.x402 = config }
 
-        fun build() = PortalConfig(
+        public fun build(): PortalConfig = PortalConfig(
             name = name,
             identityJson = identityJson,
             identityPath = identityPath,

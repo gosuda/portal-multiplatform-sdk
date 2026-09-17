@@ -14,13 +14,13 @@ import org.gosuda.portal.internal.platformNativeEngine
  * and must be stored in a platform-protected location (Android Keystore-
  * wrapped file, iOS Keychain), not logged or committed.
  */
-class PortalIdentity internal constructor(
-    val document: String,
-    val name: String,
-    val address: String
+public class PortalIdentity internal constructor(
+    public val document: String,
+    public val name: String,
+    public val address: String
 ) {
     /** Alias kept for parity with the platform SDKs. */
-    val jsonString: String get() = document
+    public val jsonString: String get() = document
 
     override fun toString(): String =
         "PortalIdentity(name=$name, address=$address, document=<redacted ${document.length} chars>)"
@@ -31,7 +31,7 @@ class PortalIdentity internal constructor(
 
     override fun hashCode(): Int = 31 * (31 * document.hashCode() + name.hashCode()) + address.hashCode()
 
-    companion object {
+    public companion object {
         private const val MAX_IDENTITY_BYTES = 64 * 1024
 
         /**
@@ -39,7 +39,7 @@ class PortalIdentity internal constructor(
          * @throws PortalException [PortalFailure.Codes.IDENTITY_INVALID] if the
          *   native runtime returns a document without a usable address.
          */
-        fun generate(name: String = ""): PortalIdentity =
+        public fun generate(name: String = ""): PortalIdentity =
             generate(platformNativeEngine(), name)
 
         /**
@@ -47,7 +47,7 @@ class PortalIdentity internal constructor(
          * @throws PortalException [PortalFailure.Codes.IDENTITY_INVALID] on
          *   malformed input or a document missing name/address.
          */
-        fun parse(identityJson: String): PortalIdentity {
+        public fun parse(identityJson: String): PortalIdentity {
             if (identityJson.isBlank() || identityJson.length > MAX_IDENTITY_BYTES) {
                 throw PortalException(
                     PortalFailure.Codes.IDENTITY_INVALID,

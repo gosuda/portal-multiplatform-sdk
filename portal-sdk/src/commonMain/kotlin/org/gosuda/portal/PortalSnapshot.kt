@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
  * [FAILED] and [STOPPED] are terminal. A terminal session never transitions
  * back, even if late native events arrive.
  */
-enum class TunnelPhase {
+public enum class TunnelPhase {
     IDLE, STARTING, CONNECTING, ACTIVE, STOPPING, STOPPED, FAILED
 }
 
@@ -30,7 +30,7 @@ enum class TunnelPhase {
  * report per-feature readiness, so readiness means "requested AND the tunnel
  * reported active with at least one ready relay".
  */
-enum class Capability {
+public enum class Capability {
     HTTP_TLS, STATIC_SITE, TCP, UDP, ECH, DISCOVERY, X402, OVERLAY
 }
 
@@ -46,7 +46,7 @@ enum class Capability {
  * @property droppedEventCount events lost because no collector consumed the
  *   bounded event buffer in time.
  */
-data class PortalSnapshot(
+public data class PortalSnapshot(
     val sessionId: String,
     val generation: Int,
     val revision: Long,
@@ -69,7 +69,7 @@ data class PortalSnapshot(
  * wire keys as [PortalConfig]'s metadata fields.
  */
 @Serializable
-data class PortalMetadata(
+public data class PortalMetadata(
     @SerialName("description") val description: String? = null,
     @SerialName("tags") val tags: List<String>? = null,
     @SerialName("owner") val owner: String? = null,

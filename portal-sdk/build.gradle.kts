@@ -13,6 +13,7 @@ group = "io.github.kimmandoo"
 version = "0.1.0"
 
 kotlin {
+    explicitApi()
     android {
         namespace = "org.gosuda.portal"
         compileSdk = libs.versions.android.compileSdk.get().toInt()

@@ -10,12 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -26,12 +23,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -298,19 +296,26 @@ private fun ConfigCard(snapshot: PortalSnapshot?, onStart: (PortalConfig) -> Uni
         shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(18.dp)) {
             SectionTitle("Tunnel config")
-            PortalField(name, { name = it }, "name", editable)
-            PortalField(description, { description = it }, "description", editable)
-            PortalField(tags, { tags = it }, "tags (comma-separated)", editable)
+            Hint("Serve a site or game from this device. The URL rotates as relays join/leave.")
+            PortalField(name, { name = it }, "name", "public name — becomes <name>.portal.<relay>", editable)
+            PortalField(description, { description = it }, "description", "shown in the public directory", editable)
+            PortalField(tags, { tags = it }, "tags", "comma-separated search keywords", editable)
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth()) {
-                FlagChip("discovery", discovery, editable, Modifier.weight(1f)) { discovery = it }
-                FlagChip("udp", udp, editable, Modifier.weight(1f)) { udp = it }
-                FlagChip("tcp", tcp, editable, Modifier.weight(1f)) { tcp = it }
+                FlagChip("discovery", discovery, editable, Modifier.weight(1f),
+                    "list in public directory") { discovery = it }
+                FlagChip("udp", udp, editable, Modifier.weight(1f),
+                    "relay UDP (games, QUIC)") { udp = it }
+                FlagChip("tcp", tcp, editable, Modifier.weight(1f),
+                    "relay raw TCP") { tcp = it }
             }
             Row(Modifier.fillMaxWidth()) {
-                FlagChip("ech", ech, editable, Modifier.weight(1f)) { ech = it }
-                FlagChip("ban_mitm", banMitm, editable, Modifier.weight(1f)) { banMitm = it }
-                FlagChip("hide", hide, editable, Modifier.weight(1f)) { hide = it }
+                FlagChip("ech", ech, editable, Modifier.weight(1f),
+                    "hide SNI from relays") { ech = it }
+                FlagChip("ban_mitm", banMitm, editable, Modifier.weight(1f),
+                    "refuse MITM relays") { banMitm = it }
+                FlagChip("hide", hide, editable, Modifier.weight(1f),
+                    "unlisted; URL-only") { hide = it }
             }
             Spacer(Modifier.height(12.dp))
             Button(
@@ -346,24 +351,28 @@ private fun PortalField(
     value: String,
     onChange: (String) -> Unit,
     label: String,
+    hint: String,
     enabled: Boolean
 ) {
-    OutlinedTextField(
-        value = value, onValueChange = onChange,
-        label = { Text(label, color = TextSecondary) },
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        singleLine = true,
-        shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Violet,
-            unfocusedBorderColor = Surface2,
-            focusedTextColor = TextPrimary,
-            unfocusedTextColor = TextPrimary,
-            disabledTextColor = TextSecondary,
-            disabledBorderColor = Surface2
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        OutlinedTextField(
+            value = value, onValueChange = onChange,
+            label = { Text(label, color = TextSecondary) },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Violet,
+                unfocusedBorderColor = Surface2,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                disabledTextColor = TextSecondary,
+                disabledBorderColor = Surface2
+            )
         )
-    )
+        Hint(hint)
+    }
 }
 
 @Composable
@@ -372,20 +381,34 @@ private fun FlagChip(
     checked: Boolean,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    hint: String,
     onChange: (Boolean) -> Unit
 ) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(
-            checked = checked, onCheckedChange = onChange, enabled = enabled,
-            colors = CheckboxDefaults.colors(
-                checkedColor = Violet,
-                uncheckedColor = TextSecondary,
-                checkmarkColor = Color.White
+    Column(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = checked, onCheckedChange = onChange, enabled = enabled,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Violet,
+                    uncheckedColor = TextSecondary,
+                    checkmarkColor = Color.White
+                )
             )
-        )
-        Text(label, style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace, color = TextPrimary)
+            Text(label, style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace, color = TextPrimary)
+        }
+        Hint(hint)
     }
+}
+
+@Composable
+private fun Hint(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = TextSecondary.copy(alpha = 0.7f),
+        modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+    )
 }
 
 // ---- identity ---------------------------------------------------------------
@@ -421,14 +444,26 @@ private fun IdentityCard(identity: PortalIdentity?, onGenerate: () -> Unit) {
 
 @Composable
 private fun PublicUrlCard(snapshot: PortalSnapshot?) {
+    val clipboard = LocalClipboardManager.current
     Card(
         colors = CardDefaults.cardColors(containerColor = Surface2),
         shape = RoundedCornerShape(20.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
-            Text("PUBLIC URL", style = MaterialTheme.typography.labelMedium,
-                color = TextSecondary, letterSpacing = 2.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("PUBLIC URL", style = MaterialTheme.typography.labelMedium,
+                    color = TextSecondary, letterSpacing = 2.sp, modifier = Modifier.weight(1f))
+                ActionButton(
+                    "Copy",
+                    enabled = snapshot?.primaryPublicUrl != null,
+                    onClick = {
+                        snapshot?.primaryPublicUrl?.let {
+                            clipboard.setText(AnnotatedString(it))
+                        }
+                    }
+                )
+            }
             Spacer(Modifier.height(6.dp))
             SelectionContainer {
                 Text(
@@ -443,6 +478,8 @@ private fun PublicUrlCard(snapshot: PortalSnapshot?) {
                 Text("+${snapshot.publicUrls.size - 1} more",
                     style = MaterialTheme.typography.labelSmall, color = TextSecondary)
             }
+            Spacer(Modifier.height(6.dp))
+            Hint("The URL changes as relays join/leave. Copy the current one.")
         }
     }
 }
@@ -461,10 +498,10 @@ private fun MetadataCard(snapshot: PortalSnapshot?, onUpdate: (PortalMetadata) -
         shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(18.dp)) {
             SectionTitle("Metadata (live update)")
-            PortalField(description, { description = it }, "description", active)
-            PortalField(tags, { tags = it }, "tags", active)
-            PortalField(owner, { owner = it }, "owner", active)
-            FlagChip("hide", hide, active) { hide = it }
+            PortalField(description, { description = it }, "description", "shown in the public directory", active)
+            PortalField(tags, { tags = it }, "tags", "comma-separated search keywords", active)
+            PortalField(owner, { owner = it }, "owner", "who runs this tunnel", active)
+            FlagChip("hide", hide, active, hint = "unlisted; URL-only access") { hide = it }
             Spacer(Modifier.height(8.dp))
             ActionButton("Update metadata", enabled = active, onClick = {
                 onUpdate(
@@ -492,6 +529,7 @@ private fun RelayManagerCard(snapshot: PortalSnapshot?, actions: SampleActions) 
         shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(18.dp)) {
             SectionTitle("Relays (${snapshot?.relays?.size ?: 0})")
+            Hint("Relays carry your traffic. More relays = more URLs, more resilience.")
             snapshot?.relays.orEmpty().forEach { relay ->
                 RelayRow(relay, active, actions.onRemoveRelay)
                 Spacer(Modifier.height(8.dp))

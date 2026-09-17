@@ -2,6 +2,9 @@
 
 ## 2026-09-17
 
+- feat(sample): per-config explanations on both UIs; copy button on public
+  URL card; URL-rotation note
+
 - feat(sample): redesigned Compose UI (dark theme, gradient hero, rounded
   cards); bundled Snake game served via staticDir
 

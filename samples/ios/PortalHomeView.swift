@@ -208,20 +208,42 @@ struct PortalHomeView: View {
     }
 
     private var configSection: some View {
-        Section("Tunnel config") {
+        Section {
             TextField("name", text: $model.name)
+            Text("public name — becomes <name>.portal.<relay>")
+                .font(.caption2).foregroundStyle(.secondary)
             TextField("description", text: $model.configDescription)
+            Text("shown in the public directory")
+                .font(.caption2).foregroundStyle(.secondary)
             TextField("tags (comma-separated)", text: $model.configTags)
+            Text("search keywords for discovery")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("discovery", isOn: $model.discovery)
+            Text("list in the public directory")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("udp", isOn: $model.udp)
+            Text("relay UDP traffic (games, QUIC)")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("tcp", isOn: $model.tcp)
+            Text("relay raw TCP ports")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("ech", isOn: $model.ech)
+            Text("hide SNI from relays (privacy)")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("ban_mitm", isOn: $model.banMitm)
+            Text("refuse relays that intercept TLS")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("hide", isOn: $model.hide)
+            Text("unlisted; only reachable by direct URL")
+                .font(.caption2).foregroundStyle(.secondary)
             Button("Start tunnel") {
                 model.start(siteDir: siteDir, identityPath: identityPath)
             }
             .disabled(model.hasSession)
+        } header: {
+            Text("Tunnel config")
+        } footer: {
+            Text("Serve a site or game from this device. The URL rotates as relays join/leave.")
         }
     }
 
@@ -250,13 +272,15 @@ struct PortalHomeView: View {
             }
         }
     }
-
-    private var phaseColor: Color {
-        switch model.phase {
-        case "active": return .green
-        case "failed": return .red
-        case "stopped", "idle": return .gray
-        default: return .orange
+    private var publicUrlSection: some View {
+        Section {
+            Text(model.publicUrl.isEmpty ? "no public url yet" : model.publicUrl)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+        } header: {
+            Text("Public URL")
+        } footer: {
+            Text("The URL changes as relays join/leave. Copy the current one.")
         }
     }
 

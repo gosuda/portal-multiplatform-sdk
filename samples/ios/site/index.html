@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Portal Snake</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background: #0b1020;
+      color: #e8ecf8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #wrap {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 16px;
+    }
+    #brand {
+      font-size: 13px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: #7c4dff;
+      font-weight: 600;
+    }
+    #score {
+      font-size: 42px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      background: linear-gradient(135deg, #7c4dff, #448aff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    #best { font-size: 12px; color: #8a93b8; }
+    #stage {
+      position: relative;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(124,77,255,.25), 0 20px 60px rgba(0,0,0,.5);
+    }
+    canvas { display: block; background: #0e1430; }
+    #overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px;
+      background: rgba(11,16,32,.82);
+      backdrop-filter: blur(4px);
+      transition: opacity .25s;
+    }
+    #overlay.hidden { opacity: 0; pointer-events: none; }
+    #overlay h1 { font-size: 28px; font-weight: 800; }
+    #overlay p { color: #8a93b8; font-size: 14px; text-align: center; line-height: 1.5; }
+    #play {
+      margin-top: 8px;
+      padding: 12px 32px;
+      border: none; border-radius: 999px;
+      background: linear-gradient(135deg, #7c4dff, #448aff);
+      color: #fff; font-size: 16px; font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(124,77,255,.4);
+    }
+    #play:active { transform: scale(.96); }
+    #hint { font-size: 11px; color: #5a628a; }
+    .pad {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      display: none;
+      grid-template-columns: repeat(3, 56px);
+      grid-template-rows: repeat(3, 56px);
+      gap: 6px;
+    }
+    .pad button {
+      border: none; border-radius: 14px;
+      background: rgba(124,77,255,.15);
+      color: #b8c0e8; font-size: 20px;
+      backdrop-filter: blur(4px);
+    }
+    .pad button:active { background: rgba(124,77,255,.4); }
+    .pad .up    { grid-area: 1/2; }
+    .pad .left  { grid-area: 2/1; }
+    .pad .right { grid-area: 2/3; }
+    .pad .down  { grid-area: 3/2; }
+    @media (pointer: coarse) { .pad { display: grid; } #hint { display: none; } }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <div id="brand">Portal · served from this device</div>
+  <div id="score">0</div>
+  <div id="best">best 0</div>
+  <div id="stage">
+    <canvas id="game" width="360" height="360"></canvas>
+    <div id="overlay">
+      <h1>Snake</h1>
+      <p>Eat the cells. Don't hit the walls<br/>or yourself.</p>
+      <button id="play">Play</button>
+    </div>
+  </div>
+  <div id="hint">arrow keys / WASD · swipe on touch</div>
+</div>
+<div class="pad">
+  <button class="up" data-dx="0" data-dy="-1">▲</button>
+  <button class="left" data-dx="-1" data-dy="0">◀</button>
+  <button class="right" data-dx="1" data-dy="0">▶</button>
+  <button class="down" data-dx="0" data-dy="1">▼</button>
+</div>
+<script>
+(() => {
+  const CELL = 20, COLS = 18, ROWS = 18;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const playBtn = document.getElementById('play');
+
+  let snake, dir, nextDir, food, score, best = 0, alive = false, tick;
+
+  function reset() {
+    snake = [{x: 9, y: 9}, {x: 8, y: 9}, {x: 7, y: 9}];
+    dir = {x: 1, y: 0}; nextDir = dir;
+    score = 0; alive = true;
+    placeFood();
+    scoreEl.textContent = '0';
+    overlay.classList.add('hidden');
+    clearInterval(tick);
+    tick = setInterval(step, 110);
+  }
+
+  function placeFood() {
+    do {
+      food = {x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS)};
+    } while (snake.some(s => s.x === food.x && s.y === food.y));
+  }
+
+  function step() {
+    dir = nextDir;
+    const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+    if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS ||
+        snake.some(s => s.x === head.x && s.y === head.y)) {
+      return die();
+    }
+    snake.unshift(head);
+    if (head.x === food.x && head.y === food.y) {
+      score++; scoreEl.textContent = score;
+      placeFood();
+    } else {
+      snake.pop();
+    }
+    draw();
+  }
+
+  function die() {
+    alive = false;
+    clearInterval(tick);
+    best = Math.max(best, score);
+    bestEl.textContent = 'best ' + best;
+    overlay.querySelector('h1').textContent = 'Game over';
+    overlay.querySelector('p').innerHTML = 'Score ' + score + '<br/>Tap play to go again.';
+    playBtn.textContent = 'Play again';
+    overlay.classList.remove('hidden');
+  }
+
+  function draw() {
+    ctx.fillStyle = '#0e1430';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // grid
+    ctx.strokeStyle = 'rgba(124,77,255,.06)';
+    for (let i = 1; i < COLS; i++) {
+      ctx.beginPath(); ctx.moveTo(i * CELL, 0); ctx.lineTo(i * CELL, canvas.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * CELL); ctx.lineTo(canvas.width, i * CELL); ctx.stroke();
+    }
+    // food
+    const fx = food.x * CELL + CELL / 2, fy = food.y * CELL + CELL / 2;
+    ctx.fillStyle = '#69f0ae';
+    ctx.beginPath(); ctx.arc(fx, fy, CELL * 0.38, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowColor = '#69f0ae'; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(fx, fy, CELL * 0.38, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // snake
+    snake.forEach((s, i) => {
+      const t = i / snake.length;
+      const r = Math.round(124 + (68 - 124) * t);
+      const g = Math.round(77 + (138 - 77) * t);
+      const b = Math.round(255 + (255 - 255) * t);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      const pad = i === 0 ? 1.5 : 2.5;
+      roundRect(s.x * CELL + pad, s.y * CELL + pad, CELL - pad * 2, CELL - pad * 2, 6);
+      ctx.fill();
+    });
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function setDir(dx, dy) {
+    if (!alive) return;
+    if (dx === -dir.x && dy === -dir.y) return; // no 180°
+    nextDir = {x: dx, y: dy};
+  }
+
+  document.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'arrowup' || k === 'w') setDir(0, -1);
+    else if (k === 'arrowdown' || k === 's') setDir(0, 1);
+    else if (k === 'arrowleft' || k === 'a') setDir(-1, 0);
+    else if (k === 'arrowright' || k === 'd') setDir(1, 0);
+    else if (k === ' ' || k === 'enter') { if (!alive) reset(); }
+  });
+
+  document.querySelectorAll('.pad button').forEach(b => {
+    b.addEventListener('touchstart', e => {
+      e.preventDefault();
+      setDir(+b.dataset.dx, +b.dataset.dy);
+    }, {passive: false});
+  });
+
+  let tx = 0, ty = 0;
+  canvas.addEventListener('touchstart', e => {
+    tx = e.touches[0].clientX; ty = e.touches[0].clientY;
+  }, {passive: true});
+  canvas.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    const dy = e.changedTouches[0].clientY - ty;
+    if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) setDir(Math.sign(dx), 0);
+    else setDir(0, Math.sign(dy));
+  }, {passive: true});
+
+  playBtn.addEventListener('click', reset);
+  draw();
+})();
+</script>
+</body>
+</html>

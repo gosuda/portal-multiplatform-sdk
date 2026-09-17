@@ -1,0 +1,38 @@
+name: PortalSample
+options:
+  bundleIdPrefix: org.gosuda.portal
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  PortalSample:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: PortalSampleApp.swift
+      - path: PortalHomeView.swift
+      - path: Contents.swift
+      - path: site
+        type: folder
+        buildPhase: resources
+      - path: site-explainer
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: ../../portal-sdk/build/XCFrameworks/release/PortalSDK.xcframework
+        embed: false
+      - framework: ../../native/ios/iosArm64/libportaltunnel.a
+        embed: false
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: org.gosuda.portal.sample
+        DEVELOPMENT_TEAM: 37FAA8L9Q7
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1,2"
+        LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/../../native/ios/iosArm64
+        OTHER_LDFLAGS: $(inherited) -framework Security
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_CFBundleDisplayName: Portal Sample
+        SWIFT_VERSION: "5.0"

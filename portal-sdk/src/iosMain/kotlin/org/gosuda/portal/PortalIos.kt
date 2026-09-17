@@ -3,6 +3,7 @@ package org.gosuda.portal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.gosuda.portal.internal.platformNativeEngine
 
 /**
  * Cancellation handle returned by the iOS-facing callback API. Cancelling an
@@ -18,14 +19,19 @@ public interface PortalOperation {
     public fun cancel()
 }
 
+private val CLIENT_CLOSED_FAILURE =
+    PortalFailure(PortalFailure.Codes.CLIENT_CLOSED, "client is closed")
+
 /**
  * Callback-based session facade for Swift callers. Kotlin `Flow` and
  * `suspend` do not map to idiomatic Swift; this wrapper exposes the same
  * contract through completion handlers and explicit subscriptions.
  *
  * Completion callbacks are invoked on the main dispatcher. Each completion
- * fires exactly once. Observing and stopping are independent: cancelling an
- * observation leaves the tunnel running.
+ * fires exactly once — including after the owning client is closed, where it
+ * reports [PortalFailure.Codes.CLIENT_CLOSED] instead of never firing.
+ * Observing and stopping are independent: cancelling an observation leaves
+ * the tunnel running.
  */
 public class PortalIosSession internal constructor(
     private val tunnel: PortalTunnel,
@@ -36,6 +42,15 @@ public class PortalIosSession internal constructor(
     /** Current authoritative snapshot. */
     public val snapshot: PortalSnapshot get() = tunnel.state.value
 
+    /** Tunnel name from the latest native status, or the configured name. */
+    public val name: String? get() = tunnel.name
+
+    /** Identity address from the latest native status, if reported. */
+    public val address: String? get() = tunnel.address
+
+    /** True while the session is in [TunnelPhase.ACTIVE]. */
+    public val isActive: Boolean get() = tunnel.isActive
+
     /**
      * Observes state snapshots. The callback receives the current snapshot
      * immediately, then every revision. Returns a subscription that must be
@@ -44,6 +59,11 @@ public class PortalIosSession internal constructor(
     public fun observeState(callback: (PortalSnapshot) -> Unit): PortalSubscription {
         val job = client.scope.launch(Dispatchers.Main) {
             tunnel.state.collect { callback(it) }
+        }
+        if (job.isCancelled) {
+            // The client is closed and the scope is dead; still deliver the
+            // current (terminal) snapshot once so observers settle.
+            callback(tunnel.state.value)
         }
         return object : PortalSubscription {
             override fun cancel() {
@@ -69,8 +89,8 @@ public class PortalIosSession internal constructor(
 
     /** Stops the session; completion receives null on success. */
     public fun stop(completion: (PortalFailure?) -> Unit) {
-        client.scope.launch(Dispatchers.Main) {
-            val failure = try {
+        enqueue(completion) {
+            try {
                 tunnel.stop()
                 null
             } catch (e: CancellationException) {
@@ -80,36 +100,27 @@ public class PortalIosSession internal constructor(
             } catch (t: Throwable) {
                 PortalFailure(PortalFailure.Codes.INTERNAL_ERROR, t.message ?: "stop failed")
             }
-            completion(failure)
         }
     }
 
     /** Fetches the authoritative native status into the snapshot. */
     public fun refresh(completion: (PortalFailure?) -> Unit) {
-        client.scope.launch(Dispatchers.Main) {
-            completion(runSessionOp("refresh") { tunnel.refresh() })
-        }
+        enqueue(completion) { runSessionOp("refresh") { tunnel.refresh() } }
     }
 
     /** Adds one relay without restarting the session. */
     public fun addRelay(relayUrl: String, completion: (PortalFailure?) -> Unit) {
-        client.scope.launch(Dispatchers.Main) {
-            completion(runSessionOp("addRelay") { tunnel.addRelay(relayUrl) })
-        }
+        enqueue(completion) { runSessionOp("addRelay") { tunnel.addRelay(relayUrl) } }
     }
 
     /** Removes one relay without restarting the session. */
     public fun removeRelay(relayUrl: String, completion: (PortalFailure?) -> Unit) {
-        client.scope.launch(Dispatchers.Main) {
-            completion(runSessionOp("removeRelay") { tunnel.removeRelay(relayUrl) })
-        }
+        enqueue(completion) { runSessionOp("removeRelay") { tunnel.removeRelay(relayUrl) } }
     }
 
     /** Updates public metadata without restarting the session. */
     public fun updateMetadata(metadata: PortalMetadata, completion: (PortalFailure?) -> Unit) {
-        client.scope.launch(Dispatchers.Main) {
-            completion(runSessionOp("updateMetadata") { tunnel.updateMetadata(metadata) })
-        }
+        enqueue(completion) { runSessionOp("updateMetadata") { tunnel.updateMetadata(metadata) } }
     }
 
     /**
@@ -121,9 +132,37 @@ public class PortalIosSession internal constructor(
         timeoutMillis: Long = 30_000,
         completion: (PortalSnapshot?, PortalFailure?) -> Unit
     ) {
-        client.scope.launch(Dispatchers.Main) {
+        enqueueSnapshot(completion) { tunnel.awaitReady(capability, timeoutMillis) }
+    }
+
+    /**
+     * Suspends until the session reports ACTIVE, then completes with the
+     * snapshot. Failure codes mirror [PortalTunnel.awaitActive].
+     */
+    public fun awaitActive(
+        timeoutMillis: Long = 30_000,
+        completion: (PortalSnapshot?, PortalFailure?) -> Unit
+    ) {
+        enqueueSnapshot(completion) { tunnel.awaitActive(timeoutMillis) }
+    }
+
+    /**
+     * Runs [block] on the main dispatcher and delivers its result to
+     * [completion]. If the client scope is already cancelled, the job never
+     * runs — report CLIENT_CLOSED so the completion still fires exactly once.
+     */
+    private fun enqueue(completion: (PortalFailure?) -> Unit, block: suspend () -> PortalFailure?) {
+        val job = client.scope.launch(Dispatchers.Main) { completion(block()) }
+        if (job.isCancelled) completion(CLIENT_CLOSED_FAILURE)
+    }
+
+    private fun enqueueSnapshot(
+        completion: (PortalSnapshot?, PortalFailure?) -> Unit,
+        block: suspend () -> PortalSnapshot
+    ) {
+        val job = client.scope.launch(Dispatchers.Main) {
             try {
-                completion(tunnel.awaitReady(capability, timeoutMillis), null)
+                completion(block(), null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PortalException) {
@@ -131,10 +170,11 @@ public class PortalIosSession internal constructor(
             } catch (t: Throwable) {
                 completion(
                     null,
-                    PortalFailure(PortalFailure.Codes.INTERNAL_ERROR, t.message ?: "awaitReady failed")
+                    PortalFailure(PortalFailure.Codes.INTERNAL_ERROR, t.message ?: "operation failed")
                 )
             }
         }
+        if (job.isCancelled) completion(null, CLIENT_CLOSED_FAILURE)
     }
 
     private suspend fun runSessionOp(name: String, block: suspend () -> Any?): PortalFailure? =
@@ -153,12 +193,20 @@ public class PortalIosSession internal constructor(
 /**
  * iOS-facing entry point. Wraps [PortalClient]; create once per app and keep
  * it alive for the tunnels' lifetime.
+ *
+ * @param allowRemoteTargets permits non-loopback `target_addr`/`udp_addr`.
+ * @param defaultIdentityPath fallback `identity_path` for configs that set
+ *   neither `identity_json` nor `identity_path`.
  */
 public class PortalIosClient(
-    allowRemoteTargets: Boolean = false
+    allowRemoteTargets: Boolean = false,
+    defaultIdentityPath: String? = null
 ) {
-    private val client = PortalClient(allowRemoteTargets)
+    private val client = PortalClient(platformNativeEngine(), allowRemoteTargets, defaultIdentityPath)
     internal val scope get() = client.scope
+
+    /** True after [close] has been called. */
+    public val isClosed: Boolean get() = client.isClosed
 
     public fun capabilities(): Set<Capability> = client.capabilities()
 
@@ -169,6 +217,7 @@ public class PortalIosClient(
      * Starts a tunnel. Completion fires exactly once on the main dispatcher
      * with either the session or a failure. The returned operation cancels
      * the start; a session that already started is stopped during rollback.
+     * Cancelling the operation means the completion does not fire.
      */
     public fun open(
         config: PortalConfig,
@@ -189,6 +238,7 @@ public class PortalIosClient(
                 )
             }
         }
+        if (job.isCancelled) completion(null, CLIENT_CLOSED_FAILURE)
         return object : PortalOperation {
             override fun cancel() {
                 job.cancel()
@@ -196,9 +246,12 @@ public class PortalIosClient(
         }
     }
 
-    /** Stops all sessions owned by this client. */
+    /**
+     * Stops all sessions owned by this client. Completion receives null on
+     * success; after the client is closed it reports CLIENT_CLOSED.
+     */
     public fun close(completion: (PortalFailure?) -> Unit) {
-        scope.launch(Dispatchers.Main) {
+        val job = scope.launch(Dispatchers.Main) {
             val failure = try {
                 client.close()
                 null
@@ -211,5 +264,6 @@ public class PortalIosClient(
             }
             completion(failure)
         }
+        if (job.isCancelled) completion(CLIENT_CLOSED_FAILURE)
     }
 }

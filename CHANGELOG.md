@@ -2,6 +2,28 @@
 
 ## 2026-09-17
 
+- feat(ios): clean-room Go mobile bridge (`native/bridge`) over
+  portal-tunnel v2.4.3 `sdk.Exposure` — replaces the removed upstream
+  `portal-tunnel/mobile`; `scripts/build-ios-engine.sh` builds
+  `libportaltunnel.a` per target (iosArm64 / iosSimulatorArm64 / iosX64)
+- feat(sdk): iOS engine linked end-to-end — per-target `linkerOpts`
+  (`-lportaltunnel` + `-framework Security`), archive declared as link
+  input, `ios*Test` tasks re-enabled when archives exist
+- fix(bridge): `PortalStop` raced the serve-exit goroutine on the
+  capacity-1 `serveErr` channel and timed out despite a clean shutdown —
+  waiters now use a broadcast `done` channel
+- test(ios): `IosEngineSmokeTest` exercises the real bridge through
+  cinterop (identity round-trip, start/stop error paths);
+  `iosSimulatorArm64Test` 29/29 green; real-relay tunnel verified on the
+  simulator (public URLs issued, clean stop)
+- feat(sample): iOS app builds and installs — xcodegen `project.yml`,
+  `PortalSampleApp` entry point, `site/`/`site-explainer/` bundle
+  resources; verified on iPhone 15 Pro
+- fix(sample): iOS Swift sources compile — `PortalIosClient` needs
+  explicit args (K/N exports no default-arg init), missing `id`/`listener`
+  fields restored, `htonl` → `INADDR_LOOPBACK.bigEndian`
+
+
 - feat(sample): GPU inference toggle in Settings → '05 / On-device model'
   — persisted via SharedPreferences, default off on emulators (GPU path
   compiles ~90 s then fails), on elsewhere; toggling while the engine is

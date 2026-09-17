@@ -1,4 +1,6 @@
+import Darwin
 import Foundation
+import os
 
 // MARK: - Publishable content
 //
@@ -13,8 +15,9 @@ protocol SampleContent {
     var summary: String { get }
     var detail: String? { get }
 
-    /// Starts the local payload. Called before the tunnel opens.
-    func start()
+    /// Starts the local payload. Called before the tunnel opens; `stop` is
+    /// always paired with it — on start failure and on session end.
+    func start() throws
     /// Releases the local payload. Idempotent.
     func stop()
 
@@ -74,22 +77,23 @@ struct ExplainerContent: SampleContent {
 /// Markov fallback. A real on-device model would need a different runtime
 /// (e.g. MLX, llama.cpp) — the endpoint shape stays identical.
 final class OnDeviceModelContent: SampleContent {
-    let id = "ondevice"
+    let id = "ondevice-model"
+    var detail: String? { "target_addr → 127.0.0.1:\(port) · /v1/generate" }
     let title = "On-device model"
     let summary = "Tiny embedded text model — real inference, no cloud"
-    let detail: String? = "target_addr → 127.0.0.1:\(port) · /v1/generate"
+    private var listener: SocketListener?
 
     let port: UInt16 = 18080
-    private var listener: SocketListener?
-    private var requests = 0
+    private let model = MarkovModel(corpus: OnDeviceModelContent.corpus)
+    private let requests = LockedCounter()
     private var startedAt = Date()
-    private let model = MarkovModel(corpus: Self.corpus)
 
-    func start() {
+
+    func start() throws {
         guard listener == nil else { return }
-        requests = 0
+        requests.reset()
         startedAt = Date()
-        listener = SocketListener(port: port) { [weak self] request in
+        listener = try SocketListener(port: port) { [weak self] request in
             self?.route(request) ?? Self.notFound
         }
     }
@@ -102,7 +106,7 @@ final class OnDeviceModelContent: SampleContent {
     var targetAddr: String? { "127.0.0.1:\(port)" }
 
     private func route(_ request: SocketListener.Request) -> SocketListener.Response {
-        requests += 1
+        let requestCount = requests.increment()
         switch request.path {
         case "/":
             return .init(status: "200 OK", contentType: "text/html; charset=utf-8", body: Self.indexHtml)
@@ -117,7 +121,7 @@ final class OnDeviceModelContent: SampleContent {
             return .json("200 OK", #"{"id":"portal-markov-2","type":"markov-chain","order":2,"parameters":\#(model.stateCount),"vocab":\#(model.vocabSize),"context":"embedded corpus, no weights file","note":"a real on-device model — tiny, but the req/res path is the same shape as a hosted LLM API"}"#)
         case "/v1/health":
             let uptime = Int(Date().timeIntervalSince(startedAt))
-            return .json("200 OK", #"{"status":"ok","model":"portal-markov-2","uptime_seconds":\#(uptime),"requests":\#(requests)}"#)
+            return .json("200 OK", #"{"status":"ok","model":"portal-markov-2","uptime_seconds":\#(uptime),"requests":\#(requestCount)}"#)
         default:
             return .json("404 Not Found", #"{"error":"not_found","path":"\#(Self.jsonEscape(request.path))","endpoints":["/","/v1/generate","/v1/model","/v1/health"]}"#)
         }
@@ -221,21 +225,21 @@ private struct SeededRNG: RandomNumberGenerator {
 /// with a status page.
 final class MinecraftContent: SampleContent {
     let id = "minecraft"
+    var detail: String? { "tcp → 127.0.0.1:\(port) (also answers HTTP)" }
     let title = "Minecraft server"
     let summary = "Server-list ping a real MC client can see"
-    let detail: String? = "tcp → 127.0.0.1:\(port) (also answers HTTP)"
 
     let port: UInt16 = 25565
     private var listener: SocketListener?
-    private var pings = 0
+    private let pings = LockedCounter()
     private var startedAt = Date()
 
-    func start() {
+    func start() throws {
         guard listener == nil else { return }
-        pings = 0
+        pings.reset()
         startedAt = Date()
-        listener = SocketListener(port: port, rawHandler: { [weak self] data, respond in
-            self?.handleMinecraft(data: data, respond: respond)
+        listener = try SocketListener(port: port, rawHandler: { [weak self] data, respond, readMore in
+            self?.handleMinecraft(data: data, respond: respond, readMore: readMore)
         })
     }
 
@@ -247,10 +251,11 @@ final class MinecraftContent: SampleContent {
     var targetAddr: String? { "127.0.0.1:\(port)" }
     var tcp: Bool { true }
 
-    /// Handles one raw connection: HTTP GET → status page; otherwise MC ping.
-    private func handleMinecraft(data: Data, respond: (Data) -> Void) {
+    /// Handles one raw connection: HTTP GET → status page; otherwise the MC
+    /// handshake → status request → status JSON → ping → pong sequence.
+    private func handleMinecraft(data: Data, respond: (Data) -> Void, readMore: () -> Data) {
         if data.first == 0x47 { // 'G' → HTTP GET
-            respond(Self.httpStatusPage(pings: pings).data(using: .utf8)!)
+            respond(Self.httpStatusPage(pings: pings.value).data(using: .utf8)!)
             return
         }
         // Minecraft packet stream: handshake → status request → ping.
@@ -258,10 +263,11 @@ final class MinecraftContent: SampleContent {
         guard let handshake = Self.readPacket(data, &offset),
               let hs = Self.parseHandshake(handshake), hs.nextState == 1,
               let _ = Self.readPacket(data, &offset) else { return }
-        pings += 1
-        respond(Self.mcPacket(id: 0x00, body: Self.statusJson(pings: pings, uptime: Int(Date().timeIntervalSince(startedAt))).data(using: .utf8)!))
-        // Optional ping → pong echo.
-        guard let ping = Self.readPacket(data, &offset), ping.count >= 9, ping[0] == 0x01 else { return }
+        let pingCount = pings.increment()
+        respond(Self.mcPacket(id: 0x00, body: Self.statusJson(pings: pingCount, uptime: Int(Date().timeIntervalSince(startedAt))).data(using: .utf8)!))
+        // The client sends its ping only after our status response — read again.
+        var pingOffset = 0
+        guard let ping = Self.readPacket(readMore(), &pingOffset), ping.count >= 9, ping[0] == 0x01 else { return }
         var pong = Data([0x01])
         pong.append(ping.subdata(in: 1..<9))
         respond(Self.mcRawPacket(pong))
@@ -328,15 +334,16 @@ final class MinecraftContent: SampleContent {
     private static func httpStatusPage(pings: Int) -> String {
         """
         HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n
-        <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Portal Minecraft sample</title><style>body{background:#080f1d;color:#f0f5fc;font-family:system-ui,sans-serif;max-width:640px;margin:60px auto;padding:0 24px;line-height:1.6}code{background:rgba(100,220,236,.12);color:#64dcec;padding:2px 8px;border-radius:6px}.card{background:#111e30;border-radius:14px;padding:20px;margin:14px 0}</style></head><body><h1>Minecraft ping from a phone</h1><p>This device answers the Minecraft server-list protocol on <code>127.0.0.1:25565</code>, exposed through the relay's TCP address.</p><div class="card"><b>To see it in Minecraft:</b><br>1. Copy the <code>tcp_addr</code> from the Activity tab<br>2. Multiplayer → Add Server → paste it<br>3. The MOTD and player count come from this device</div><p style="color:#a7b8ce">Pings so far: \(pings)</p></body></html>
+        <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Portal Minecraft sample</title><style>body{background:#080f1d;color:#f0f5fc;font-family:system-ui,sans-serif;max-width:640px;margin:60px auto;padding:0 24px;line-height:1.6}code{background:rgba(100,220,236,.12);color:#64dcec;padding:2px 8px;border-radius:6px}.card{background:#111e30;border-radius:14px;padding:20px;margin:14px 0}</style></head><body><h1>Minecraft ping from a phone</h1><p>This device answers the Minecraft server-list protocol on <code>127.0.0.1:25565</code>, exposed through the relay's TCP address.</p><div class="card"><b>To see it in Minecraft:</b><br>1. Copy the <code>tcp_addr</code> from the Activity tab<br>2. Multiplayer → Add Server → paste the address<br>3. The server list shows this device's MOTD</p><p style="color:#a7b8ce">Pings so far: \(pings)</p></body></html>
         """
     }
 }
 
 // MARK: - Socket listener (POSIX)
 
-/// Minimal loopback TCP listener. One accept loop per instance; each
-/// connection is read fully, routed, answered, and closed.
+/// Minimal loopback TCP listener. The accept loop runs on its own serial
+/// queue; each accepted connection is handled on a concurrent queue so one
+/// stalled client cannot starve the others.
 final class SocketListener {
     struct Request {
         let path: String
@@ -352,64 +359,100 @@ final class SocketListener {
         }
     }
 
-    private let fd: Int32
-    private var running = true
-    private let queue = DispatchQueue(label: "portal.sample.socket", qos: .utility)
+    enum ListenError: Error, CustomStringConvertible {
+        case socket(Int32)
+        case bind(Int32)
+        case listen(Int32)
 
-    /// HTTP mode: handler receives a parsed request, returns a response.
-    init(port: UInt16, handler: @escaping (Request) -> Response) {
-        fd = Self.bind(port: port)
-        queue.async { [weak self] in self?.acceptLoop { data in
-            guard let text = String(data: data, encoding: .utf8),
-                  let line = text.split(separator: "\r\n").first else { return nil }
-            let parts = line.split(separator: " ")
-            let target = parts.count > 1 ? String(parts[1]) : "/"
-            let path = target.split(separator: "?").first.map(String.init) ?? "/"
-            let query = target.split(separator: "?").dropFirst().first.map(String.init) ?? ""
-            let response = handler(Request(path: path, query: query))
-            let body = response.body.data(using: .utf8) ?? Data()
-            var out = "HTTP/1.1 \(response.status)\r\nContent-Type: \(response.contentType)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".data(using: .utf8)!
-            out.append(body)
-            return out
-        } }
+        var description: String {
+            switch self {
+            case .socket(let e): return "socket() failed: \(String(cString: strerror(e)))"
+            case .bind(let e): return "bind() failed: \(String(cString: strerror(e)))"
+            case .listen(let e): return "listen() failed: \(String(cString: strerror(e)))"
+            }
+        }
     }
 
-    /// Raw mode: handler receives the full request bytes, returns response bytes.
-    init(port: UInt16, rawHandler: @escaping (Data, (Data) -> Void) -> Void) {
-        fd = Self.bind(port: port)
-        queue.async { [weak self] in self?.acceptLoopRaw(handler: rawHandler) }
+    private let fd: Int32
+    private let running = OSAllocatedUnfairLock(initialState: true)
+    private let acceptQueue = DispatchQueue(label: "portal.sample.accept", qos: .utility)
+    private let connectionQueue = DispatchQueue(label: "portal.sample.conn", qos: .utility, attributes: .concurrent)
+
+    /// HTTP mode: handler receives a parsed request, returns a response.
+    init(port: UInt16, handler: @escaping (Request) -> Response) throws {
+        fd = try Self.bind(port: port)
+        acceptQueue.async { [weak self] in
+            self?.acceptLoop { data in
+                guard let text = String(data: data, encoding: .utf8),
+                      let line = text.split(separator: "\r\n").first else { return nil }
+                let parts = line.split(separator: " ")
+                let target = parts.count > 1 ? String(parts[1]) : "/"
+                let path = target.split(separator: "?").first.map(String.init) ?? "/"
+                let query = target.split(separator: "?").dropFirst().first.map(String.init) ?? ""
+                let response = handler(Request(path: path, query: query))
+                let body = response.body.data(using: .utf8) ?? Data()
+                var out = "HTTP/1.1 \(response.status)\r\nContent-Type: \(response.contentType)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".data(using: .utf8)!
+                out.append(body)
+                return out
+            }
+        }
+    }
+
+    /// Raw mode: handler receives the first bytes, may `respond` any number
+    /// of times, and may call `readMore` for request/response protocols
+    /// (e.g. the Minecraft ping that only arrives after the status reply).
+    init(port: UInt16, rawHandler: @escaping (Data, (Data) -> Void, () -> Data) -> Void) throws {
+        fd = try Self.bind(port: port)
+        acceptQueue.async { [weak self] in self?.acceptLoopRaw(handler: rawHandler) }
     }
 
     func stop() {
-        running = false
+        running.withLock { $0 = false }
+        // shutdown() is required before close(): on Darwin a plain close()
+        // does not reliably unblock a thread parked in accept().
+        shutdown(fd, SHUT_RDWR)
         close(fd)
     }
 
-    private static func bind(port: UInt16) -> Int32 {
+    /// Binds 127.0.0.1 only — the tunnel dials loopback, and the SDK's
+    /// target_addr contract forbids exposing this socket to the LAN.
+    private static func bind(port: UInt16) throws -> Int32 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw ListenError.socket(errno) }
         var opt: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, socklen_t(MemoryLayout<Int32>.size))
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &opt, socklen_t(MemoryLayout<Int32>.size))
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = port.bigEndian
-        addr.sin_addr.s_addr = INADDR_ANY
-        withUnsafePointer(to: &addr) {
+        addr.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+        let bound = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                _ = Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
-        listen(fd, 8)
+        guard bound == 0 else {
+            let e = errno
+            close(fd)
+            throw ListenError.bind(e)
+        }
+        guard listen(fd, 8) == 0 else {
+            let e = errno
+            close(fd)
+            throw ListenError.listen(e)
+        }
         return fd
     }
 
     private func acceptLoop(handler: @escaping (Data) -> Data?) {
-        while running {
+        while running.withLock({ $0 }) {
             var clientAddr = sockaddr()
             var len = socklen_t(MemoryLayout<sockaddr>.size)
             let client = accept(fd, &clientAddr, &len)
             guard client >= 0 else { break }
-            queue.async { [weak self] in
-                guard self != nil else { close(client); return }
+            connectionQueue.async {
+                Self.prepare(client: client)
+                defer { close(client) }
                 var data = Data()
                 var buf = [UInt8](repeating: 0, count: 8192)
                 while true {
@@ -421,36 +464,71 @@ final class SocketListener {
                 if let response = handler(data) {
                     _ = response.withUnsafeBytes { send(client, $0.baseAddress, response.count, 0) }
                 }
-                close(client)
             }
         }
     }
 
-    private func acceptLoopRaw(handler: @escaping (Data, (Data) -> Void) -> Void) {
-        while running {
+    private func acceptLoopRaw(handler: @escaping (Data, (Data) -> Void, () -> Data) -> Void) {
+        while running.withLock({ $0 }) {
             var clientAddr = sockaddr()
             var len = socklen_t(MemoryLayout<sockaddr>.size)
             let client = accept(fd, &clientAddr, &len)
             guard client >= 0 else { break }
-            queue.async { [weak self] in
-                guard self != nil else { close(client); return }
+            connectionQueue.async {
+                Self.prepare(client: client)
+                defer { close(client) }
                 var data = Data()
                 var buf = [UInt8](repeating: 0, count: 8192)
-                // Read until timeout or buffer full — MC protocol has no EOF marker.
-                var tv = timeval(tv_sec: 2, tv_usec: 0)
-                setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
                 while true {
                     let n = recv(client, &buf, buf.count, 0)
                     if n <= 0 { break }
                     data.append(contentsOf: buf[0..<n])
                     if n < buf.count { break }
                 }
-                handler(data) { response in
-                    _ = response.withUnsafeBytes { send(client, $0.baseAddress, response.count, 0) }
+                let readMore: () -> Data = {
+                    var more = Data()
+                    var b = [UInt8](repeating: 0, count: 8192)
+                    while true {
+                        let n = recv(client, &b, b.count, 0)
+                        if n <= 0 { break }
+                        more.append(contentsOf: b[0..<n])
+                        if n < b.count { break }
+                    }
+                    return more
                 }
-                close(client)
+                handler(data, { response in
+                    _ = response.withUnsafeBytes { send(client, $0.baseAddress, response.count, 0) }
+                }, readMore)
             }
         }
+    }
+
+    /// Per-connection setup: no SIGPIPE on send, bounded recv so a stalled
+    /// peer cannot pin a worker forever.
+    private static func prepare(client: Int32) {
+        var opt: Int32 = 1
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &opt, socklen_t(MemoryLayout<Int32>.size))
+        var tv = timeval(tv_sec: 5, tv_usec: 0)
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+    }
+}
+
+/// Lock-protected counter for stats mutated by concurrent connection
+/// handlers.
+private final class LockedCounter {
+    private let lock = OSAllocatedUnfairLock(initialState: 0)
+
+    var value: Int { lock.withLock { $0 } }
+
+    func increment() -> Int {
+        lock.withLock { value in
+            value += 1
+            return value
+        }
+    }
+
+    func reset() {
+        lock.withLock { $0 = 0 }
     }
 }
 
@@ -458,9 +536,13 @@ final class SocketListener {
 
 /// Every content the sample can publish, in picker order.
 struct SampleContents {
+    let siteDir: String
+    let explainerDir: String
     let all: [SampleContent]
 
     init(siteDir: String, explainerDir: String) {
+        self.siteDir = siteDir
+        self.explainerDir = explainerDir
         all = [
             SnakeGameContent(siteDir: siteDir),
             ExplainerContent(explainerDir: explainerDir),

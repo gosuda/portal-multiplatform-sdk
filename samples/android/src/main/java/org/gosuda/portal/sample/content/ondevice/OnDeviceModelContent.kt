@@ -27,6 +27,7 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
@@ -121,7 +122,7 @@ object OnDeviceModelContent : PublishableContent {
     override suspend fun start(context: Context) {
         loadPreferGpu(context)
         if (server != null) return
-        val socket = ServerSocket(PORT)
+        val socket = ServerSocket(PORT, 50, InetAddress.getByName("127.0.0.1"))
         server = socket
         startedAt = System.currentTimeMillis()
         requests.set(0)

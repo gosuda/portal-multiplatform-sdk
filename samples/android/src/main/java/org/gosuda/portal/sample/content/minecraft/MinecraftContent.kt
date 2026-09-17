@@ -12,6 +12,7 @@ import org.gosuda.portal.sample.content.PublishableContent
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicLong
@@ -47,7 +48,7 @@ object MinecraftContent : PublishableContent {
 
     override suspend fun start(context: Context) {
         if (server != null) return
-        val socket = ServerSocket(PORT)
+        val socket = ServerSocket(PORT, 50, InetAddress.getByName("127.0.0.1"))
         server = socket
         startedAt = System.currentTimeMillis()
         pings.set(0)

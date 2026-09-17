@@ -33,6 +33,27 @@ kotlin {
             baseName = "PortalSDK"
             isStatic = true
             xcf.add(this)
+            // The Go bridge archive is built per target by
+            // scripts/build-ios-engine.sh into native/ios/<target>/.
+            val engineDir = rootProject.file("native/ios/${target.name}")
+            if (engineDir.isDirectory) {
+                linkerOpts("-L${engineDir.absolutePath}", "-lportaltunnel", "-framework", "Security")
+            }
+        }
+        // Test binaries link the same archive so ios*Test exercises the
+        // real cinterop path end-to-end.
+        val engineDir = rootProject.file("native/ios/${target.name}")
+        if (engineDir.isDirectory) {
+            target.binaries.getTest(NativeBuildType.DEBUG).linkerOpts(
+                "-L${engineDir.absolutePath}", "-lportaltunnel", "-framework", "Security"
+            )
+            // The archive is produced outside Gradle; declare it so relinks
+            // happen when scripts/build-ios-engine.sh rebuilds it.
+            tasks.matching {
+                it.name == "linkDebugTest${target.name.replaceFirstChar(Char::uppercaseChar)}"
+            }.configureEach {
+                inputs.file(engineDir.resolve("libportaltunnel.a"))
+            }
         }
         target.compilations.getByName("main").cinterops.create("portaltunnel") {
             defFile("src/nativeInterop/cinterop/portaltunnel.def")
@@ -94,14 +115,20 @@ tasks.matching {
     dependsOn(buildPortalStub)
 }
 
-// iOS test binaries link the real libportaltunnel, which is not shipped in
-// this repository (see native/source-lock.json). Disable their link/run tasks;
-// compileTestKotlinIos* still type-checks the test sources.
-tasks.matching {
-    it.name.startsWith("linkDebugTestIos") || it.name.startsWith("linkReleaseTestIos") ||
-        (it.name.startsWith("ios") && it.name.endsWith("Test"))
-}.configureEach {
-    enabled = false
+// iOS test binaries link the Go bridge archive when it exists
+// (scripts/build-ios-engine.sh → native/ios/<target>/). Without the
+// archives the link/run tasks stay disabled; compileTestKotlinIos* still
+// type-checks the test sources.
+val iosEngineAvailable = listOf("iosArm64", "iosSimulatorArm64", "iosX64").all {
+    rootProject.file("native/ios/$it/libportaltunnel.a").isFile
+}
+if (!iosEngineAvailable) {
+    tasks.matching {
+        it.name.startsWith("linkDebugTestIos") || it.name.startsWith("linkReleaseTestIos") ||
+            (it.name.startsWith("ios") && it.name.endsWith("Test"))
+    }.configureEach {
+        enabled = false
+    }
 }
 
 mavenPublishing {

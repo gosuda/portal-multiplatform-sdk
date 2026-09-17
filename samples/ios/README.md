@@ -11,19 +11,27 @@ clipboard feedback and browser links; terminal-session URLs are hidden.
 
 ## Host app requirements
 
-This directory is a SwiftUI source sample, not a standalone Xcode project.
-Create an iOS 16+ SwiftUI app target on macOS, include `PortalHomeView.swift`
-and `Contents.swift`, and present
-`PortalHomeView(contents: SampleContents(siteDir:explainerDir:), identityPath:)`
-with two existing local site directories (`site/` for the Snake game,
-`site-explainer/` for the Portal explainer) containing `index.html`, and a
-writable identity-file path. Keep the
-view/model alive for the intended session lifetime and stop publishing before
-discarding it. There is no simulated connection or preview engine.
+This directory contains a generated Xcode project (`project.yml` →
+`xcodegen generate`) plus the SwiftUI sources. Regenerate it whenever
+`project.yml` changes; the `.xcodeproj` is gitignored.
 
-The framework alone is insufficient to run: the matching native engine archive
-below is required for linking, publishing, and identity generation. This sample
-does not substitute successful UI state when the engine is unavailable.
+```bash
+./scripts/build-ios-engine.sh            # native/ios/<target>/libportaltunnel.a
+./gradlew :portal-sdk:assemblePortalSDKReleaseXCFramework
+cd samples/ios && xcodegen generate
+xcodebuild -project PortalSample.xcodeproj -scheme PortalSample \
+  -destination 'generic/platform=iOS' -configuration Release build
+```
+
+`project.yml` links `PortalSDK.xcframework` (static) and
+`native/ios/iosArm64/libportaltunnel.a`, and sets `DEVELOPMENT_TEAM` —
+change it to your own team before building for a device.
+
+The publish screen offers a content picker (Snake game, Portal explainer,
+API server, Minecraft server) with every current public URL, clipboard
+feedback, and browser links; terminal-session URLs are hidden.
+Configuration and session state remain in one `StateObject` when switching
+destinations. There is no simulated connection or preview engine.
 
 ## Producing the framework
 
@@ -42,11 +50,13 @@ Add the XCFramework to the app target, then link the engine archive:
 # plus the library search path containing your libportaltunnel.a
 ```
 
-`libportaltunnel.a` is not shipped in this repository — the Go mobile bridge
-source is unrecovered (`native/source-lock.json`). Build it per target
-(iosArm64 device, iosSimulatorArm64, iosX64) once the bridge is available;
-the cinterop bindings in `portal-sdk` already match
-`native/include/portaltunnel.h`.
+`libportaltunnel.a` is built from `native/bridge` — a clean-room
+reimplementation of the removed upstream Go mobile bridge over
+`sdk.Exposure` (portal-tunnel v2.4.3). `scripts/build-ios-engine.sh`
+produces one archive per target (iosArm64 device, iosSimulatorArm64,
+iosX64) and the cgo header is verified against
+`native/include/portaltunnel.h`. The archives are gitignored; rebuild them
+after pulling bridge changes.
 
 ## Contract notes
 

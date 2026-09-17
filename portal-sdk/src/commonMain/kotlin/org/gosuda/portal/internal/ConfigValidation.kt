@@ -20,7 +20,7 @@ internal object ConfigValidation {
     private const val MAX_THUMBNAIL_LEN = 2048
     private const val MAX_METADATA_JSON_BYTES = 16 * 1024
 
-    private val urlPattern = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://([^/?#]*)([^?#]*)(?:#.*)?$")
+    private val urlPattern = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://([^/?#]*)([^?#]*)(?:\\?[^#]*)?(?:#.*)?$")
     private val amountPattern = Regex("^\\d+(\\.\\d{1,18})?$")
 
     fun validate(
@@ -98,8 +98,9 @@ internal object ConfigValidation {
 
     /**
      * Mirrors `utils.NormalizeRelayURL`: trims, defaults a missing scheme to
-     * `https://`, and returns the canonical form. Throws INVALID_CONFIG on
-     * malformed input.
+     * `https://`, validates, and returns the canonical form — query and
+     * fragment stripped, trailing slashes removed, and a trailing `/relay`
+     * path segment dropped. Throws INVALID_CONFIG on malformed input.
      */
     fun normalizeRelayUrl(url: String): String {
         var candidate = url.trim()
@@ -107,8 +108,14 @@ internal object ConfigValidation {
         if (!candidate.contains("://")) {
             candidate = "https://" + candidate.removePrefix("//")
         }
-        validateRelayUrl(candidate)
-        return candidate
+        val parsed = parseRelayUrl(candidate, url)
+        var path = parsed.path.trimEnd('/')
+        // Upstream checks the lowercase suffix but trims the literal one:
+        // only an exact trailing "/relay" is dropped.
+        if (path.endsWith("/relay")) {
+            path = path.dropLast("/relay".length)
+        }
+        return "${parsed.scheme}://${parsed.authority}$path"
     }
 
     /**
@@ -122,54 +129,130 @@ internal object ConfigValidation {
         if (!candidate.contains("://")) {
             candidate = "https://" + candidate.removePrefix("//")
         }
+        parseRelayUrl(candidate, url)
+    }
+
+    private data class ParsedRelayUrl(val scheme: String, val authority: String, val path: String)
+
+    private fun parseRelayUrl(candidate: String, original: String): ParsedRelayUrl {
         val match = urlPattern.matchEntire(candidate)
-            ?: fail("relay url is invalid: $url")
+            ?: fail("relay url is invalid: $original")
         val scheme = match.groupValues[1].lowercase()
         val authority = match.groupValues[2]
-        if (authority.contains('@')) fail("relay url must not include credentials: $url")
+        val path = match.groupValues[3]
+        if (authority.contains('@')) fail("relay url must not include credentials: $original")
         val host: String
         val port: String?
         if (authority.startsWith('[')) {
             val close = authority.indexOf(']')
-            if (close < 0) fail("relay url has an invalid host: $url")
+            if (close < 0) fail("relay url has an invalid host: $original")
             host = authority.substring(1, close)
             val rest = authority.substring(close + 1)
             if (rest.isNotEmpty() && !rest.startsWith(':')) {
-                fail("relay url has an invalid host: $url")
+                fail("relay url has an invalid host: $original")
             }
             port = rest.removePrefix(":").ifEmpty { null }
         } else {
             host = authority.substringBeforeLast(':')
             port = authority.substringAfterLast(':', "").ifEmpty { null }
         }
-        if (host.isEmpty() || host.contains(':')) fail("relay url has an invalid host: $url")
-        if (authority.endsWith(':')) fail("relay url has an invalid port: $url")
+        if (host.isEmpty() || host.contains(':')) fail("relay url has an invalid host: $original")
+        if (authority.endsWith(':')) fail("relay url has an invalid port: $original")
         if (port != null) {
-            val n = port.toIntOrNull() ?: fail("relay url port must be between 1 and 65535: $url")
-            if (n !in 1..65535) fail("relay url port must be between 1 and 65535: $url")
+            val n = port.toIntOrNull() ?: fail("relay url port must be between 1 and 65535: $original")
+            if (n !in 1..65535) fail("relay url port must be between 1 and 65535: $original")
         }
-        if (scheme == "http" && isLocalRelayHost(host)) return // upgraded to https upstream
-        if (scheme != "https") fail("relay url must use https: $url")
+        if (scheme == "http" && isLocalRelayHost(host)) {
+            return ParsedRelayUrl("https", authority, path) // upgraded to https upstream
+        }
+        if (scheme != "https") fail("relay url must use https: $original")
+        return ParsedRelayUrl(scheme, authority, path)
     }
 
-    /** Mirrors `utils.IsLocalRelayHost`: localhost, *.localhost, loopback IPs. */
+    /**
+     * Mirrors `utils.IsLocalRelayHost`: localhost, *.localhost, and any
+     * parsed loopback IP (127.0.0.0/8, ::1 in any compression, IPv4-mapped
+     * ::ffff:127.x).
+     */
     private fun isLocalRelayHost(host: String): Boolean {
         val h = host.lowercase().trimEnd('.')
         if (h == "localhost" || h.endsWith(".localhost")) return true
-        if (h == "::1" || h == "0:0:0:0:0:0:0:1") return true
-        return h.startsWith("127.") && h.split('.').size == 4 &&
-            h.split('.').all { it.toIntOrNull() != null && it.toInt() in 0..255 }
+        if (h.startsWith("127.") && isIpv4(h)) return true
+        val groups = parseIpv6Groups(h) ?: return false
+        // ::1 — all groups zero except the last.
+        if (groups.take(7).all { it == 0 } && groups[7] == 1) return true
+        // ::ffff:a.b.c.d — IPv4-mapped; loopback when the embedded IPv4 is.
+        if (groups.take(5).all { it == 0 } && groups[5] == 0xffff) {
+            val v4 = (groups[6] shl 16) or groups[7]
+            return (v4 ushr 24) == 127
+        }
+        return false
+    }
+
+    private fun isIpv4(host: String): Boolean {
+        val parts = host.split('.')
+        return parts.size == 4 && parts.all { part ->
+            part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() } &&
+                part.toInt() in 0..255
+        }
+    }
+
+    /**
+     * Parses an IPv6 literal (without brackets) into eight 16-bit groups.
+     * Handles `::` compression and a trailing embedded IPv4 address.
+     */
+    private fun parseIpv6Groups(host: String): IntArray? {
+        var input = host
+        var embeddedV4: IntArray? = null
+        val lastColon = input.lastIndexOf(':')
+        if (lastColon >= 0 && input.substring(lastColon + 1).contains('.')) {
+            val v4 = input.substring(lastColon + 1)
+            if (!isIpv4(v4)) return null
+            embeddedV4 = v4.split('.').map { it.toInt() }.toIntArray()
+            input = input.substring(0, lastColon + 1) + "0:0"
+        }
+        val halves = input.split("::", limit = 2)
+        if (halves.size == 2 && input.indexOf("::") != input.lastIndexOf("::")) return null
+        val head = halves[0].split(':').filter { it.isNotEmpty() }
+        val tail = if (halves.size == 2) halves[1].split(':').filter { it.isNotEmpty() } else emptyList()
+        if (halves.size == 1 && head.size != 8) return null
+        if (head.size + tail.size > 8) return null
+        val groups = IntArray(8)
+        fun parseGroup(s: String): Int? =
+            if (s.length in 1..4 && s.all { it in '0'..'9' || it in 'a'..'f' }) s.toInt(16) else null
+        head.forEachIndexed { i, s -> groups[i] = parseGroup(s) ?: return null }
+        tail.forEachIndexed { i, s -> groups[8 - tail.size + i] = parseGroup(s) ?: return null }
+        if (embeddedV4 != null) {
+            groups[6] = (embeddedV4[0] shl 8) or embeddedV4[1]
+            groups[7] = (embeddedV4[2] shl 8) or embeddedV4[3]
+        }
+        return groups
     }
 
     private fun validateTarget(addr: String, field: String, allowRemote: Boolean) {
+        val host: String
+        val port: String
+        if (addr.startsWith('[')) {
+            val close = addr.indexOf(']')
+            if (close < 0) fail("$field has an invalid host: $addr")
+            host = addr.substring(1, close)
+            val rest = addr.substring(close + 1)
+            if (!rest.startsWith(':')) fail("$field must include a port: $addr")
+            port = rest.removePrefix(":")
+        } else {
+            host = addr.substringBeforeLast(':')
+            port = addr.substringAfterLast(':', "")
+        }
+        if (host.isEmpty() || host.contains(':')) fail("$field has an invalid host: $addr")
+        val n = port.toIntOrNull() ?: fail("$field must include a port between 1 and 65535: $addr")
+        if (n !in 1..65535) fail("$field port must be between 1 and 65535: $addr")
         if (allowRemote) return
-        val host = addr.substringBeforeLast(':').removeSurrounding("[", "]")
-        val loopback = host == "localhost" || host == "::1" ||
-            host.startsWith("127.") || host == "0.0.0.0"
+        val loopback = isLocalRelayHost(host) || host == "0.0.0.0" || host == "::"
         if (!loopback) {
             fail("$field must be a loopback address unless allowRemoteTargets is set: $addr")
         }
     }
+
 
     private fun validateRoute(route: PortalHTTPRoute) {
         if (!route.prefix.startsWith('/')) {

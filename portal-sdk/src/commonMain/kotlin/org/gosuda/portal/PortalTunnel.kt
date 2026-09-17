@@ -291,8 +291,8 @@ public class PortalTunnel internal constructor(
                 }
                 else -> PortalEvent.Unknown(tunnelId, eventType, payloadJson)
             }
-        } catch (e: Exception) {
-            PortalEvent.Error(tunnelId, "failed to parse native event: ${e.message}")
+        } catch (t: Throwable) {
+            PortalEvent.Error(tunnelId, "failed to parse native event: ${t.message}")
         }
         if (_events.subscriptionCount.value == 0 || !_events.tryEmit(event)) {
             val dropped = droppedEvents.addAndFetch(1)

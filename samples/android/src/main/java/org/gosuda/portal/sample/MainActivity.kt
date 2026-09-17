@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
-import org.gosuda.portal.Capability
 import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalDiagnostics
 import org.gosuda.portal.PortalEvent
@@ -192,7 +191,7 @@ class MainActivity : ComponentActivity() {
         val t = tunnel.value ?: return
         ownerScope.launch {
             try {
-                t.awaitReady(Capability.STATIC_SITE, timeoutMillis = 15_000)
+                t.awaitActive(timeoutMillis = 15_000)
             } catch (e: PortalException) {
                 lastError.value = "awaitReady failed: ${e.code} ${e.message}"
             }

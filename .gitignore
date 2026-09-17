@@ -9,5 +9,13 @@ captures
 local.properties
 xcuserdata
 .kotlin
-#So we don't accidentally commit our private keys
+#So we do not accidentally commit our private keys
 *.gpg
+
+# iOS engine archives (rebuild via scripts/build-ios-engine.sh)
+native/ios/
+# Generated Xcode project (regenerate via xcodegen)
+samples/ios/PortalSample.xcodeproj/
+
+# Local go build output
+native/bridge/bridge

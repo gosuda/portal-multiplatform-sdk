@@ -28,12 +28,18 @@
 
 ## Blocked / next
 
-- [ ] Recover Go mobile bridge source (`portal-tunnel/mobile` is gone from
-      upstream) — required for iOS archive, ABI v2, and release gate G0
-- [ ] iOS: build `libportaltunnel.a` per target, embed via
-      `staticLibraries`/`libraryPaths` in `portaltunnel.def`, re-enable
-      `ios*Test` link tasks, verify `PortalSDK.xcframework` on macOS
-- [x] Real-relay integration verified on emulator (3 relays ready, HTTP 200)
-- [x] Android release + R8 verified; iOS device/simulator still blocked on libportaltunnel.a
-- [x] Maven Local clean-consumer resolves portal-sdk-android + portal-native-android
-- [x] Android minSdk = 26 (decided); 32-bit ABIs not shipped (no .so)
+- [x] Go mobile bridge reimplemented (`native/bridge`, clean-room over
+  portal-tunnel v2.4.3 `sdk.Exposure`); `scripts/build-ios-engine.sh`
+  builds per-target `libportaltunnel.a`
+- [x] iOS: archives linked via per-target `linkerOpts` + `-framework
+  Security`; `ios*Test` re-enabled when archives exist;
+  `iosSimulatorArm64Test` 29/29 green incl. real-engine smoke test
+- [x] Real-relay tunnel verified on iOS simulator (public URLs issued,
+  clean stop); `PortalSDK.xcframework` built; sample app installed and
+  launched on iPhone 15 Pro
+- [ ] Exercise a tunnel from the on-device app UI (manual step; no UI
+  automation)
+- [ ] Resolve `license_review` + `android_ndk_revision` in
+  `native/source-lock.json` (release gate)
+- [ ] ABI v2 (create/attach/start split, observer quiescence, native
+  revisions) — tracked in docs/DESIGN_RULES.md

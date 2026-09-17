@@ -106,8 +106,14 @@ internal object PortalEventHub {
             return
         }
         for (raw in pending) {
-            val event = tunnel.handleRawEvent(raw.eventType, raw.payloadJson)
-            tunnel.owner.onTunnelEvent(event)
+            try {
+                val event = tunnel.handleRawEvent(raw.eventType, raw.payloadJson)
+                tunnel.owner.onTunnelEvent(event)
+            } catch (t: Throwable) {
+                // Same contract as dispatch(): a reducer failure is counted,
+                // never propagated into the caller (here: open()).
+                droppedOrphans.addAndFetch(1)
+            }
         }
     }
 

@@ -56,5 +56,49 @@
 - **Context / Symptom:** `iosSimulatorArm64Test`/`iosX64Test` would link the
   real `libportaltunnel`, which is not shipped (source-lock: MISSING).
 - **Solution:** `linkDebugTestIos*`/`linkReleaseTestIos*`/`ios*Test` tasks are
-  disabled in `portal-sdk/build.gradle.kts`; `compileTestKotlinIos*` still
-  type-checks test sources on macOS CI. Re-enable when the iOS archive exists.
+  disabled in `portal-sdk/build.gradle.kts` only while
+  `native/ios/<target>/libportaltunnel.a` is absent;
+  `compileTestKotlinIos*` still type-checks test sources. With the archives
+  present (built by `scripts/build-ios-engine.sh`) the tasks link and run
+  against the real engine.
+
+### [2026-09-17] `PortalStop` raced the serve-exit goroutine on `serveErr`
+
+- **Context / Symptom:** `native stop failed (code 1): tunnel stop timed
+  out` even though the tunnel logged a clean shutdown and emitted STOPPED.
+- **Root Cause:** `PortalStop` and the serve-exit goroutine both received
+  from the capacity-1 `serveErr` channel; whichever lost the race blocked
+  until the 15 s timeout.
+- **Solution:** The serve-exit goroutine is now the sole `serveErr`
+  consumer; `markStopped` closes a separate `done` channel that
+  `PortalStop`/`PortalStopAll` wait on.
+- **Prevention:** Never add a second consumer to a "result" channel; use a
+  broadcast `done` channel for waiters.
+
+### [2026-09-17] Gradle does not relink when an external `.a` changes
+
+- **Context / Symptom:** After rebuilding `libportaltunnel.a`,
+  `linkDebugTestIosSimulatorArm64` stayed UP-TO-DATE and the test binary
+  kept the old engine.
+- **Root Cause:** The archive is produced outside Gradle, so the link task
+  had no declared input for it.
+- **Solution:** `inputs.file(native/ios/<target>/libportaltunnel.a)` is
+  declared on each `linkDebugTestIos*` task.
+
+### [2026-09-17] Go runtime on iOS needs `Security.framework`
+
+- **Context / Symptom:** `Undefined symbols for architecture arm64:
+  _SecTrustEvaluateWithError, _SecCertificateCopyData, …` when linking the
+  Go archive.
+- **Root Cause:** Go's Darwin TLS path calls the Security framework.
+- **Solution:** Add `-framework Security` to the consumer's linker flags
+  (already in `portal-sdk` linkerOpts and `samples/ios/project.yml`).
+
+### [2026-09-17] Kotlin/Native does not export default-arg constructors to Swift
+
+- **Context / Symptom:** `'init()' is unavailable` for
+  `PortalIosClient()` in Swift.
+- **Root Cause:** Kotlin default parameter values are not exported; only
+  the full-argument initializer exists in the Objective-C/Swift surface.
+- **Solution:** Call `PortalIosClient(allowRemoteTargets: false,
+  defaultIdentityPath: nil)` explicitly.

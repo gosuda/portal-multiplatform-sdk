@@ -84,7 +84,7 @@ flowchart LR
 | Target | Status | Native engine |
 |---|---|---|
 | `android` (arm64-v8a, x86_64) | ✅ shipped | prebuilt `libportaltunnel.so`, 16 KB-page aligned |
-| `iosArm64` / `iosSimulatorArm64` / `iosX64` | ⚠️ compile-only | link `libportaltunnel.a` yourself — see [native/README.md](native/README.md) |
+| `iosArm64` / `iosSimulatorArm64` / `iosX64` | ✅ verified | `libportaltunnel.a` built from `native/bridge` via `scripts/build-ios-engine.sh` — see [native/README.md](native/README.md) |
 | `linuxX64` | 🧪 experimental | C stub for tests; link the real `.so` for production |
 
 ## Install
@@ -97,6 +97,8 @@ implementation("io.github.kimmandoo:portal-sdk:0.1.0")
 
 iOS additionally needs the `PortalSDK` XCFramework plus `libportaltunnel.a`
 linked into the app target — see [samples/ios/README.md](samples/ios/README.md).
+The engine archive is rebuilt from `native/bridge` (clean-room Go bridge over
+portal-tunnel v2.4.3 `sdk.Exposure`) and is gitignored.
 
 ## Quick start
 

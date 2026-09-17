@@ -2,11 +2,11 @@
   "abi_version": 1,
   "wire_schema_version": 1,
   "core_repository": "https://github.com/gosuda/portal-tunnel",
-  "core_commit": "UNRESOLVED",
-  "mobile_bridge_source": "UNRESOLVED: portal-tunnel/mobile was removed from upstream; the Go bridge that produced these binaries is not publicly available",
-  "go_toolchain": "UNRESOLVED",
+  "core_commit": "119d143bc1ad4d38e8cf6a427fa89deb9b8fff25 (tag v2.4.3)",
+  "mobile_bridge_source": "native/bridge (clean-room reimplementation of the removed portal-tunnel/mobile; builds with -buildmode=c-archive via scripts/build-ios-engine.sh)",
+  "go_toolchain": "go1.27.1 darwin/arm64",
   "android_ndk_revision": "UNRESOLVED",
-  "xcode_version": "26.0",
+  "xcode_version": "27.0",
   "license_review": "PENDING: portal-tunnel is MIT; binary redistribution terms for these artifacts are unverified",
   "artifacts": {
     "android/arm64-v8a/libportaltunnel.so": {
@@ -21,8 +21,20 @@
       "sha256": "a99a924cfde1fb6c221376c4a2b0a1566cba5247cf866aa7d998f693f825e7ab",
       "elf_max_page_size": "16384"
     },
-    "ios/libportaltunnel.a": {
-      "status": "MISSING: no iOS archive is shipped; consumers must build it from the Go mobile bridge once recovered"
+    "ios/iosArm64/libportaltunnel.a": {
+      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "sha256": "a005001459acf5489917d75a554c8534838298b567e4de73f0f8ff692accc821",
+      "min_ios": "16.0"
+    },
+    "ios/iosSimulatorArm64/libportaltunnel.a": {
+      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "sha256": "c5a823d9eda6514ad69b54c16bb954ff95901b38297dea87e79b02691df7009b",
+      "min_ios": "16.0"
+    },
+    "ios/iosX64/libportaltunnel.a": {
+      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "sha256": "a4e23d1f464984455cb4af02aa51d2cd9500b84bb277a370724a0a591a5c7984",
+      "min_ios": "16.0"
     }
   },
   "release_gate": "Do not publish a release while any field reads UNRESOLVED, PENDING, MISSING, or TO_BE_FILLED."

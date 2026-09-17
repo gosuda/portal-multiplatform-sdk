@@ -89,7 +89,10 @@ app (Kotlin / Swift)
   arm64-v8a, x86_64 (both 16KB-page aligned). minSdk 26.
 - iOS: foreground sessions; no promise of indefinite background execution.
   `PortalIosClient`/`PortalIosSession` provide callback-based APIs on the
-  main dispatcher; cancelling an observation never stops the tunnel.
+  main dispatcher; cancelling an observation never stops the tunnel. The
+  engine archive comes from `native/bridge` (clean-room Go bridge over
+  `sdk.Exposure`), built per target by `scripts/build-ios-engine.sh` and
+  linked via per-target `linkerOpts` plus `-framework Security`.
 - linuxX64: experimental; exists to exercise the shared `nativeMain` adapter
   and cinterop path on CI/desktop.
 
@@ -97,7 +100,9 @@ app (Kotlin / Swift)
 
 - `native/source-lock.json` tracks core/bridge commits, toolchains, and
   artifact SHA-256s. `UNRESOLVED`/`PENDING`/`MISSING` fields block releases.
-- The Go mobile bridge source is currently unrecovered; the iOS archive is
-  not shipped. Do not advertise iOS engine support as complete until a clean
-  consumer links and runs it.
+- The Go mobile bridge is reimplemented in `native/bridge` (upstream
+  `portal-tunnel/mobile` was removed); iOS archives are built locally and
+  gitignored. iOS engine support is verified: `iosSimulatorArm64Test` links
+  and runs against the real archive, and a real-relay tunnel was observed
+  end-to-end on the simulator.
 - CI runs only for `release-*` tags and `workflow_dispatch` (AGENTS.md).

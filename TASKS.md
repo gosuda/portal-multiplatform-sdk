@@ -109,6 +109,18 @@ packaging, verification commands, and exit criteria:
       `Package.swift`; attaching them to the final GitHub release remains part
       of the release operation.
 
+#### Next release verification
+
+- [ ] Push commit `24b3875` and run `Publish Multiplatform SDK` on a macOS
+      release runner.
+- [ ] Confirm all three staged iOS klibs contain `libportaltunnel.a`, the clean
+      KMP consumer links its `iosArm64` framework, and the self-contained
+      XCFramework passes embedded-symbol verification.
+- [ ] Publish the validated Android, desktop, and iOS Maven graph to Maven
+      Central.
+- [ ] Attach `PortalSDK.xcframework.zip` and the generated versioned
+      `Package.swift` to the matching GitHub release.
+
 ### P5 — Rebuild onboarding around outcomes
 
 - [x] Replace the primary quick starts with copy-paste HTTP publish examples

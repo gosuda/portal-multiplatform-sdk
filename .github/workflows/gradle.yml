@@ -56,10 +56,17 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      # klib compilation only: linking test binaries needs libportaltunnel.a,
-      # which is not shipped (native/source-lock.json).
-      - name: Compile iOS targets
-        run: ./gradlew :portal-sdk:compileKotlinIosArm64 :portal-sdk:compileKotlinIosSimulatorArm64 :portal-sdk:compileKotlinIosX64 :portal-sdk:compileTestKotlinIosSimulatorArm64
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+      - name: Build self-contained iOS variants
+        run: |
+          ./gradlew :portal-sdk:compileKotlinIosArm64 \
+            :portal-sdk:compileKotlinIosSimulatorArm64 \
+            :portal-sdk:compileKotlinIosX64 \
+            :portal-sdk:compileTestKotlinIosSimulatorArm64 \
+            publishIosSdkToSampleRepository
 
   # Builds the libportaltunnel shared library for each desktop target on its
   # native runner, verifies the v1 ABI contract, and uploads the artifact.
@@ -121,12 +128,21 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Download desktop engines
+      - name: Download linux-x64 desktop engine
         uses: actions/download-artifact@v4
         with:
-          pattern: desktop-engine-*
-          path: native/desktop
-          merge-multiple: true
+          name: desktop-engine-linux-x64
+          path: native/desktop/linux-x64
+      - name: Download windows-x64 desktop engine
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-engine-windows-x64
+          path: native/desktop/windows-x64
+      - name: Download macos-universal desktop engine
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-engine-macos-universal
+          path: native/desktop/macos-universal
       - name: Publish complete desktop SDK graph to isolated Maven repository
         run: ./gradlew publishDesktopSdkToSampleRepository -Pportal.native.requireComplete=true
       - name: Build and package desktop sample as a Maven consumer

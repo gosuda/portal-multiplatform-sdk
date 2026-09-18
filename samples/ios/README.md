@@ -16,16 +16,18 @@ This directory contains a generated Xcode project (`project.yml` →
 `project.yml` changes; the `.xcodeproj` is gitignored.
 
 ```bash
-./scripts/build-ios-engine.sh            # native/ios/<target>/libportaltunnel.a
 ./gradlew :portal-sdk:assemblePortalSDKReleaseXCFramework
+./scripts/package-ios-xcframework.sh
 cd samples/ios && xcodegen generate
 xcodebuild -project PortalSample.xcodeproj -scheme PortalSample \
   -destination 'generic/platform=iOS' -configuration Release build
 ```
 
-`project.yml` links `PortalSDK.xcframework` (static) and
-`native/ios/iosArm64/libportaltunnel.a`, and sets `DEVELOPMENT_TEAM` —
-change it to your own team before building for a device.
+Gradle builds and embeds the matching Go engine archive in each KMP iOS klib
+and XCFramework slice. `project.yml` links only the self-contained
+`dist/PortalSDK.xcframework`; users do not build, locate, or link
+`libportaltunnel.a`. Change `DEVELOPMENT_TEAM` to your own team for a device
+build.
 
 The publish screen offers a content picker (Snake game, Portal explainer,
 API server, Minecraft server) with every current public URL, clipboard
@@ -38,25 +40,19 @@ destinations. There is no simulated connection or preview engine.
 On macOS:
 
 ```bash
-./gradlew :portal-sdk:assemblePortalSDKXCFramework
-# -> portal-sdk/build/XCFrameworks/release/PortalSDK.xcframework (static)
+./gradlew :portal-sdk:assemblePortalSDKReleaseXCFramework
+./scripts/package-ios-xcframework.sh
+# -> dist/PortalSDK.xcframework
+# -> dist/PortalSDK.xcframework.zip
+# -> dist/Package.swift
 ```
 
-Add the XCFramework to the app target, then link the engine archive:
-
-```
-# Build settings -> Other Linker Flags
--lportaltunnel
-# plus the library search path containing your libportaltunnel.a
-```
-
-`libportaltunnel.a` is built from `native/bridge` — a clean-room
-reimplementation of the removed upstream Go mobile bridge over
-`sdk.Exposure` (portal-tunnel v2.4.3). `scripts/build-ios-engine.sh`
-produces one archive per target (iosArm64 device, iosSimulatorArm64,
-iosX64) and the cgo header is verified against
-`native/include/portaltunnel.h`. The archives are gitignored; rebuild them
-after pulling bridge changes.
+The iOS cinterop definition embeds the matching archive using
+`staticLibraries`/`libraryPaths` and carries `Security.framework` linkage in
+the published klib. The build invokes `scripts/build-ios-engine.sh`
+automatically; that script compiles all device/simulator archives from
+`native/bridge` and verifies their C declarations against
+`native/include/portaltunnel.h`.
 
 ## Contract notes
 

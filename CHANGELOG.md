@@ -2,6 +2,15 @@
 
 ## 2026-09-18
 
+- fix(publishing): preserved each desktop artifact's target directory when
+  downloading the CI matrix, so complete runtime staging finds linux-x64,
+  windows-x64, and macos-universal in the paths required by the indexer
+
+- feat(ios): embedded each target's Go engine archive and Security linkage in
+  its published KMP klib, made Gradle build the archives automatically, and
+  produced a self-contained XCFramework/Swift package without consumer-managed
+  native libraries
+
 - fix(desktop): created the generated native resource directory before
   writing `index.json`, allowing clean macOS release runners to stage the
   desktop Maven runtime; native checksums now stream instead of loading entire

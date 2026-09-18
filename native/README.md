@@ -31,12 +31,13 @@ library requirement.
 
 ## iOS engine archive
 
-`scripts/build-ios-engine.sh` compiles `native/bridge` per target into
-`native/ios/<target>/libportaltunnel.a` (gitignored):
+`portal-sdk:buildIosEngine` invokes `scripts/build-ios-engine.sh` automatically
+when an Apple cinterop is compiled or published. It compiles `native/bridge`
+per target into gitignored `native/ios/<target>/libportaltunnel.a` archives.
+Direct script invocation remains available for diagnostics:
 
 ```bash
-./scripts/build-ios-engine.sh                 # all three targets
-./scripts/build-ios-engine.sh iosArm64        # one target
+./scripts/build-ios-engine.sh iosArm64
 ```
 
 | Target | SDK | GOARCH |
@@ -45,15 +46,15 @@ library requirement.
 | `iosSimulatorArm64` | iphonesimulator | arm64 |
 | `iosX64` | iphonesimulator | amd64 |
 
-Minimum iOS version is 16.0. The script diffs the cgo-generated header
-against `include/portaltunnel.h` — the extern signatures must stay
-identical or cinterop and the archive drift.
+Minimum iOS version is 16.0. The script compares all generated `Portal*`
+declarations with `include/portaltunnel.h` and fails on ABI drift.
 
-`portal-sdk` links the archive into the `PortalSDK` framework and the
-`ios*Test` binaries via per-target `linkerOpts` when
-`native/ios/<target>/` exists; without the archives the iOS link/test
-tasks stay disabled and `compileTestKotlinIos*` still type-checks.
-Consumers additionally need `-framework Security` (Go runtime TLS).
+Gradle generates one target-specific cinterop definition with
+`staticLibraries = libportaltunnel.a`, the matching `libraryPaths`, and
+`linkerOpts = -framework Security`. Kotlin/Native embeds the archive into each
+published klib. KMP consumers resolve the normal Maven coordinate; Swift
+consumers use the generated self-contained XCFramework/Swift package. Neither
+path requires a consumer-managed archive or linker search path.
 
 ## Remaining gaps
 

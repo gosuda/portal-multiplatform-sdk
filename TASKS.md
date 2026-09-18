@@ -102,13 +102,12 @@ packaging, verification commands, and exit criteria:
       `android_ndk_revision` is pinned to r29 and the previous external
       binary-license blocker was removed: Gradle now builds both JNI `.so`
       files from the MIT-licensed `native/bridge`.
-- [ ] Package the iOS engine with the SDK distribution so consumers do not
-      build or manually link `libportaltunnel.a`.
-      (`scripts/package-ios-xcframework.sh` written — merges the Go archive
-      into each framework slice, rebuilds the XCFramework, emits a SwiftPM
-      manifest; requires macOS to run and verify.)
-- [ ] Provide a versioned Swift Package or binary XCFramework release with one
-      reproducible installation path. (Blocked on the packaging step above.)
+- [x] Package the iOS engine with each published KMP klib and XCFramework
+      slice so consumers do not build or manually link `libportaltunnel.a`.
+- [ ] Publish the generated versioned Swift package/XCFramework release asset.
+      The release workflow now builds and uploads the self-contained zip and
+      `Package.swift`; attaching them to the final GitHub release remains part
+      of the release operation.
 
 ### P5 — Rebuild onboarding around outcomes
 
@@ -129,7 +128,8 @@ packaging, verification commands, and exit criteria:
       public URL without supplying an identity path. (Blocked on P4 publish.)
 - [ ] A clean iOS consumer installs one released package/artifact and obtains a
       public URL without manually linking the Go archive or filling every
-      `PortalConfig` field. (Blocked on P4 packaging.)
+      `PortalConfig` field. Packaging and clean-consumer link verification are
+      wired; the release workflow must pass on macOS.
 - [ ] Existing wire golden tests, lifecycle tests, platform builds, and
       real-relay Android/iOS smoke scenarios remain green.
       (`linuxX64Test` 39/39 is green; Android/iOS builds and real-relay smokes

@@ -110,20 +110,57 @@ jobs:
             "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
 
 
-      - name: Download complete desktop engine matrix
+      - name: Download linux-x64 desktop engine
         uses: actions/download-artifact@v4
         with:
-          pattern: desktop-engine-*
-          path: native/desktop
-          merge-multiple: true
+          name: desktop-engine-linux-x64
+          path: native/desktop/linux-x64
+      - name: Download windows-x64 desktop engine
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-engine-windows-x64
+          path: native/desktop/windows-x64
+      - name: Download macos-universal desktop engine
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-engine-macos-universal
+          path: native/desktop/macos-universal
 
       - name: Verify Maven artifacts with samples
         run: |
           ./gradlew publishDesktopSdkToSampleRepository publishAndroidSdkToSampleRepository \
+            publishIosSdkToSampleRepository \
             -Pportal.native.requireComplete=true --no-configuration-cache
           ./gradlew :samples:desktop:build :samples:desktop:minecraftSmoke :samples:desktop:ondeviceSmoke \
             :samples:android:assembleDebug \
             -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven" --no-configuration-cache
+          klib_count=0
+          for klib in build/sample-maven/io/github/gosuda/portal-sdk-ios*/*/*.klib; do
+            unzip -l "$klib" | grep -q 'libportaltunnel.a' || {
+              echo "::error::$klib does not embed libportaltunnel.a"
+              exit 1
+            }
+            klib_count=$((klib_count + 1))
+          done
+          test "$klib_count" -eq 3 || {
+            echo "::error::expected 3 published iOS klibs, found $klib_count"
+            exit 1
+          }
+          ./scripts/verify-ios-maven-consumer.sh "$GITHUB_WORKSPACE/build/sample-maven"
+      - name: Package self-contained iOS XCFramework
+        run: |
+          ./gradlew :portal-sdk:assemblePortalSDKReleaseXCFramework --no-configuration-cache
+          ./scripts/package-ios-xcframework.sh
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            python3 -c 'import os, pathlib; p = pathlib.Path("dist/Package.swift"); p.write_text(p.read_text().replace("RELEASE_TAG", os.environ["GITHUB_REF_NAME"]))'
+          fi
+      - name: Upload iOS SDK distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: PortalSDK-ios
+          path: |
+            dist/PortalSDK.xcframework.zip
+            dist/Package.swift
       - name: Publish to MavenCentral
         run: ./gradlew publishToMavenCentral -Pportal.native.requireComplete=true --no-configuration-cache
         env:

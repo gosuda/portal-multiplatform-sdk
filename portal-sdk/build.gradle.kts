@@ -12,6 +12,55 @@ plugins {
 group = "io.github.gosuda"
 version = "0.1.0"
 
+abstract class GenerateIosInteropDefs : DefaultTask() {
+    @get:Input
+    abstract val targetNames: ListProperty<String>
+
+    @get:Input
+    abstract val engineRootPath: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val engineRoot = File(engineRootPath.get())
+        targetNames.get().forEach { targetName ->
+            val output = outputDir.file("$targetName/portaltunnel.def").get().asFile
+            output.parentFile.mkdirs()
+            output.writeText(
+                """
+                headers = portaltunnel.h
+                headerFilter = portaltunnel.h
+                package = portaltunnel
+                staticLibraries = libportaltunnel.a
+                libraryPaths = ${engineRoot.resolve(targetName).absolutePath}
+                linkerOpts = -framework Security
+                """.trimIndent() + "\n"
+            )
+        }
+    }
+}
+
+val iosEngineTargets = listOf("iosArm64", "iosSimulatorArm64", "iosX64")
+val buildIosEngine = tasks.register<Exec>("buildIosEngine") {
+    group = "build"
+    description = "Builds all iOS engine archives from native/bridge."
+    inputs.dir(rootProject.file("native/bridge"))
+    inputs.file(rootProject.file("scripts/build-ios-engine.sh"))
+    outputs.files(iosEngineTargets.map {
+        rootProject.file("native/ios/$it/libportaltunnel.a")
+    })
+    workingDir(rootProject.projectDir)
+    commandLine("bash", rootProject.file("scripts/build-ios-engine.sh").absolutePath)
+}
+
+val prepareIosInteropDefs = tasks.register<GenerateIosInteropDefs>("prepareIosInteropDefs") {
+    targetNames.set(iosEngineTargets)
+    engineRootPath.set(rootProject.file("native/ios").absolutePath)
+    outputDir.set(layout.buildDirectory.dir("generated/iosInterop"))
+}
+
 kotlin {
     explicitApi()
     android {
@@ -39,30 +88,13 @@ kotlin {
             baseName = "PortalSDK"
             isStatic = true
             xcf.add(this)
-            // The Go bridge archive is built per target by
-            // scripts/build-ios-engine.sh into native/ios/<target>/.
-            val engineDir = rootProject.file("native/ios/${target.name}")
-            if (engineDir.isDirectory) {
-                linkerOpts("-L${engineDir.absolutePath}", "-lportaltunnel", "-framework", "Security")
-            }
-        }
-        // Test binaries link the same archive so ios*Test exercises the
-        // real cinterop path end-to-end.
-        val engineDir = rootProject.file("native/ios/${target.name}")
-        if (engineDir.isDirectory) {
-            target.binaries.getTest(NativeBuildType.DEBUG).linkerOpts(
-                "-L${engineDir.absolutePath}", "-lportaltunnel", "-framework", "Security"
-            )
-            // The archive is produced outside Gradle; declare it so relinks
-            // happen when scripts/build-ios-engine.sh rebuilds it.
-            tasks.matching {
-                it.name == "linkDebugTest${target.name.replaceFirstChar(Char::uppercaseChar)}"
-            }.configureEach {
-                inputs.file(engineDir.resolve("libportaltunnel.a"))
-            }
         }
         target.compilations.getByName("main").cinterops.create("portaltunnel") {
-            defFile("src/nativeInterop/cinterop/portaltunnel.def")
+            defFile(
+                layout.buildDirectory.file(
+                    "generated/iosInterop/${target.name}/portaltunnel.def"
+                )
+            )
             includeDirs(rootProject.file("native/include"))
         }
     }
@@ -158,20 +190,11 @@ tasks.matching {
     dependsOn(buildPortalStub)
 }
 
-// iOS test binaries link the Go bridge archive when it exists
-// (scripts/build-ios-engine.sh → native/ios/<target>/). Without the
-// archives the link/run tasks stay disabled; compileTestKotlinIos* still
-// type-checks the test sources.
-val iosEngineAvailable = listOf("iosArm64", "iosSimulatorArm64", "iosX64").all {
-    rootProject.file("native/ios/$it/libportaltunnel.a").isFile
-}
-if (!iosEngineAvailable) {
-    tasks.matching {
-        it.name.startsWith("linkDebugTestIos") || it.name.startsWith("linkReleaseTestIos") ||
-            (it.name.startsWith("ios") && it.name.endsWith("Test"))
-    }.configureEach {
-        enabled = false
-    }
+// Each Apple cinterop embeds its matching Go archive into the published klib.
+// Consumers therefore resolve one KMP dependency and inherit Security linkage;
+// they never build or link libportaltunnel.a themselves.
+tasks.matching { it.name.startsWith("cinteropPortaltunnelIos") }.configureEach {
+    dependsOn(buildIosEngine, prepareIosInteropDefs)
 }
 
 mavenPublishing {

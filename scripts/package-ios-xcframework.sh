@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # Packages a self-contained PortalSDK.xcframework for Swift consumers.
 #
-# The Kotlin/Native static framework does not embed the Go tunnel engine, so
-# consumers currently link libportaltunnel.a by hand. This script merges the
-# engine archive into each framework slice with libtool, rebuilds the
-# XCFramework, zips it deterministically, and emits a SwiftPM manifest whose
-# binary target carries the Security framework linkage.
+# The KMP cinterop klibs embed their matching Go archives, so the assembled
+# framework is already self-contained. This script verifies the engine symbols,
+# copies the XCFramework, zips it deterministically, and emits a SwiftPM
+# manifest that carries Security framework linkage.
 #
 # Prerequisites (macOS only):
-#   ./scripts/build-ios-engine.sh
 #   ./gradlew :portal-sdk:assemblePortalSDKReleaseXCFramework
 #
 # Output:
-#   dist/PortalSDK.xcframework      merged, self-contained
+#   dist/PortalSDK.xcframework      self-contained distribution
 #   dist/PortalSDK.xcframework.zip  release asset for the SwiftPM binary target
 #   dist/Package.swift              manifest with the computed checksum
 set -euo pipefail
@@ -21,75 +19,32 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 DIST="$ROOT/dist"
-WORK="$DIST/.work"
 XCF_SRC="$ROOT/portal-sdk/build/XCFrameworks/release/PortalSDK.xcframework"
-ENGINE_DIR="$ROOT/native/ios"
 
-for tool in libtool lipo xcodebuild ditto swift; do
+for tool in lipo ditto swift; do
     command -v "$tool" >/dev/null || { echo "error: $tool not found (macOS required)" >&2; exit 1; }
 done
 [ -d "$XCF_SRC" ] || { echo "error: $XCF_SRC missing — run assemblePortalSDKReleaseXCFramework" >&2; exit 1; }
-for t in iosArm64 iosSimulatorArm64 iosX64; do
-    [ -f "$ENGINE_DIR/$t/libportaltunnel.a" ] || {
-        echo "error: $ENGINE_DIR/$t/libportaltunnel.a missing — run build-ios-engine.sh" >&2; exit 1; }
-done
 
-rm -rf "$WORK"
-mkdir -p "$WORK" "$DIST"
+rm -rf "$DIST/PortalSDK.xcframework"
+mkdir -p "$DIST"
+cp -R "$XCF_SRC" "$DIST/PortalSDK.xcframework"
 
-# Locate the per-slice frameworks inside the produced XCFramework.
-DEVICE_SLICE="$(find "$XCF_SRC" -maxdepth 1 -type d -name 'ios-arm64' | head -1)"
-SIM_SLICE="$(find "$XCF_SRC" -maxdepth 1 -type d \( -name 'ios-arm64_x86_64-simulator' -o -name 'ios-arm64-simulator' \) | head -1)"
-[ -d "$DEVICE_SLICE/PortalSDK.framework" ] || { echo "error: device slice not found in $XCF_SRC" >&2; exit 1; }
-[ -d "$SIM_SLICE/PortalSDK.framework" ] || { echo "error: simulator slice not found in $XCF_SRC" >&2; exit 1; }
-
-merge_into_framework() {
-    # $1 source framework, $2 merged static archive, $3 output framework dir
-    cp -R "$1" "$3"
-    cp "$2" "$3/PortalSDK"
-}
-
-echo "==> merging device slice"
-libtool -static -o "$WORK/device.a" \
-    "$DEVICE_SLICE/PortalSDK.framework/PortalSDK" \
-    "$ENGINE_DIR/iosArm64/libportaltunnel.a"
-merge_into_framework "$DEVICE_SLICE/PortalSDK.framework" "$WORK/device.a" "$WORK/PortalSDK-device.framework"
-
-echo "==> merging simulator slice"
-if lipo -info "$SIM_SLICE/PortalSDK.framework/PortalSDK" | grep -q x86_64; then
-    # Universal simulator slice: fat Kotlin binary + fat engine archive.
-    lipo -create \
-        "$ENGINE_DIR/iosSimulatorArm64/libportaltunnel.a" \
-        "$ENGINE_DIR/iosX64/libportaltunnel.a" \
-        -output "$WORK/sim-engine.a"
-    libtool -static -o "$WORK/sim.a" \
-        "$SIM_SLICE/PortalSDK.framework/PortalSDK" "$WORK/sim-engine.a"
-else
-    libtool -static -o "$WORK/sim.a" \
-        "$SIM_SLICE/PortalSDK.framework/PortalSDK" \
-        "$ENGINE_DIR/iosSimulatorArm64/libportaltunnel.a"
-fi
-merge_into_framework "$SIM_SLICE/PortalSDK.framework" "$WORK/sim.a" "$WORK/PortalSDK-sim.framework"
-
-echo "==> verifying exported ABI symbols"
-for bin in "$WORK/PortalSDK-device.framework/PortalSDK" "$WORK/PortalSDK-sim.framework/PortalSDK"; do
+echo "==> verifying embedded engine symbols"
+framework_count=0
+while IFS= read -r bin; do
     for sym in PortalStart PortalStop PortalFreeString; do
-        # Mach-O C symbols are underscore-prefixed; accept both spellings so
-        # the check also works if nm is configured to strip the prefix.
         nm -g "$bin" 2>/dev/null | grep -Eq " _?${sym}$" || {
             echo "error: $sym missing from $bin" >&2; exit 1;
         }
     done
     lipo -info "$bin"
-done
-
-echo "==> rebuilding XCFramework"
-rm -rf "$DIST/PortalSDK.xcframework"
-xcodebuild -create-xcframework \
-    -framework "$WORK/PortalSDK-device.framework" \
-    -framework "$WORK/PortalSDK-sim.framework" \
-    -output "$DIST/PortalSDK.xcframework"
-
+    framework_count=$((framework_count + 1))
+done < <(find "$DIST/PortalSDK.xcframework" -type f -path '*/PortalSDK.framework/PortalSDK')
+[ "$framework_count" -ge 2 ] || {
+    echo "error: expected device and simulator PortalSDK framework binaries" >&2
+    exit 1
+}
 echo "==> zipping for SwiftPM binary distribution"
 rm -f "$DIST/PortalSDK.xcframework.zip"
 ditto -c -k --sequesterRsrc --keepParent \

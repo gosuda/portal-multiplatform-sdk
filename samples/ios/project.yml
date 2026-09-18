@@ -22,9 +22,7 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
-      - framework: ../../portal-sdk/build/XCFrameworks/release/PortalSDK.xcframework
-        embed: false
-      - framework: ../../native/ios/iosArm64/libportaltunnel.a
+      - framework: ../../dist/PortalSDK.xcframework
         embed: false
     settings:
       base:
@@ -35,7 +33,6 @@ targets:
         DEVELOPMENT_TEAM: 37FAA8L9Q7
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
-        LIBRARY_SEARCH_PATHS: $(inherited) $(SRCROOT)/../../native/ios/iosArm64
         OTHER_LDFLAGS: $(inherited) -framework Security
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

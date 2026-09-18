@@ -63,11 +63,14 @@ for TARGET in "${TARGETS[@]}"; do
             go build -buildmode=c-archive -o "../../$OUT_DIR/libportaltunnel.a" .
     )
 
-    # cgo emits the header next to the archive; keep the shared header in
-    # sync so cinterop and the archive never drift.
-    if ! cmp -s "$OUT_DIR/libportaltunnel.h" native/include/portaltunnel.h; then
-        echo "  note: generated header differs from native/include/portaltunnel.h"
-        echo "  review the diff before replacing it"
+    # The checked-in header is the ABI source of truth. Compare exported
+    # declarations; cgo's generated prologue is build-mode-specific.
+    decls_ref=$(grep -oE 'Portal[A-Za-z]+\(' native/include/portaltunnel.h | sort -u)
+    decls_gen=$(grep -oE 'Portal[A-Za-z]+\(' "$OUT_DIR/libportaltunnel.h" | sort -u)
+    if [[ "$decls_ref" != "$decls_gen" ]]; then
+        echo "ERROR: generated declarations differ from native/include/portaltunnel.h" >&2
+        diff <(echo "$decls_ref") <(echo "$decls_gen") >&2 || true
+        exit 1
     fi
     echo "  → $OUT_DIR/libportaltunnel.a"
 done

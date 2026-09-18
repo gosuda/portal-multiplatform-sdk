@@ -46,3 +46,14 @@ tasks.register("publishAndroidSdkToSampleRepository") {
         ":portal-android-lifecycle:publishMavenPublicationToSampleRepository",
     )
 }
+
+tasks.register("publishIosSdkToSampleRepository") {
+    group = "publishing"
+    description = "Publishes self-contained iOS KMP variants to the sample Maven repository."
+    dependsOn(
+        ":portal-sdk:publishIosArm64PublicationToSampleRepository",
+        ":portal-sdk:publishIosSimulatorArm64PublicationToSampleRepository",
+        ":portal-sdk:publishIosX64PublicationToSampleRepository",
+        ":portal-sdk:publishKotlinMultiplatformPublicationToSampleRepository",
+    )
+}

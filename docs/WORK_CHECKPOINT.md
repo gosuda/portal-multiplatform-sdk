@@ -1,9 +1,9 @@
 # Work Checkpoint
 
 ## Active task
-Multiplatform SDK publication — Android JNI binaries now build reproducibly
-from `native/bridge`; the next release workflow must verify the full matrix
-and publish the Maven artifacts.
+Multiplatform SDK publication — desktop matrix paths and self-contained iOS
+distribution were corrected; the next release workflow must verify the Apple
+artifacts on macOS and publish Maven Central.
 
 ## State (2026-09-18)
 - Added a `desktop` (JVM 17+) target to `portal-sdk` with a JNA engine
@@ -106,10 +106,18 @@ and publish the Maven artifacts.
 - 2026-09-18 follow-up 9: `GenerateNativeIndex` now recreates its output
   directory after cleanup before writing `index.json`; native hashes stream
   through `DigestInputStream` instead of allocating each full binary.
-- CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
-  windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
-  `desktop-package` downloads all three and packages with
-  `requireComplete=true`, then runs `desktopTest`.
+- 2026-09-18 follow-up 10: fixed matrix artifact reconstruction by
+  downloading each desktop artifact into its exact target directory.
+  iOS cinterop now generates target-specific definitions that embed
+  `libportaltunnel.a` and Security linkage in every published klib; Gradle
+  builds all archives automatically. The release workflow stages all three
+  iOS Maven variants, asserts their klibs contain the archive, builds a
+  self-contained XCFramework/Swift package, and uploads that distribution.
+- CI: `build-desktop-runtime` matrix builds/verifies linux-x64 (ubuntu+zig),
+  windows-x64 (windows+mingw), and macos-universal (macos+clang/lipo). The
+  final publish job reconstructs target directories, stages Android/desktop/
+  iOS Maven graphs, packages the complete runtime matrix, and runs consumer
+  checks before publication.
 - `source-lock.json`: windows-x64 and macos-universal entries marked
   `built_by` the CI release matrix; `desktop_release_gate` documents the
   requireComplete enforcement.
@@ -165,6 +173,12 @@ and publish the Maven artifacts.
 - Clean-output `:portal-native-desktop:generateNativeIndex` and
   `publishDesktopSdkToSampleRepository` both passed after deleting their
   generated/staging directories.
+- `:portal-sdk:cinteropPortaltunnelIosArm64 --dry-run` — task graph includes
+  `buildIosEngine` and `prepareIosInteropDefs` before cinterop; execution is
+  correctly disabled on this Linux host because Apple cinterop requires macOS.
+- `:portal-sdk:prepareIosInteropDefs` — generated configuration-cache-safe
+  per-target definitions with `staticLibraries`, `libraryPaths`, and Security
+  `linkerOpts`.
 
 ## Environment notes (this host)
 - Linux x86_64, JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10.

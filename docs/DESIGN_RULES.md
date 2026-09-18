@@ -102,10 +102,10 @@ app (Kotlin / Swift)
   arm64-v8a, x86_64 (both 16KB-page aligned). minSdk 26.
 - iOS: foreground sessions; no promise of indefinite background execution.
   `PortalIosClient`/`PortalIosSession` provide callback-based APIs on the
-  main dispatcher; cancelling an observation never stops the tunnel. The
-  engine archive comes from `native/bridge` (clean-room Go bridge over
-  `sdk.Exposure`), built per target by `scripts/build-ios-engine.sh` and
-  linked via per-target `linkerOpts` plus `-framework Security`.
+  main dispatcher; cancelling an observation never stops the tunnel. Each
+  published iOS klib embeds its matching engine archive built from
+  `native/bridge` and propagates `Security.framework` linkage. KMP and Swift
+  consumers never build or manually link `libportaltunnel.a`.
 - linuxX64: experimental; exists to exercise the shared `nativeMain` adapter
   and cinterop path on CI/desktop.
 - Desktop (JVM 17+): `PortalDesktop.client(applicationId)` loads the verified

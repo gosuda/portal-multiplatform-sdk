@@ -28,20 +28,22 @@
     },
     "ios/iosArm64/libportaltunnel.a": {
       "source": "native/bridge @ portal-tunnel v2.4.3",
-      "sha256": "a005001459acf5489917d75a554c8534838298b567e4de73f0f8ff692accc821",
-      "min_ios": "16.0"
+      "toolchain": "go1.27.1 + Xcode clang (iphoneos arm64, min iOS 16.0)",
+      "built_by": "portal-sdk:buildIosEngine",
+      "packaging": "embedded in portal-sdk-iosarm64 klib and PortalSDK XCFramework device slice"
     },
     "ios/iosSimulatorArm64/libportaltunnel.a": {
       "source": "native/bridge @ portal-tunnel v2.4.3",
-      "sha256": "c5a823d9eda6514ad69b54c16bb954ff95901b38297dea87e79b02691df7009b",
-      "min_ios": "16.0"
+      "toolchain": "go1.27.1 + Xcode clang (iphonesimulator arm64, min iOS 16.0)",
+      "built_by": "portal-sdk:buildIosEngine",
+      "packaging": "embedded in portal-sdk-iossimulatorarm64 klib and PortalSDK XCFramework simulator slice"
     },
     "ios/iosX64/libportaltunnel.a": {
       "source": "native/bridge @ portal-tunnel v2.4.3",
-      "sha256": "a4e23d1f464984455cb4af02aa51d2cd9500b84bb277a370724a0a591a5c7984",
-      "min_ios": "16.0"
-    }
-    ,
+      "toolchain": "go1.27.1 + Xcode clang (iphonesimulator x86_64, min iOS 16.0)",
+      "built_by": "portal-sdk:buildIosEngine",
+      "packaging": "embedded in portal-sdk-iosx64 klib and PortalSDK XCFramework simulator slice"
+    },
     "desktop/linux-x64/libportaltunnel.so": {
       "source": "native/bridge @ portal-tunnel v2.4.3",
       "sha256": "e21da67fd2aabc84bfea5a372ae05b1178edfd479e7defc281033f5fb5017d01",

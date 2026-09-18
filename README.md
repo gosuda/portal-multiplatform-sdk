@@ -93,9 +93,9 @@ flowchart LR
 
 | Target | Status | Native engine |
 |---|---|---|
-| `android` (arm64-v8a, x86_64) | ✅ shipped | prebuilt `libportaltunnel.so`, 16 KB-page aligned |
-| `iosArm64` / `iosSimulatorArm64` / `iosX64` | ✅ verified | `libportaltunnel.a` built from `native/bridge` via `scripts/build-ios-engine.sh` — see [native/README.md](native/README.md) |
-| `desktop` (JVM 17+, linux-x64 / windows-x64 / macos-universal) | ✅ verified | `libportaltunnel` shared library packaged in `portal-native-desktop`, loaded via JNA |
+| `android` (arm64-v8a, x86_64) | ✅ shipped | JNI `libportaltunnel.so` built reproducibly from `native/bridge`, 16 KB-page aligned |
+| `iosArm64` / `iosSimulatorArm64` / `iosX64` | ✅ shipped | matching `libportaltunnel.a` embedded in each published KMP klib/XCFramework slice |
+| `desktop` (JVM 17+, linux-x64 / windows-x64 / macos-universal) | ✅ shipped | `libportaltunnel` shared library packaged in `portal-native-desktop`, loaded via JNA |
 | `linuxX64` | 🧪 experimental | C stub for tests; link the real `.so` for production |
 
 ## Install
@@ -132,10 +132,11 @@ repository:
   -Pportal.samples.repository="$PWD/build/sample-maven"
 ```
 
-iOS additionally needs the `PortalSDK` XCFramework plus `libportaltunnel.a`
-linked into the app target — see [samples/ios/README.md](samples/ios/README.md).
-The engine archive is rebuilt from `native/bridge` (clean-room Go bridge over
-portal-tunnel v2.4.3 `sdk.Exposure`) and is gitignored.
+iOS KMP variants embed the matching Go engine archive and propagate required
+Security framework linkage. Swift consumers use the self-contained
+`PortalSDK.xcframework`/Swift package produced by
+`scripts/package-ios-xcframework.sh`; neither consumer path requires building
+or manually linking `libportaltunnel.a`.
 
 Desktop (JVM) resolves the `portal-sdk-desktop` variant plus the
 `portal-native-desktop` runtime JAR transitively — no extra dependency or

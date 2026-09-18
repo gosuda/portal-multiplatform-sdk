@@ -1,5 +1,36 @@
 # Troubleshooting Log
 
+### [2026-09-18] Downloaded desktop matrix was flattened and appeared missing
+
+- **Context / Symptom:** The publish job downloaded all three successful
+  desktop artifacts, but `GenerateNativeIndex` reported every expected binary
+  missing under `native/desktop/<target>/`.
+- **Root Cause:** `actions/download-artifact` used a wildcard with
+  `merge-multiple: true`. Each upload's root was already the contents of its
+  target directory, so merging flattened all files directly into
+  `native/desktop/`.
+- **Solution:** Download each named artifact explicitly into its exact
+  `native/desktop/linux-x64`, `windows-x64`, or `macos-universal` directory in
+  both CI and publication workflows.
+- **Prevention / Reference:** Artifact upload/download roots are content
+  boundaries, not preserved parent paths; reconstruct matrix directories
+  explicitly before packaging.
+
+### [2026-09-18] Published iOS SDK required consumers to link the Go archive
+
+- **Context / Symptom:** KMP/Swift consumers could compile Portal APIs but had
+  to build and link a matching `libportaltunnel.a` plus Security manually.
+- **Root Cause:** The cinterop definition generated bindings only; target
+  archives were linked from repository paths during framework/test builds and
+  were absent from published klibs.
+- **Solution:** Generate a target-specific `.def` with `staticLibraries`,
+  `libraryPaths`, and Security `linkerOpts`; make every Apple cinterop depend
+  on the source archive build. Published klibs and XCFramework slices are now
+  self-contained.
+- **Prevention / Reference:** For a private native implementation dependency,
+  inspect the published `.klib` and require the static archive entry; a green
+  producer build alone does not prove consumer packaging.
+
 ### [2026-09-18] Clean release runner could not write native `index.json`
 
 - **Context / Symptom:** `publishDesktopSdkToSampleRepository` failed on the

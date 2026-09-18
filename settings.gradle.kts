@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "portal-multiplatform-sdk"
-include(":portal-sdk", ":portal-native-android", ":portal-native-desktop", ":portal-android-lifecycle", ":samples:android")
+include(":portal-sdk", ":portal-native-android", ":portal-native-desktop", ":portal-android-lifecycle", ":samples:android", ":samples:desktop")

@@ -19,3 +19,6 @@ samples/ios/PortalSample.xcodeproj/
 
 # Local go build output
 native/bridge/bridge
+
+# Packaged distribution artifacts (scripts/package-ios-xcframework.sh)
+dist/

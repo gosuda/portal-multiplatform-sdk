@@ -1,40 +1,53 @@
 # Work Checkpoint
 
 ## Active task
-SDK usability implementation plan — **complete; implementation not started**.
+SDK usability implementation — **P0–P3, P5 done; P4 partially blocked**.
 
 ## State (2026-09-18)
-- The current low-level contract remains the foundation: `PortalClient` owns
-  sessions, `PortalConfig` remains the v1 wire DTO, `open()` means accepted
-  rather than ready, and `PortalTunnel.state` stays authoritative.
-- The implementation contract is now recorded in
-  `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`.
-- The planned common API adds intent factories on `PortalConfig` and
-  `PortalClient.publish(config, timeoutMillis)`. `publish` composes
-  `open`/`awaitActive`/`stop`; it does not introduce a second session type.
-- Android makes a clean cutover to `PortalClientHolder.init(context)` and
-  context-backed service clients. No context-free compatibility overload is
-  planned because it preserves the unsafe identity default.
-- iOS resolves an Application Support identity path inside `open/publish`,
-  reports filesystem failures through the existing completion contract, and
-  exposes a small config factory facade for Swift.
-- Publication cleanup behavior is specified for timeout, terminal failure,
-  cancellation, and stop failure. Cancellation continues to propagate as
-  `CancellationException`.
-- Release work includes Maven consumer verification, a self-contained Apple
-  artifact, provenance gate resolution, and correction of the publish workflow
-  to the repository's `release-*` tag plus `release(scope):` subject rule.
-- The plan names exact files, API signatures, phase commits, RED/GREEN checks,
-  runtime smokes, verification commands, risks, and definition of done.
-- `TASKS.md` links the detailed plan and retains the phase-level checklist.
-- Changed files in this planning session:
-  `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`, `TASKS.md`, and this checkpoint.
+- Implemented per `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`:
+  - `PortalConfig` companion factories: `http`, `routes`, `tcp`, `udp`,
+    `staticSite` (commonMain; wire DTO unchanged).
+  - `PortalClient.publish(config, timeoutMillis)`: `open` + `awaitActive` +
+    rollback `stop` on failure/cancellation; cleanup failures surface with
+    `operation="publish_cleanup"` and leave the session retryable.
+  - `PortalIosClient.publish` + `PortalIosConfigFactory` (Swift facade);
+    `PortalIosClient` gained a private primary ctor + internal engine-injecting
+    ctor for tests.
+  - `IosIdentityPath` (iosMain/internal): Application Support
+    `Portal/identity.json` resolved inside `open`/`publish`; filesystem
+    failures → PERMISSION_DENIED, never a temp-path fallback.
+  - `PortalClientHolder.init(context)` + `PortalTunnelService` now build
+    context-backed clients (application context only).
+  - Compile fixtures: `QuickStartContract.kt` (Android sample) and
+    `QuickStartContract.swift` (added to `samples/ios/project.yml`).
+  - `scripts/package-ios-xcframework.sh`: merges `libportaltunnel.a` into each
+    framework slice, rebuilds the XCFramework, emits SwiftPM `Package.swift`.
+  - `publish.yml`: `release-*` tag + `release(scope):` subject gate +
+    provenance-lock check (was GitHub-release trigger).
+  - `source-lock.json`: `android_ndk_revision` resolved → r29
+    (clang-r563880c, read from `.so` `.comment`); `license_review` stays
+    PENDING — `portal-android-sdk` (the `.so` source repo) has no LICENSE.
+- Bug found by the new tests and fixed: `open` registered the tunnel with the
+  session registry only *after* draining orphan events, so a STOPPED emitted
+  inside the native start left a zombie session — registration order swapped
+  (recorded in docs/TROUBLESHOOTING.md).
+- Verification on this host (WSL2, no Android SDK / macOS):
+  - `./gradlew :portal-sdk:linuxX64Test --offline` → 38/38 green incl. 6 new
+    publish tests + 6 factory tests.
+  - `compileCommonMainKotlinMetadata` clean.
+  - NOT verifiable here: Android/iOS target compilation, iosMain/iosTest,
+    sample builds, real-relay smokes, XCFramework packaging, Maven publish.
+- Docs updated: README (publish-first quick starts, factories, identity
+  defaults), skill api-reference, DESIGN_RULES (publish + platform identity
+  contracts), CHANGELOG, TASKS (status + blockers), TROUBLESHOOTING.
 
 ## Next action
-Start P0 with the Android and Swift quick-start compile contracts. Then execute
-P1 as the first behavioral RED/GREEN change: propagate Android application
-context and add the iOS Application Support identity resolver. Do not begin P2
-factories until the platform-default runtime smokes pass.
+On the macOS host: run `./gradlew :portal-sdk:iosSimulatorArm64Test
+:samples:android:assembleDebug`, build the iOS sample via xcodegen+xcodebuild
+(compiles `QuickStartContract.swift` and validates the Swift API spelling),
+then run `scripts/package-ios-xcframework.sh` and a clean SwiftPM consumer.
+`license_review` needs an upstream LICENSE on `gosuda/portal-android-sdk` or a
+rebuild of the `.so`s from MIT-licensed `portal-tunnel` source.
 
 ## Prior environment notes (2026-09-17 macOS session)
 - Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via

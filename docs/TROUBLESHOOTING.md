@@ -115,3 +115,19 @@
   the full-argument initializer exists in the Objective-C/Swift surface.
 - **Solution:** Call `PortalIosClient(allowRemoteTargets: false,
   defaultIdentityPath: nil)` explicitly.
+
+### [2026-09-18] Orphan STOPPED event left a zombie session in `client.sessions`
+
+- **Context / Symptom:** A new `publish` test that emits `STOPPED` inside the
+  native `start` (the orphan-buffer path) failed: `client.sessions` still
+  contained the terminal tunnel after `open` returned.
+- **Root Cause:** `PortalClient.open` called `PortalEventHub.register(tunnel)`
+  (which drains buffered orphan events, including `STOPPED` → `markTerminal` →
+  `unregisterTunnel`) *before* `registry.register(tunnel)`. The session was
+  therefore registered only after it had already been unregistered — a zombie.
+- **Solution:** Reordered to `registry.register(tunnel)` then
+  `PortalEventHub.register(tunnel)`, so a terminal transition during the
+  orphan drain unregisters a session that actually exists.
+- **Prevention / Reference:** Any registration pair where one side can
+  synchronously tear the other down must register the teardown target first.
+  Covered by `publishTerminalSessionDoesNotResurrect` in `PortalClientTest`.

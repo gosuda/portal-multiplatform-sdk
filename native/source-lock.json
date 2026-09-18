@@ -5,9 +5,9 @@
   "core_commit": "119d143bc1ad4d38e8cf6a427fa89deb9b8fff25 (tag v2.4.3)",
   "mobile_bridge_source": "native/bridge (clean-room reimplementation of the removed portal-tunnel/mobile; builds with -buildmode=c-archive via scripts/build-ios-engine.sh)",
   "go_toolchain": "go1.27.1 darwin/arm64",
-  "android_ndk_revision": "UNRESOLVED",
+  "android_ndk_revision": "r29 (clang-r563880c; read from .comment section of shipped .so files, 2026-09-18)",
   "xcode_version": "27.0",
-  "license_review": "PENDING: portal-tunnel is MIT; binary redistribution terms for these artifacts are unverified",
+  "license_review": "PENDING: portal-tunnel is MIT (verified 2026-09-18); portal-android-sdk — the source repo of the shipped .so artifacts — has no LICENSE file, so binary redistribution terms remain unverified",
   "artifacts": {
     "android/arm64-v8a/libportaltunnel.so": {
       "source_repo": "https://github.com/gosuda/portal-android-sdk",

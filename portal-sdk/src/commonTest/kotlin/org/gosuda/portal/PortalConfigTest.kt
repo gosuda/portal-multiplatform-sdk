@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.jsonObject
@@ -78,5 +79,53 @@ class PortalConfigTest {
         assertEquals("s", built.name)
         assertEquals("/data/site", built.staticDir)
         assertEquals(listOf("android"), built.tags)
+    }
+
+    @Test
+    fun httpFactorySetsOnlyTargetAndName() {
+        val config = PortalConfig.http("127.0.0.1:8080", name = "api")
+        assertEquals("127.0.0.1:8080", config.targetAddr)
+        assertEquals("api", config.name)
+        assertNull(config.staticDir)
+        assertNull(config.httpRoutes)
+        assertNull(config.udpAddr)
+        assertFalse(config.tcp)
+        assertFalse(config.udp)
+
+        val obj = PortalJson.parseToJsonElement(PortalJson.encodeToString(config)).jsonObject
+        assertEquals(setOf("name", "target_addr"), obj.keys)
+    }
+
+    @Test
+    fun routesFactoryPreservesRouteOrder() {
+        val routes = listOf(
+            PortalHTTPRoute(prefix = "/api", upstream = "http://127.0.0.1:8080"),
+            PortalHTTPRoute(prefix = "/admin", upstream = "http://127.0.0.1:9090")
+        )
+        val config = PortalConfig.routes(routes, name = "r")
+        assertEquals(routes, config.httpRoutes)
+        assertNull(config.targetAddr)
+    }
+
+    @Test
+    fun tcpFactorySetsTcpFlag() {
+        val config = PortalConfig.tcp(name = "game")
+        assertTrue(config.tcp)
+        assertNull(config.targetAddr)
+        assertNull(config.udpAddr)
+    }
+
+    @Test
+    fun udpFactorySetsFlagAndAddress() {
+        val config = PortalConfig.udp("127.0.0.1:7777")
+        assertTrue(config.udp)
+        assertEquals("127.0.0.1:7777", config.udpAddr)
+    }
+
+    @Test
+    fun staticSiteFactoryDefaultsIndex() {
+        val config = PortalConfig.staticSite("/data/site")
+        assertEquals("/data/site", config.staticDir)
+        assertEquals("index.html", config.staticIndex)
     }
 }

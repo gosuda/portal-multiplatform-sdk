@@ -352,6 +352,115 @@ class PortalClientTest {
         client.close()
     }
 
+    @Test
+    fun publishReturnsActiveTunnel() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+
+        val tunnel = client.publish(siteConfig())
+
+        assertEquals(TunnelPhase.ACTIVE, tunnel.state.value.phase)
+        assertEquals("https://site.portal.example", tunnel.state.value.primaryPublicUrl)
+        assertEquals(listOf(tunnel.tunnelId), client.sessions.value.map { it.tunnelId })
+        client.close()
+    }
+
+    @Test
+    fun publishWaitsForDelayedActive() = runTest {
+        val engine = FakeEngine().apply { statusActive = false }
+        val client = clientWith(engine)
+
+        val publishJob = async { client.publish(siteConfig()) }
+        awaitStarted(engine)
+
+        engine.statusActive = true
+        engine.emit(engine.startedIds.last(), "STATUS_CHANGED", engine.getStatus(engine.startedIds.last()))
+
+        val tunnel = publishJob.await()
+        assertEquals(TunnelPhase.ACTIVE, tunnel.state.value.phase)
+        client.close()
+    }
+
+    @Test
+    fun publishTimeoutStopsSession() = runTest {
+        val engine = FakeEngine().apply { statusActive = false }
+        val client = clientWith(engine)
+
+        val e = assertFailsWith<PortalException> {
+            client.publish(siteConfig(), timeoutMillis = 50)
+        }
+        assertEquals(PortalFailure.Codes.STOP_TIMEOUT, e.code)
+        assertEquals(engine.startedIds, engine.stoppedIds)
+        assertTrue(client.sessions.value.isEmpty())
+        client.close()
+    }
+
+    @Test
+    fun publishTerminalSessionDoesNotResurrect() = runTest {
+        // STOPPED arrives inside the native start (orphan buffer path), so by
+        // the time publish awaits readiness the session is already terminal.
+        val engine = FakeEngine().apply { emitStoppedInsideStart = true }
+        val client = clientWith(engine)
+
+        val e = assertFailsWith<PortalException> {
+            client.publish(siteConfig())
+        }
+        assertEquals(PortalFailure.Codes.TUNNEL_CLOSED, e.code)
+        assertTrue(client.sessions.value.isEmpty())
+        client.close()
+    }
+
+    @Test
+    fun publishCancellationStopsSession() = runTest {
+        val engine = FakeEngine().apply { statusActive = false }
+        val client = clientWith(engine)
+
+        val publishJob = async { client.publish(siteConfig()) }
+        awaitStarted(engine)
+        publishJob.cancel()
+
+        assertFailsWith<kotlinx.coroutines.CancellationException> { publishJob.await() }
+        assertEquals(engine.startedIds.toList(), engine.stoppedIds.toList())
+        assertTrue(client.sessions.value.isEmpty())
+        client.close()
+    }
+
+    @Test
+    fun publishCleanupFailureLeavesRetryableSession() = runTest {
+        val engine = FakeEngine().apply { statusActive = false }
+        val client = clientWith(engine)
+        engine.stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop boom")
+
+        val e = assertFailsWith<PortalException> {
+            client.publish(siteConfig(), timeoutMillis = 50)
+        }
+        assertEquals("publish_cleanup", e.failure.operation)
+        assertTrue(e.failure.message.contains("STOP_TIMEOUT"))
+
+        val tunnel = client.sessions.value.single()
+        assertEquals(TunnelPhase.STOPPING, tunnel.state.value.phase)
+
+        engine.stopFailure = null
+        tunnel.stop()
+        assertEquals(TunnelPhase.STOPPED, tunnel.state.value.phase)
+        assertTrue(client.sessions.value.isEmpty())
+        client.close()
+    }
+
+    /**
+     * Waits until the fake engine's native start has minted a tunnel id.
+     * `engine.start` runs on Dispatchers.Default, so a single `yield()` does
+     * not guarantee the id exists before the test emits events for it.
+     */
+    private suspend fun awaitStarted(engine: FakeEngine) {
+        var spins = 0
+        while (engine.startedIds.isEmpty() && spins < 10_000) {
+            yield()
+            spins++
+        }
+        assertTrue(engine.startedIds.isNotEmpty(), "native start did not produce a tunnel id")
+    }
+
 
     @Test
     fun identityRoundTripAndRedaction() {

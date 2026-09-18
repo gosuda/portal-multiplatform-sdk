@@ -36,7 +36,7 @@ public abstract class PortalTunnelService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /** The service-owned client; created lazily on first tunnel. */
-    public val client: PortalClient by lazy { PortalClient() }
+    public val client: PortalClient by lazy { PortalClient(applicationContext) }
 
     private val tunnels = mutableListOf<PortalTunnel>()
 

@@ -142,6 +142,38 @@ public data class PortalConfig(
             x402 = x402
         )
     }
+
+    /**
+     * Intent-oriented constructors for the common exposure modes. Each
+     * factory sets only the fields its mode requires; every other field keeps
+     * the wire default. Validation is unchanged: the returned config flows
+     * through the same `ConfigValidation` checks as a hand-built one.
+     */
+    public companion object {
+        /** Exposes a loopback HTTP server (`target_addr`). */
+        public fun http(targetAddress: String, name: String? = null): PortalConfig =
+            PortalConfig(name = name, targetAddr = targetAddress)
+
+        /** Exposes prefix-routed HTTP upstreams and/or static roots. */
+        public fun routes(routes: List<PortalHTTPRoute>, name: String? = null): PortalConfig =
+            PortalConfig(name = name, httpRoutes = routes)
+
+        /** Exposes the app's raw TCP listener. */
+        public fun tcp(name: String? = null): PortalConfig =
+            PortalConfig(name = name, tcp = true)
+
+        /** Exposes a loopback UDP listener (`udp` + `udp_addr`). */
+        public fun udp(targetAddress: String, name: String? = null): PortalConfig =
+            PortalConfig(name = name, udp = true, udpAddr = targetAddress)
+
+        /** Serves a directory without an embedded HTTP server. */
+        public fun staticSite(
+            directory: String,
+            index: String = "index.html",
+            name: String? = null
+        ): PortalConfig =
+            PortalConfig(name = name, staticDir = directory, staticIndex = index)
+    }
 }
 
 /**

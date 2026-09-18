@@ -3,6 +3,8 @@ package org.gosuda.portal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.gosuda.portal.internal.IosIdentityPath
+import org.gosuda.portal.internal.PortalNativeEngine
 import org.gosuda.portal.internal.platformNativeEngine
 
 /**
@@ -196,13 +198,32 @@ public class PortalIosSession internal constructor(
  *
  * @param allowRemoteTargets permits non-loopback `target_addr`/`udp_addr`.
  * @param defaultIdentityPath fallback `identity_path` for configs that set
- *   neither `identity_json` nor `identity_path`.
+ *   neither `identity_json` nor `identity_path`. When null, the SDK resolves
+ *   a persistent path under Application Support at `open`/`publish` time.
  */
-public class PortalIosClient(
-    allowRemoteTargets: Boolean = false,
-    defaultIdentityPath: String? = null
+public class PortalIosClient private constructor(
+    private val client: PortalClient,
+    private val explicitIdentityPath: String?
 ) {
-    private val client = PortalClient(platformNativeEngine(), allowRemoteTargets, defaultIdentityPath)
+    /** Creates a client backed by the platform `libportaltunnel` engine. */
+    public constructor(
+        allowRemoteTargets: Boolean = false,
+        defaultIdentityPath: String? = null
+    ) : this(
+        client = PortalClient(platformNativeEngine(), allowRemoteTargets, null),
+        explicitIdentityPath = defaultIdentityPath
+    )
+
+    /** Test seam: injects a fake engine. Not exported to Objective-C. */
+    internal constructor(
+        engine: PortalNativeEngine,
+        allowRemoteTargets: Boolean,
+        defaultIdentityPath: String?
+    ) : this(
+        client = PortalClient(engine, allowRemoteTargets, null),
+        explicitIdentityPath = defaultIdentityPath
+    )
+
     internal val scope get() = client.scope
 
     /** True after [close] has been called. */
@@ -222,28 +243,23 @@ public class PortalIosClient(
     public fun open(
         config: PortalConfig,
         completion: (PortalIosSession?, PortalFailure?) -> Unit
-    ): PortalOperation {
-        val job = scope.launch(Dispatchers.Main) {
-            try {
-                val tunnel = client.open(config)
-                completion(PortalIosSession(tunnel, this@PortalIosClient), null)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: PortalException) {
-                completion(null, e.failure)
-            } catch (t: Throwable) {
-                completion(
-                    null,
-                    PortalFailure(PortalFailure.Codes.INTERNAL_ERROR, t.message ?: "open failed")
-                )
-            }
-        }
-        if (job.isCancelled) completion(null, CLIENT_CLOSED_FAILURE)
-        return object : PortalOperation {
-            override fun cancel() {
-                job.cancel()
-            }
-        }
+    ): PortalOperation = enqueueSession(completion, "open") {
+        client.open(resolveConfig(config))
+    }
+
+    /**
+     * Starts a tunnel and completes only after it reports ACTIVE — the v1
+     * readiness signal for every requested capability. If readiness fails or
+     * the operation is cancelled, the session is stopped before the outcome
+     * propagates; a cleanup failure leaves the session in STOPPING and
+     * retryable through [PortalIosSession.stop].
+     */
+    public fun publish(
+        config: PortalConfig,
+        timeoutMillis: Long = 30_000,
+        completion: (PortalIosSession?, PortalFailure?) -> Unit
+    ): PortalOperation = enqueueSession(completion, "publish") {
+        client.publish(resolveConfig(config), timeoutMillis)
     }
 
     /**
@@ -265,5 +281,50 @@ public class PortalIosClient(
             completion(failure)
         }
         if (job.isCancelled) completion(CLIENT_CLOSED_FAILURE)
+    }
+
+    /**
+     * Applies the identity fallback chain: explicit config fields win, then
+     * the constructor override, then the platform-owned Application Support
+     * path. Runs inside the operation so filesystem failures reach the
+     * completion handler as structured failures.
+     */
+    private fun resolveConfig(config: PortalConfig): PortalConfig {
+        if (!config.identityJson.isNullOrEmpty() || !config.identityPath.isNullOrEmpty()) {
+            return config
+        }
+        return config.copy(
+            identityPath = explicitIdentityPath ?: IosIdentityPath.defaultIdentityPath()
+        )
+    }
+
+    private fun enqueueSession(
+        completion: (PortalIosSession?, PortalFailure?) -> Unit,
+        operation: String,
+        block: suspend () -> PortalTunnel
+    ): PortalOperation {
+        val job = scope.launch(Dispatchers.Main) {
+            try {
+                completion(PortalIosSession(block(), this@PortalIosClient), null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PortalException) {
+                completion(null, e.failure)
+            } catch (t: Throwable) {
+                completion(
+                    null,
+                    PortalFailure(
+                        PortalFailure.Codes.INTERNAL_ERROR,
+                        t.message ?: "$operation failed"
+                    )
+                )
+            }
+        }
+        if (job.isCancelled) completion(null, CLIENT_CLOSED_FAILURE)
+        return object : PortalOperation {
+            override fun cancel() {
+                job.cancel()
+            }
+        }
     }
 }

@@ -10,6 +10,7 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: PortalSampleApp.swift
+      - path: QuickStartContract.swift
       - path: PortalHomeView.swift
       - path: Contents.swift
       - path: LaunchScreen.storyboard

@@ -1,5 +1,6 @@
 package org.gosuda.portal.lifecycle
 
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,13 +18,12 @@ import org.gosuda.portal.PortalTunnel
  * the process. Hold the client here — not in an Activity or ViewModel — and
  * let [PortalTunnelService] keep the process alive when the tunnel must
  * survive backgrounding.
- *
  * Usage:
  * ```
  * class App : Application() {
  *     override fun onCreate() {
  *         super.onCreate()
- *         PortalClientHolder.init()
+ *         PortalClientHolder.init(this)
  *     }
  * }
  * ```
@@ -46,10 +46,16 @@ public object PortalClientHolder {
     /**
      * Creates the process-wide client. Idempotent; a second call returns the
      * existing client.
+     *
+     * @param context any Android context; only the application context is
+     *   retained. It supplies the default `identity_path`
+     *   (`filesDir/identity.json`) so the native engine never writes to the
+     *   read-only process working directory.
      */
     @Synchronized
-    public fun init(allowRemoteTargets: Boolean = false): PortalClient =
-        clientRef ?: PortalClient(allowRemoteTargets).also { clientRef = it }
+    public fun init(context: Context, allowRemoteTargets: Boolean = false): PortalClient =
+        clientRef ?: PortalClient(context.applicationContext, allowRemoteTargets)
+            .also { clientRef = it }
 
     /**
      * Opens a tunnel on the process-wide client. The returned handle is owned

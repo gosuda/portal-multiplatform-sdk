@@ -161,8 +161,12 @@ public class PortalClient internal constructor(
             owner = this,
             generation = (generationCounter.addAndFetch(1)).toInt()
         )
-        PortalEventHub.register(tunnel)
+        // Register with the session registry first: draining buffered orphan
+        // events may already mark the tunnel terminal (e.g. a STOPPED emitted
+        // inside the native start), and markTerminal unregisters — a tunnel
+        // registered only afterwards would linger as a zombie session.
         registry.register(tunnel)
+        PortalEventHub.register(tunnel)
 
         try {
             // Reconcile state that may have been emitted between the native
@@ -176,6 +180,75 @@ public class PortalClient internal constructor(
         }
         return tunnel
     }
+
+    /**
+     * Starts a tunnel and returns it only after it reports ACTIVE — the v1
+     * readiness signal covering every requested capability.
+     *
+     * If readiness fails or the call is cancelled, the session is stopped
+     * before the outcome propagates, so a failed publish never leaks a live
+     * tunnel. When cleanup itself fails, the session stays registered in
+     * STOPPING (visible via [sessions]) and remains retryable through
+     * [PortalTunnel.stop]; the cleanup failure is then reported with
+     * `operation="publish_cleanup"` because an unreachable native session
+     * needs operator attention. Cancellation always propagates as
+     * `CancellationException`, even when cleanup also fails.
+     *
+     * Use [open] when the caller needs the accepted-before-ready semantics —
+     * e.g. to observe CONNECTING or to await a single capability.
+     */
+    public suspend fun publish(
+        config: PortalConfig,
+        timeoutMillis: Long = 30_000
+    ): PortalTunnel {
+        val tunnel = open(config)
+        try {
+            tunnel.awaitActive(timeoutMillis)
+            return tunnel
+        } catch (e: CancellationException) {
+            stopAfterFailedPublish(tunnel)
+            throw e
+        } catch (e: PortalException) {
+            stopAfterFailedPublish(tunnel)?.let { cleanup ->
+                throw PortalException(
+                    cleanup.code,
+                    "publish cleanup failed after readiness error " +
+                        "${e.failure.code}: ${cleanup.failure.message}",
+                    retryable = cleanup.failure.retryable,
+                    operation = "publish_cleanup",
+                    nativeCode = cleanup.failure.nativeCode
+                )
+            }
+            throw e
+        } catch (t: Throwable) {
+            stopAfterFailedPublish(tunnel)
+            throw t
+        }
+    }
+
+    /**
+     * Best-effort stop after a failed publish. Runs under [NonCancellable] so
+     * caller cancellation cannot skip cleanup; a cancellation delivered to
+     * the stop call itself still propagates. Returns the cleanup failure, or
+     * null when the session was stopped (or was already terminal).
+     */
+    private suspend fun stopAfterFailedPublish(tunnel: PortalTunnel): PortalException? =
+        withContext(NonCancellable) {
+            try {
+                tunnel.stop()
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PortalException) {
+                e
+            } catch (t: Throwable) {
+                PortalException(
+                    PortalFailure.Codes.INTERNAL_ERROR,
+                    "publish cleanup failed: ${t.message}",
+                    operation = "publish_cleanup"
+                )
+            }
+        }
 
     public suspend fun close() {
         closeMutex.withLock {

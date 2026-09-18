@@ -112,44 +112,48 @@ portal-tunnel v2.4.3 `sdk.Exposure`) and is gitignored.
 
 ## Quick start: expose a local HTTP server
 
-Start your HTTP server on a loopback address, then point Portal at it:
+Start your HTTP server on a loopback address, then publish it:
 
 ### Kotlin (Android / common)
 
 ```kotlin
-val client = PortalClient()
+val client = PortalClient(applicationContext)
 
-val tunnel = client.open(
-    PortalConfig(
-        name = "device-api",
-        targetAddr = "127.0.0.1:8080",
-        discovery = true
-    )
+// Opens the tunnel, waits until it is ACTIVE, and rolls back on failure.
+val tunnel = client.publish(
+    PortalConfig.http("127.0.0.1:8080", name = "device-api")
 )
 
-// Authoritative state — render this.
-tunnel.state.collect { snapshot ->
-    println("${snapshot.phase} ${snapshot.primaryPublicUrl}")
-}
-
-// Wait until the HTTP/TLS endpoint is confirmed ready.
-val ready = tunnel.awaitReady(Capability.HTTP_TLS)
-// or: tunnel.awaitActive(15_000)
+println(tunnel.state.value.primaryPublicUrl)
 
 tunnel.stop()      // retryable on native failure
 client.close()     // stops only the sessions this client owns
 ```
 
+`publish` is the easy path: it returns only after the tunnel reports ACTIVE
+and stops the session if readiness fails. Use `open` when you need
+accepted-before-ready semantics — e.g. to render CONNECTING or await a single
+capability:
+
+```kotlin
+val tunnel = client.open(PortalConfig.http("127.0.0.1:8080"))
+tunnel.state.collect { snapshot ->
+    println("${snapshot.phase} ${snapshot.primaryPublicUrl}")
+}
+val ready = tunnel.awaitReady(Capability.HTTP_TLS)
+// or: tunnel.awaitActive(15_000)
+```
+
 ### Swift (iOS)
 
-Pass the equivalent `PortalConfig` with `targetAddr` set to the app's loopback
-HTTP listener:
-
 ```swift
-let client = PortalIosClient()
-client.open(config: config) { session, failure in
-    guard let session else { showError(failure); return }
-    session.observeState { snapshot in render(snapshot) }
+let client = PortalIosClient(allowRemoteTargets: false, defaultIdentityPath: nil)
+let config = PortalIosConfigFactory.shared.http(
+    targetAddress: "127.0.0.1:8080", name: "device-api"
+)
+operation = client.publish(config: config, timeoutMillis: 30_000) {
+    session, failure in
+    // session?.snapshot.primaryPublicUrl, or a structured PortalFailure
 }
 ```
 
@@ -160,33 +164,36 @@ TCP, and UDP tunnels.
 See [samples/android](samples/android) for the complete Compose app and
 [samples/ios](samples/ios) for the SwiftUI equivalent.
 
+
 ## Usage
 
 ### Configuration
 
-`PortalConfig` selects the app-local service and optional relay features:
+`PortalConfig` selects the app-local service and optional relay features.
+Intent factories cover the common exposure modes; the raw constructor and
+`PortalConfig.Builder` remain for advanced combinations:
 
 ```kotlin
 // Proxy a local HTTP server
-PortalConfig(name = "api", targetAddr = "127.0.0.1:8080")
+PortalConfig.http("127.0.0.1:8080", name = "api")
 
 // Route prefixes to one or more local HTTP services
-PortalConfig(
-    name = "routes",
-    httpRoutes = listOf(
+PortalConfig.routes(
+    listOf(
         PortalHTTPRoute(prefix = "/api", upstream = "http://127.0.0.1:8080"),
         PortalHTTPRoute(prefix = "/admin", upstream = "http://127.0.0.1:9090")
-    )
+    ),
+    name = "routes"
 )
 
 // Raw TCP / UDP listeners
-PortalConfig(name = "tcp-service", tcp = true)
-PortalConfig(name = "game", udp = true, udpAddr = "127.0.0.1:7777")
+PortalConfig.tcp(name = "tcp-service")
+PortalConfig.udp("127.0.0.1:7777", name = "game")
 
 // Static assets without an embedded HTTP server
-PortalConfig(name = "site", staticDir = dir, staticIndex = "index.html")
+PortalConfig.staticSite(dir, index = "index.html", name = "site")
 
-// Discovery off, explicit relays only
+// Advanced: raw constructor for combinations the factories don't cover
 PortalConfig(name = "private", discovery = false,
              relays = listOf("https://portal.example.com"))
 
@@ -209,11 +216,16 @@ loopback-only unless `PortalClient(allowRemoteTargets = true)`.
 
 - One `PortalClient` per app (or long-lived component). It owns every
   `PortalTunnel` it opens.
+- `client.publish(config)` returns only after the tunnel reports ACTIVE and
+  stops the session if readiness fails — the easy path for "give me a URL".
+- `client.open(config)` returns once the native runtime accepted the start;
+  readiness is observed via `state`/`awaitReady`/`awaitActive`.
 - `client.close()` stops exactly the sessions it owns — never another
   client's. Safe to call twice; concurrent calls serialize.
 - `tunnel.stop()` is idempotent and retryable: a native failure leaves the
   session in `STOPPING`, not `STOPPED`.
-- Cancelling `open` rolls the native handle back — no orphaned sessions.
+- Cancelling `open` or `publish` rolls the native handle back — no orphaned
+  sessions.
 
 ### Observing state
 
@@ -259,6 +271,10 @@ PortalConfig(identityPath = File(filesDir, "identity.json").absolutePath, ...)
 `PortalIdentity.document` contains key material — redacted from `toString`;
 store it in Keystore-wrapped storage / Keychain, never log it.
 
+When a config sets neither `identityJson` nor `identityPath`, the SDK supplies
+a platform-owned default: `filesDir/identity.json` on Android (via
+`PortalClient(context)`) and `Application Support/Portal/identity.json` on iOS.
+
 ### Kotlin DSL + Android Context
 
 ```kotlin
@@ -278,7 +294,7 @@ val client = PortalClient(context)
 
 ```kotlin
 // Application.onCreate
-PortalClientHolder.init()
+PortalClientHolder.init(this)
 
 // Foreground service for tunnels that must run while backgrounded
 class TunnelService : PortalTunnelService() {

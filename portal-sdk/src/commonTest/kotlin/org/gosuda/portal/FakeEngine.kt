@@ -18,6 +18,7 @@ internal class FakeEngine : PortalNativeEngine {
 
     var listener: ((String, String, String) -> Unit)? = null
     val stoppedIds = mutableListOf<String>()
+    val startedIds = mutableListOf<String>()
     val startedConfigs = mutableListOf<PortalConfig>()
 
     /** When set, `start` suspends until this deferred completes. */
@@ -28,6 +29,9 @@ internal class FakeEngine : PortalNativeEngine {
 
     /** When true, `start` emits STARTED + STATUS_CHANGED before returning. */
     var emitEventsInsideStart = true
+
+    /** When true, `start` additionally emits STOPPED before returning. */
+    var emitStoppedInsideStart = false
 
     var statusActive = true
 
@@ -55,9 +59,13 @@ internal class FakeEngine : PortalNativeEngine {
         val config = PortalJson.decodeFromString<PortalConfig>(configJson)
         startedConfigs.add(config)
         val id = "fake-tunnel-${idCounter.addAndFetch(1)}"
+        startedIds.add(id)
         if (emitEventsInsideStart) {
             emit(id, "STARTED", """{"name":"${config.name ?: ""}"}""")
             emit(id, "STATUS_CHANGED", statusJson(id, config))
+        }
+        if (emitStoppedInsideStart) {
+            emit(id, "STOPPED", "{}")
         }
         return id
     }

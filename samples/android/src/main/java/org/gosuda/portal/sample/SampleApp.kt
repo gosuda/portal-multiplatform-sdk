@@ -22,7 +22,7 @@ class SampleApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        PortalClientHolder.init()
+        PortalClientHolder.init(this)
         keepAlive.value = SampleSettings.getBoolean(this, "keepAlive", false)
     }
 }

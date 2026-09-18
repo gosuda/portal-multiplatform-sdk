@@ -54,6 +54,12 @@ app (Kotlin / Swift)
 - `state` is authoritative and monotonically revised; `events` is a bounded
   auxiliary stream — undelivered events increment `droppedEventCount`.
 - `MITM_SUSPECTED` sets the sticky `hasSecurityWarning` on the snapshot.
+- `publish(config)` is the ready-on-return operation: it composes
+  `open` + `awaitActive` and stops the session when readiness fails or the
+  call is cancelled. A cleanup failure leaves the session registered in
+  STOPPING (retryable via `stop()`) and is reported with
+  `operation="publish_cleanup"`; cancellation still propagates as
+  `CancellationException`.
 
 ## 4. Memory & threads (native)
 
@@ -80,6 +86,12 @@ app (Kotlin / Swift)
   `UNSUPPORTED_CAPABILITY` rather than being silently ignored.
 - `PortalIdentity.document` is secret: redacted from `toString`, never
   logged; store via Keystore-wrapped file (Android) or Keychain (iOS).
+- Platform identity defaults: when a config sets neither `identity_json` nor
+  `identity_path`, Android resolves `filesDir/identity.json` via
+  `PortalClient(context)` (the lifecycle holder/service pass the application
+  context) and iOS resolves `Application Support/Portal/identity.json` inside
+  `open`/`publish` — filesystem failures surface as PERMISSION_DENIED through
+  the operation, never as a silent fallback to a temporary path.
 - `hide=true` is a listing preference, not access control.
 
 ## 6. Platform contracts

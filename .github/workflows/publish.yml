@@ -1,7 +1,16 @@
+# Release publication runs only when a release-* tag points to a commit whose
+# subject starts with "release(scope):" — see AGENTS.md. workflow_dispatch
+# stays available for manual verification and reruns.
 name: Publish
+
 on:
-  release:
-    types: [released, prereleased]
+  push:
+    tags: ["release-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   publish:
     name: Release build and publish
@@ -9,11 +18,35 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+
+      - name: Enforce release commit gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "manual dispatch: skipping tag/subject gate"
+            exit 0
+          fi
+          subject="$(git log -1 --format=%s "${{ github.sha }}")"
+          case "$subject" in
+            release\(*\):*) echo "release commit: $subject" ;;
+            *)
+              echo "::error::tag ${{ github.ref_name }} points to a non-release commit: $subject"
+              exit 1
+              ;;
+          esac
+
+      - name: Check provenance lock
+        run: |
+          if grep -Eq 'UNRESOLVED|PENDING|MISSING|TO_BE_FILLED' native/source-lock.json; then
+            echo "::error::native/source-lock.json still has unresolved release gates"
+            exit 1
+          fi
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: 21
+
       - name: Publish to MavenCentral
         run: ./gradlew publishToMavenCentral --no-configuration-cache
         env:
@@ -22,4 +55,3 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
-

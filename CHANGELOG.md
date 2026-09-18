@@ -2,6 +2,33 @@
 
 ## 2026-09-18
 
+- feat(client): added `publish(config, timeoutMillis)` — a ready-on-return
+  operation that composes `open` + `awaitActive` and rolls the session back
+  when readiness fails or the call is cancelled; cleanup failures surface
+  with `operation="publish_cleanup"` and leave the session retryable
+
+- feat(config): added intent factories `PortalConfig.http/routes/tcp/udp/
+  staticSite` plus the Swift-facing `PortalIosConfigFactory`, keeping
+  `PortalConfig` as the exact v1 wire DTO
+
+- feat(ios): added `PortalIosClient.publish` and a platform-owned identity
+  default (`Application Support/Portal/identity.json`) resolved inside
+  `open`/`publish`; filesystem failures surface as PERMISSION_DENIED
+
+- fix(client): registered sessions with the registry before draining orphan
+  events so a STOPPED emitted inside the native start no longer leaves a
+  zombie session in `client.sessions`
+
+- fix(android): `PortalClientHolder.init(context)` and `PortalTunnelService`
+  now construct context-backed clients so the default `identity_path` lands
+  in `filesDir` instead of the read-only process working directory
+
+- ci(release): replaced the GitHub-release trigger with the `release-*` tag +
+  `release(scope):` commit-subject gate and a provenance-lock check
+
+- build(native): recorded Android NDK r29 (clang-r563880c) provenance from
+  the shipped `.so` `.comment` sections
+
 - docs(readme): repositioned the SDK as a mobile HTTP/TCP/UDP tunnel runtime,
   led with a loopback HTTP quick start, and presented static serving as an
   optional convenience mode

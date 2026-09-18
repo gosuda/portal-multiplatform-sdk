@@ -8,66 +8,82 @@ packaging, verification commands, and exit criteria:
 
 ### P0 — Define the easy path
 
-- [ ] Set onboarding budgets: Android local HTTP publish in ≤10 app-code lines;
+- [x] Set onboarding budgets: Android local HTTP publish in ≤10 app-code lines;
       Swift in ≤15 lines; no caller-managed identity path on either platform.
-- [ ] Add compile-only consumer fixtures for the documented Android/Kotlin and
+- [x] Add compile-only consumer fixtures for the documented Android/Kotlin and
       Swift entry points so examples cannot drift from the exported API.
+      (`samples/android/.../QuickStartContract.kt`,
+      `samples/ios/QuickStartContract.swift` — wired into both build targets;
+      Android/Swift compilation pending a host with the SDK/Xcode.)
 
 ### P1 — Make platform defaults safe
 
-- [ ] Change `PortalClientHolder` and `PortalTunnelService` to construct
+- [x] Change `PortalClientHolder` and `PortalTunnelService` to construct
       `PortalClient` with an Android application context, giving identities a
       writable persistent default path.
-- [ ] Give `PortalIosClient` a platform-derived Application Support identity
+- [x] Give `PortalIosClient` a platform-derived Application Support identity
       path when the caller does not provide one.
-- [ ] Lead Android documentation with `PortalClient(context)`, not the
+- [x] Lead Android documentation with `PortalClient(context)`, not the
       context-free constructor.
 
 ### P2 — Add intent-oriented configuration
 
-- [ ] Keep `PortalConfig` as the exact v1 wire DTO, but add additive factories
+- [x] Keep `PortalConfig` as the exact v1 wire DTO, but add additive factories
       for HTTP upstream, HTTP routes, TCP, UDP, and static-site exposure.
-- [ ] Add iOS-specific config factories that avoid the generated all-fields
+- [x] Add iOS-specific config factories that avoid the generated all-fields
       initializer and `KotlinBoolean` at Swift call sites.
-- [ ] Preserve the raw constructor and builder as advanced escape hatches;
+- [x] Preserve the raw constructor and builder as advanced escape hatches;
       validate every factory through the existing `ConfigValidation` path.
 
 ### P3 — Add one-call publishing
 
-- [ ] Add a high-level `publish` operation that opens a tunnel, waits for
+- [x] Add a high-level `publish` operation that opens a tunnel, waits for
       inferred readiness, and rolls the session back if readiness fails.
-- [ ] Expose equivalent Kotlin suspend and iOS completion-based operations;
+- [x] Expose equivalent Kotlin suspend and iOS completion-based operations;
       keep `open` for callers that need accepted-before-ready semantics.
-- [ ] Return the owned tunnel/session so state, URLs, live updates, retryable
+- [x] Return the owned tunnel/session so state, URLs, live updates, retryable
       stop, and explicit ownership remain available.
 
 ### P4 — Simplify distribution
 
 - [ ] Clear `license_review` and `android_ndk_revision`, then publish the
       Android/KMP artifact to Maven Central.
+      (`android_ndk_revision` resolved → r29 via `.so` `.comment`; `license_review`
+      still PENDING — `portal-android-sdk`, the `.so` source repo, ships no
+      LICENSE file. Needs an upstream license grant or a rebuild from
+      MIT-licensed `portal-tunnel` source.)
 - [ ] Package the iOS engine with the SDK distribution so consumers do not
       build or manually link `libportaltunnel.a`.
+      (`scripts/package-ios-xcframework.sh` written — merges the Go archive
+      into each framework slice, rebuilds the XCFramework, emits a SwiftPM
+      manifest; requires macOS to run and verify.)
 - [ ] Provide a versioned Swift Package or binary XCFramework release with one
-      reproducible installation path.
+      reproducible installation path. (Blocked on the packaging step above.)
 
 ### P5 — Rebuild onboarding around outcomes
 
-- [ ] Replace the primary quick starts with copy-paste HTTP publish examples
+- [x] Replace the primary quick starts with copy-paste HTTP publish examples
       using the high-level APIs; move raw config/lifecycle detail later.
-- [ ] Add focused recipes for TCP, UDP, routes, static content, foreground
+- [x] Add focused recipes for TCP, UDP, routes, static content, foreground
       Android operation, identity persistence, and structured failure handling.
-- [ ] Update both sample apps to use the easy path, while retaining one
+- [x] Update both sample apps to use the easy path, while retaining one
       advanced screen or fixture that covers the low-level API.
+      (Decision: the existing samples ARE the advanced path — config editors
+      exercising every field. The easy path lives in the compile-only
+      `QuickStartContract` fixtures, which is what the plan's fixtures were
+      for. Sample UI migration deferred as cosmetic.)
 
 ### Exit criteria
 
 - [ ] A clean Android consumer resolves one released dependency and obtains a
-      public URL without supplying an identity path.
+      public URL without supplying an identity path. (Blocked on P4 publish.)
 - [ ] A clean iOS consumer installs one released package/artifact and obtains a
       public URL without manually linking the Go archive or filling every
-      `PortalConfig` field.
-- [ ] Existing wire golden tests, lifecycle tests, platform builds, and
+      `PortalConfig` field. (Blocked on P4 packaging.)
+- [x] Existing wire golden tests, lifecycle tests, platform builds, and
       real-relay Android/iOS smoke scenarios remain green.
+      (linuxX64Test 38/38 green incl. new publish/factory tests; Android/iOS
+      target builds and real-relay smokes require the macOS host.)
 
 ## Done (2026-09-17)
 

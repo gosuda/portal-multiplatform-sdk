@@ -1,41 +1,40 @@
 # Work Checkpoint
 
 ## Active task
-SDK usability roadmap — **planning complete; implementation not started**.
+SDK usability implementation plan — **complete; implementation not started**.
 
 ## State (2026-09-18)
-- The current low-level contract is sound: `PortalClient` owns sessions,
-  `PortalConfig` preserves the v1 wire DTO, and `PortalTunnel.state` remains
-  authoritative.
-- The easiest documented Android path is unsafe/inconsistent: the README starts
-  with context-free `PortalClient()`, while the Android overload is needed to
-  default identity storage to a writable app directory.
-- `PortalClientHolder` and `PortalTunnelService` also construct context-free
-  clients, so their advertised easy lifecycle path does not supply that safe
-  Android identity default.
-- Swift callers currently fill the generated all-fields `PortalConfig`
-  initializer, bridge nullable booleans through `KotlinBoolean`, resolve an
-  identity path themselves, and manually link `libportaltunnel.a`.
-- The planned approach is additive: retain `PortalConfig`, `open`, and all
-  lifecycle invariants; layer intent-oriented config factories and a
-  rollback-safe `publish` operation above them.
-- Distribution is part of usability, not a documentation follow-up: Android
-  needs a released Maven artifact, while iOS needs one package/artifact that
-  includes the native engine.
-- The phased plan and exit criteria are recorded in `TASKS.md` under
-  `Planned — SDK usability roadmap`.
-- Changed files: `TASKS.md` and this checkpoint.
-- Planning verification:
-  - Compared the README quick starts with the exported common, Android, iOS,
-    and lifecycle APIs.
-  - Checked both sample apps' real configuration/start flows.
-  - Kept the proposed API layers compatible with `docs/DESIGN_RULES.md`.
+- The current low-level contract remains the foundation: `PortalClient` owns
+  sessions, `PortalConfig` remains the v1 wire DTO, `open()` means accepted
+  rather than ready, and `PortalTunnel.state` stays authoritative.
+- The implementation contract is now recorded in
+  `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`.
+- The planned common API adds intent factories on `PortalConfig` and
+  `PortalClient.publish(config, timeoutMillis)`. `publish` composes
+  `open`/`awaitActive`/`stop`; it does not introduce a second session type.
+- Android makes a clean cutover to `PortalClientHolder.init(context)` and
+  context-backed service clients. No context-free compatibility overload is
+  planned because it preserves the unsafe identity default.
+- iOS resolves an Application Support identity path inside `open/publish`,
+  reports filesystem failures through the existing completion contract, and
+  exposes a small config factory facade for Swift.
+- Publication cleanup behavior is specified for timeout, terminal failure,
+  cancellation, and stop failure. Cancellation continues to propagate as
+  `CancellationException`.
+- Release work includes Maven consumer verification, a self-contained Apple
+  artifact, provenance gate resolution, and correction of the publish workflow
+  to the repository's `release-*` tag plus `release(scope):` subject rule.
+- The plan names exact files, API signatures, phase commits, RED/GREEN checks,
+  runtime smokes, verification commands, risks, and definition of done.
+- `TASKS.md` links the detailed plan and retains the phase-level checklist.
+- Changed files in this planning session:
+  `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`, `TASKS.md`, and this checkpoint.
 
 ## Next action
-Implement P0 and P1 together: add consumer compile fixtures, then make Android
-and iOS identity defaults platform-safe before introducing convenience
-factories. Treat Android context propagation as the first RED/GREEN behavior
-change.
+Start P0 with the Android and Swift quick-start compile contracts. Then execute
+P1 as the first behavioral RED/GREEN change: propagate Android application
+context and add the iOS Application Support identity resolver. Do not begin P2
+factories until the platform-default runtime smokes pass.
 
 ## Prior environment notes (2026-09-17 macOS session)
 - Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via

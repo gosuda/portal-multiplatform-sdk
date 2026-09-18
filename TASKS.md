@@ -2,6 +2,10 @@
 
 ## Planned — SDK usability roadmap
 
+Detailed API contracts, file-by-file steps, RED/GREEN checks, release
+packaging, verification commands, and exit criteria:
+[`docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`](docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md).
+
 ### P0 — Define the easy path
 
 - [ ] Set onboarding budgets: Android local HTTP publish in ≤10 app-code lines;

@@ -120,6 +120,14 @@ artifacts on macOS and publish Maven Central.
   export review, troubleshooting/API references, and measurable onboarding
   acceptance gates. The immediate next action remains the macOS release
   verification recorded under P4.
+- 2026-09-18 follow-up 12: audited sample dependency sources. Android and
+  Desktop declare Maven coordinates, not `project()` dependencies, but current
+  CI proves them with artifacts staged from the same checkout before
+  publication. The iOS sample still links `../../dist/PortalSDK.xcframework`.
+  `TASKS.md` and the usability plan now require a post-publication cutover:
+  exact Maven Central versions for Android/Desktop, the versioned remote
+  Swift package for iOS, and an independent clean workflow that rejects local
+  project, staging-repository, Maven Local, and `dist/` SDK sources.
 - CI: `build-desktop-runtime` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), and macos-universal (macos+clang/lipo). The
   final publish job reconstructs target directories, stages Android/desktop/
@@ -202,5 +210,7 @@ artifacts on macOS and publish Maven Central.
 
 ## Next action
 Run a new `Publish Multiplatform SDK` workflow on the release commit. Confirm
-the Android source build, desktop runtime matrix, Maven-consumer sample builds,
-signing, and Maven Central upload all complete.
+the Android source build, desktop runtime matrix, signing, and Maven Central
+upload all complete; publish the matching Swift package release. After the
+artifacts are externally available, cut all samples over to those exact
+released artifacts and run the new independent post-release consumer checks.

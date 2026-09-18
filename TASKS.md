@@ -146,6 +146,18 @@ packaging, verification commands, and exit criteria:
 - [ ] Make each clean consumer publish a loopback HTTP server and assert a real
       request through the returned public URL; compilation alone is
       insufficient.
+- [ ] After publication, cut the Android and Desktop samples over to the exact
+      released Maven Central version and build them without
+      `portal.samples.repository`, Maven Local, dependency substitution, or
+      any SDK publication task in the same Gradle invocation.
+- [ ] After the GitHub release is published, replace the iOS sample's local
+      `../../dist/PortalSDK.xcframework` reference with the versioned remote
+      Swift package URL; the repository-built XCFramework may remain only in
+      pre-release artifact verification.
+- [ ] Add a post-release clean-consumer workflow that checks out/builds the
+      samples independently, resolves only the just-published Maven Central
+      and SwiftPM artifacts, and fails if any SDK dependency comes from this
+      repository's project modules, `build/sample-maven`, or `dist/`.
 - [ ] Add a release compatibility table covering SDK version, Kotlin version,
       Android API/NDK requirements, iOS deployment target, JVM version, and
       supported native architectures.

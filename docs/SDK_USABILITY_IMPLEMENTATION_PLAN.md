@@ -520,7 +520,9 @@ Files:
 
 - `README.md`
 - `samples/android/`
+- `samples/desktop/`
 - `samples/ios/`
+- `.github/workflows/publish.yml`
 - `.agents/skills/portal-multiplatform-sdk/` API reference/examples
 - `docs/DESIGN_RULES.md`
 - `CHANGELOG.md`
@@ -543,14 +545,27 @@ Steps:
 8. Update `DESIGN_RULES.md` with the additive publish and platform-default
    contracts.
 9. Add past-tense changelog entries under the current date.
+10. After publication, build Android and Desktop samples against the exact
+    Maven Central release with no staging repository, Maven Local, project
+    substitution, or same-invocation SDK publication.
+11. Replace the iOS sample's repository-local XCFramework dependency with the
+    matching versioned remote Swift package, retaining local XCFramework
+    assembly only as a pre-release artifact check.
+12. Add an independent post-release workflow that proves every sample resolves
+    the just-published artifacts and rejects `build/sample-maven`, `dist/`, and
+    repository SDK project modules as dependency sources.
 
 Verification:
 
 - Every README/skill snippet matches a compiled contract fixture.
 - Every local Markdown link resolves and code fences are balanced.
 - GitHub rendering shows the intended quick-start order.
-- Android and iOS samples build from clean state.
-- Real-relay smoke passes on Android and iOS after the sample migration.
+- Android, Desktop, and iOS samples build from clean state against the exact
+  published release, not artifacts produced by the same checkout.
+- The sample dependency graph contains no SDK project component, staging
+  repository, Maven Local artifact, or local XCFramework.
+- Real-relay smoke passes on Android, Desktop, and iOS after the sample
+  migration.
 
 Commit: `docs(onboarding): lead with ready-to-use publishing`
 

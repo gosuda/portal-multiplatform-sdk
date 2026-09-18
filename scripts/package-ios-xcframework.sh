@@ -74,11 +74,14 @@ merge_into_framework "$SIM_SLICE/PortalSDK.framework" "$WORK/sim.a" "$WORK/Porta
 echo "==> verifying exported ABI symbols"
 for bin in "$WORK/PortalSDK-device.framework/PortalSDK" "$WORK/PortalSDK-sim.framework/PortalSDK"; do
     for sym in PortalStart PortalStop PortalFreeString; do
-        nm -g "$bin" 2>/dev/null | grep -q " $sym\$" || {
-            echo "error: $sym missing from $bin" >&2; exit 1; }
+        # Mach-O C symbols are underscore-prefixed; accept both spellings so
+        # the check also works if nm is configured to strip the prefix.
+        nm -g "$bin" 2>/dev/null | grep -Eq " _?${sym}$" || {
+            echo "error: $sym missing from $bin" >&2; exit 1;
+        }
     done
+    lipo -info "$bin"
 done
-lipo -info "$WORK/PortalSDK-device.framework/PortalSDK" "$WORK/PortalSDK-sim.framework/PortalSDK"
 
 echo "==> rebuilding XCFramework"
 rm -rf "$DIST/PortalSDK.xcframework"

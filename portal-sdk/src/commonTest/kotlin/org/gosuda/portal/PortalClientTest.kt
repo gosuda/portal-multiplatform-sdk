@@ -115,6 +115,27 @@ class PortalClientTest {
     }
 
     @Test
+    fun closeDuringNativeStartRejectsAndStopsLateHandle() = runTest {
+        val engine = FakeEngine().apply {
+            emitEventsInsideStart = false
+            startEntered = CompletableDeferred()
+            startGate = CompletableDeferred()
+        }
+        val client = clientWith(engine)
+
+        val openResult = async { runCatching { client.open(siteConfig()) } }
+        engine.startEntered!!.await()
+        client.close()
+        engine.startGate!!.complete(Unit)
+
+        val failure = openResult.await().exceptionOrNull() as? PortalException
+        assertNotNull(failure)
+        assertEquals(PortalFailure.Codes.CLIENT_CLOSED, failure.code)
+        assertEquals(engine.startedIds.toList(), engine.stoppedIds.toList())
+        assertTrue(client.sessions.value.isEmpty())
+    }
+
+    @Test
     fun lateEventsFromStoppedSessionDoNotResurrect() = runTest {
         val engine = FakeEngine()
         val client = clientWith(engine)
@@ -262,9 +283,9 @@ class PortalClientTest {
         assertFailsWith<PortalException> {
             client.open(siteConfig().copy(staticDir = "/data/../secrets"))
         }
-        // remote target without opt-in
+        // Factory output reaches the same validation path.
         assertFailsWith<PortalException> {
-            client.open(siteConfig().copy(targetAddr = "10.0.0.5:8080"))
+            client.open(PortalConfig.http("10.0.0.5:8080"))
         }
         // route with both upstream and static root
         assertFailsWith<PortalException> {

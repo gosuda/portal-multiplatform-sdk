@@ -2,6 +2,13 @@
 
 ## 2026-09-18
 
+- fix(client): made post-start session registration atomic with `close()` so a
+  concurrent close cannot stop/unregister a tunnel and then have `open`
+  re-add its process-global event route
+
+- fix(apple): corrected self-contained XCFramework validation for
+  underscore-prefixed Mach-O C symbols and per-binary `lipo -info` calls
+
 - feat(client): added `publish(config, timeoutMillis)` — a ready-on-return
   operation that composes `open` + `awaitActive` and rolls the session back
   when readiness fails or the call is cancelled; cleanup failures surface

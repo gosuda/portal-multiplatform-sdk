@@ -64,14 +64,14 @@ packaging, verification commands, and exit criteria:
 
 - [x] Replace the primary quick starts with copy-paste HTTP publish examples
       using the high-level APIs; move raw config/lifecycle detail later.
-- [x] Add focused recipes for TCP, UDP, routes, static content, foreground
+- [ ] Add focused recipes for TCP, UDP, routes, static content, foreground
       Android operation, identity persistence, and structured failure handling.
-- [x] Update both sample apps to use the easy path, while retaining one
+      (Factories and lifecycle/identity sections exist; dedicated structured
+      failure handling and per-mode recipes are still incomplete.)
+- [ ] Update both sample apps to use the easy path, while retaining one
       advanced screen or fixture that covers the low-level API.
-      (Decision: the existing samples ARE the advanced path — config editors
-      exercising every field. The easy path lives in the compile-only
-      `QuickStartContract` fixtures, which is what the plan's fixtures were
-      for. Sample UI migration deferred as cosmetic.)
+      (Compile-only quick-start fixtures were added, but the real sample UI
+      flows still construct raw `PortalConfig` and call `open`.)
 
 ### Exit criteria
 
@@ -80,10 +80,10 @@ packaging, verification commands, and exit criteria:
 - [ ] A clean iOS consumer installs one released package/artifact and obtains a
       public URL without manually linking the Go archive or filling every
       `PortalConfig` field. (Blocked on P4 packaging.)
-- [x] Existing wire golden tests, lifecycle tests, platform builds, and
+- [ ] Existing wire golden tests, lifecycle tests, platform builds, and
       real-relay Android/iOS smoke scenarios remain green.
-      (linuxX64Test 38/38 green incl. new publish/factory tests; Android/iOS
-      target builds and real-relay smokes require the macOS host.)
+      (`linuxX64Test` 39/39 is green; Android/iOS builds and real-relay smokes
+      have not been run on this host.)
 
 ## Done (2026-09-17)
 

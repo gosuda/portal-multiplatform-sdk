@@ -161,12 +161,28 @@ public class PortalClient internal constructor(
             owner = this,
             generation = (generationCounter.addAndFetch(1)).toInt()
         )
-        // Register with the session registry first: draining buffered orphan
-        // events may already mark the tunnel terminal (e.g. a STOPPED emitted
-        // inside the native start), and markTerminal unregisters — a tunnel
-        // registered only afterwards would linger as a zombie session.
-        registry.register(tunnel)
-        PortalEventHub.register(tunnel)
+        // Registration must be atomic with respect to close(): otherwise
+        // close can stop/unregister this tunnel between registry.register and
+        // hub.register, after which open would re-add a route owned by a dead
+        // client. Native start intentionally stays outside this mutex.
+        val registered = closeMutex.withLock {
+            if (closed.load()) {
+                false
+            } else {
+                // Register with the session registry first: draining buffered
+                // orphan events may already mark the tunnel terminal, and
+                // markTerminal must unregister a session that exists.
+                registry.register(tunnel)
+                PortalEventHub.register(tunnel)
+                true
+            }
+        }
+        if (!registered) {
+            withContext(NonCancellable) {
+                runCatching { withContext(Dispatchers.Default) { engine.stop(tunnelId) } }
+            }
+            throw PortalException(PortalFailure.Codes.CLIENT_CLOSED, "client is closed")
+        }
 
         try {
             // Reconcile state that may have been emitted between the native

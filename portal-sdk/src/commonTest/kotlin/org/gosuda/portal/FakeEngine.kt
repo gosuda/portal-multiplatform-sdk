@@ -24,6 +24,9 @@ internal class FakeEngine : PortalNativeEngine {
     /** When set, `start` suspends until this deferred completes. */
     var startGate: CompletableDeferred<Unit>? = null
 
+    /** Completes when `start` has entered, before waiting on [startGate]. */
+    var startEntered: CompletableDeferred<Unit>? = null
+
     /** When set, `stop` throws this failure instead of succeeding. */
     var stopFailure: PortalException? = null
 
@@ -50,6 +53,7 @@ internal class FakeEngine : PortalNativeEngine {
     }
 
     override fun start(configJson: String): String {
+        startEntered?.complete(Unit)
         startGate?.let {
             if (!it.isCompleted) {
                 // Blocking native start; tests complete the gate to release it.

@@ -38,7 +38,7 @@ public object PortalClientHolder {
     /** The process-wide client. Throws if [init] was not called. */
     public val client: PortalClient
         get() = clientRef
-            ?: error("PortalClientHolder.init() not called — call it from Application.onCreate")
+            ?: error("PortalClientHolder.init(context) not called — call it from Application.onCreate")
 
     /** True once [init] has run. */
     public val isInitialized: Boolean get() = clientRef != null

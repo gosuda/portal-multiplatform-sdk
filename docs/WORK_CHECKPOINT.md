@@ -1,7 +1,7 @@
 # Work Checkpoint
 
 ## Active task
-SDK usability implementation — **P0–P3, P5 done; P4 partially blocked**.
+SDK usability implementation — **P0–P3 mostly done; P4/P5 and platform verification open**.
 
 ## State (2026-09-18)
 - Implemented per `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`:
@@ -32,11 +32,20 @@ SDK usability implementation — **P0–P3, P5 done; P4 partially blocked**.
   inside the native start left a zombie session — registration order swapped
   (recorded in docs/TROUBLESHOOTING.md).
 - Verification on this host (WSL2, no Android SDK / macOS):
-  - `./gradlew :portal-sdk:linuxX64Test --offline` → 38/38 green incl. 6 new
-    publish tests + 6 factory tests.
+  - `./gradlew :portal-sdk:linuxX64Test --offline` → 39/39 green, including
+    publish/factory coverage and concurrent-close registration cleanup.
   - `compileCommonMainKotlinMetadata` clean.
   - NOT verifiable here: Android/iOS target compilation, iosMain/iosTest,
     sample builds, real-relay smokes, XCFramework packaging, Maven publish.
+- Review corrections in commit following `c574bdf`:
+  - made final tunnel registration atomic with `close()` via `closeMutex`; the
+    previous ordering could re-add a hub route after concurrent close;
+  - fixed Apple packaging checks to accept Mach-O underscore-prefixed C
+    symbols and call `lipo -info` once per binary;
+  - added `closeDuringNativeStartRejectsAndStopsLateHandle`; linuxX64 now
+    passes 39/39 tests;
+  - reopened TASKS items that were previously marked complete without Android,
+    iOS, real-relay, clean-consumer, or sample-UI evidence.
 - Docs updated: README (publish-first quick starts, factories, identity
   defaults), skill api-reference, DESIGN_RULES (publish + platform identity
   contracts), CHANGELOG, TASKS (status + blockers), TROUBLESHOOTING.

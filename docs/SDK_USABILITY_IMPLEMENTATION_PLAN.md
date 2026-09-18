@@ -1,7 +1,7 @@
 # SDK Usability Implementation Plan
 
 Date: 2026-09-18
-Status: approved plan; implementation not started
+Status: partially implemented; P4 release/distribution and platform verification remain open
 
 ## 1. Goal
 

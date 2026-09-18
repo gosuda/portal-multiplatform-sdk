@@ -131,3 +131,19 @@
 - **Prevention / Reference:** Any registration pair where one side can
   synchronously tear the other down must register the teardown target first.
   Covered by `publishTerminalSessionDoesNotResurrect` in `PortalClientTest`.
+
+### [2026-09-18] Concurrent close could re-register an event route
+
+- **Context / Symptom:** Review of the orphan-event registration fix found a
+  second interleaving: `close()` could stop and unregister a just-created
+  tunnel after `registry.register`, then `open()` could continue with
+  `PortalEventHub.register` and re-add a route owned by the closed client.
+- **Root Cause:** The final closed-state check and the two registration calls
+  were not atomic with the `closeMutex` section that marks the client closed
+  and snapshots its sessions.
+- **Solution:** Wrapped the final `closed` check plus registry/hub registration
+  in `closeMutex`. Native start remains outside the mutex; a handle finishing
+  after close is stopped non-cancellably and rejected with CLIENT_CLOSED.
+- **Prevention / Reference:** Covered by
+  `closeDuringNativeStartRejectsAndStopsLateHandle`; lifecycle publication
+  must cross the owner-close boundary in one critical section.

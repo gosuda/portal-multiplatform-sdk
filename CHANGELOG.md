@@ -2,6 +2,10 @@
 
 ## 2026-09-18
 
+- fix(ci): made Windows DLL export verification tolerant of MinGW `objdump`
+  column, annotation, and CRLF variations by extracting exact `Portal*`
+  tokens from the complete PE metadata
+
 - fix(ci): corrected desktop engine verification for GNU `objdump` Windows
   export tables and universal-macOS `otool -L` output, including the dylib
   install ID and the system `libresolv` dependency

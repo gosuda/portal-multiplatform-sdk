@@ -87,6 +87,11 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   `LC_ID_DYLIB` rows are excluded; versioned system `libresolv` is allowed.
   Embedded parser fixtures now run on every desktop-native CI target before
   the engine build.
+- 2026-09-18 follow-up 6: the Windows CI runner exposed another GNU
+  `objdump` layout not matching the indexed-row fixture. Windows verification
+  now scans complete PE metadata for exact `Portal*` tokens and tolerates
+  extra columns, annotations, and CRLF without weakening the required-symbol
+  check.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with

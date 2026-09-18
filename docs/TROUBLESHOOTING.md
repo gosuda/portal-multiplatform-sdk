@@ -7,16 +7,19 @@
   On macOS it reported `libportaltunnel.dylib`, the universal-binary
   architecture headings, and `/usr/lib/libresolv.9.dylib` as unexpected
   dependencies.
-- **Root Cause:** The Windows parser stopped at the blank line between GNU
-  `objdump`'s Export Address Table and `[Ordinal/Name Pointer] Table`, where
-  exported names actually appear. The macOS parser treated every `otool -L`
-  line after the first as a dependency, but universal output contains a
-  heading per architecture and each dylib slice lists its `LC_ID_DYLIB`.
-  The allowlist also omitted macOS's system resolver library.
-- **Solution:** Parse indexed `Portal*` rows from the full Windows output.
-  For macOS, accept only tab-indented load-command rows, exclude the dylib's
-  own install ID, and allow versioned `/usr/lib/libresolv.*.dylib`. Added
-  representative parser self-tests and run them in both release workflows.
+- **Root Cause:** The first Windows parser stopped at the blank line before
+  `[Ordinal/Name Pointer] Table`; its initial fix then assumed one exact
+  `[ordinal] name` row shape. The Windows runner's MinGW `objdump` emitted a
+  different column/annotation layout, so valid names still did not match.
+  The macOS parser treated every `otool -L` line after the first as a
+  dependency, but universal output contains a heading per architecture and
+  each dylib slice lists its `LC_ID_DYLIB`. The allowlist also omitted
+  macOS's system resolver library.
+- **Solution:** Extract exact `Portal*` tokens from the complete PE metadata,
+  independent of columns, annotations, and CRLF. For macOS, accept only
+  tab-indented load-command rows, exclude the dylib's own install ID, and
+  allow versioned `/usr/lib/libresolv.*.dylib`. Representative parser
+  self-tests run in both release workflows.
 - **Prevention / Reference:** ABI verification parsers must use the real
   multi-section/multi-architecture tool formats rather than blank-line or
   global-line-number assumptions.

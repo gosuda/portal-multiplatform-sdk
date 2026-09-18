@@ -23,10 +23,17 @@ REQUIRED=(
 )
 
 parse_windows_exports() {
-    # GNU objdump prints the export names in the "[Ordinal/Name Pointer]
-    # Table", after a blank line that terminates the Export Address Table.
-    # Match only indexed Portal* name rows; column positions vary by version.
-    awk '/^[[:space:]]*\[[[:space:]]*[0-9]+\][[:space:]]+Portal[A-Za-z0-9_]*[[:space:]]*$/ {print $NF}'
+    # MinGW/GNU objdump formatting differs across runner/toolchain versions:
+    # export rows may carry extra columns, annotations, and CRLF. Extract
+    # Portal* tokens from the complete PE metadata instead of relying on one
+    # exact "[ordinal] name" row shape.
+    awk '{
+        line = $0
+        while (match(line, /Portal[A-Za-z0-9_]+/)) {
+            print substr(line, RSTART, RLENGTH)
+            line = substr(line, RSTART + RLENGTH)
+        }
+    }' | sort -u
 }
 
 parse_macos_dependencies() {
@@ -43,15 +50,16 @@ parse_macos_dependencies() {
 }
 
 if [[ "${1:-}" == "--self-test" ]]; then
-    windows_fixture='The Export Tables (interpreted .edata section contents)
+    windows_fixture=$'The Export Tables (interpreted .edata section contents)\r
 
 Export Address Table -- Ordinal Base 1
 	[   0] +base[   1] 1370 Export RVA
 
 [Ordinal/Name Pointer] Table
-	[   0] PortalAddRelay
-	[  10] PortalUpdateMetadata'
-    windows_expected=$'PortalAddRelay\nPortalUpdateMetadata'
+	[   0] PortalAddRelay\r
+	[  10] PortalUpdateMetadata  forwarder metadata\r
+Name pointer: PortalSetEventCallback'
+    windows_expected=$'PortalAddRelay\nPortalSetEventCallback\nPortalUpdateMetadata'
     [[ "$(parse_windows_exports <<<"$windows_fixture")" == "$windows_expected" ]] ||
         { echo "Windows export parser self-test failed" >&2; exit 1; }
 

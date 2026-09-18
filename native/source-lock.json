@@ -47,7 +47,20 @@
       "glibc_required_max": "GLIBC_2.14",
       "toolchain": "go1.27.1 + zig 0.16.0 cc",
       "note": "development build; release binaries are rebuilt and re-hashed on the release matrix"
+    },
+    "desktop/windows-x64/portaltunnel.dll": {
+      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "toolchain": "go1.27.1 + x86_64-w64-mingw32-gcc",
+      "built_by": "CI desktop-native job (windows-latest) on release-* tags",
+      "note": "produced and verified on the release matrix; sha256 recorded in the packaged index.json"
+    },
+    "desktop/macos-universal/libportaltunnel.dylib": {
+      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "toolchain": "go1.27.1 + Xcode clang, lipo universal (min macOS 13.0)",
+      "built_by": "CI desktop-native job (macos-latest) on release-* tags",
+      "note": "produced and verified on the release matrix; sha256 recorded in the packaged index.json"
     }
   },
+  "desktop_release_gate": "portal-native-desktop packages every matrix target; the GenerateNativeIndex task fails the build unless all three binaries are present (./gradlew :portal-native-desktop:jar -Pportal.native.requireComplete=true). The CI desktop-package job enforces this on release tags.",
   "release_gate": "Do not publish a release while any field reads UNRESOLVED, PENDING, MISSING, or TO_BE_FILLED."
 }

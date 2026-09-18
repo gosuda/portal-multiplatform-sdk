@@ -53,3 +53,72 @@ jobs:
       # which is not shipped (native/source-lock.json).
       - name: Compile iOS targets
         run: ./gradlew :portal-sdk:compileKotlinIosArm64 :portal-sdk:compileKotlinIosSimulatorArm64 :portal-sdk:compileKotlinIosX64 :portal-sdk:compileTestKotlinIosSimulatorArm64
+
+  # Builds the libportaltunnel shared library for each desktop target on its
+  # native runner, verifies the v1 ABI contract, and uploads the artifact.
+  desktop-native:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: windows-latest, target: windows-x64 }
+          - { os: macos-latest, target: macos-universal }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+      - name: Set up zig (linux-x64 glibc baseline)
+        if: matrix.target == 'linux-x64'
+        run: |
+          curl -sSL -o zig.tar.xz https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  zig.tar.xz" | sha256sum -c -
+          mkdir -p "$HOME/tools/zig" && tar -xJf zig.tar.xz -C "$HOME/tools/zig" --strip-components=1
+          echo "ZIG=$HOME/tools/zig/zig" >> "$GITHUB_ENV"
+      - name: Set up mingw (windows-x64)
+        if: matrix.target == 'windows-x64'
+        run: choco install mingw --yes --no-progress
+      - name: Build ${{ matrix.target }} engine
+        run: ./scripts/build-desktop-engine.sh ${{ matrix.target }}
+        shell: bash
+      - name: Verify ${{ matrix.target }} engine
+        run: |
+          case "${{ matrix.target }}" in
+            linux-x64) bin=native/desktop/linux-x64/libportaltunnel.so ;;
+            windows-x64) bin=native/desktop/windows-x64/portaltunnel.dll ;;
+            macos-universal) bin=native/desktop/macos-universal/libportaltunnel.dylib ;;
+          esac
+          ./scripts/verify-desktop-engine.sh "$bin"
+        shell: bash
+      - name: Upload ${{ matrix.target }} engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-engine-${{ matrix.target }}
+          path: native/desktop/${{ matrix.target }}/
+          retention-days: 7
+
+  # Packages the complete desktop runtime matrix into portal-native-desktop
+  # and runs the desktop test suite against the packaged binaries.
+  desktop-package:
+    runs-on: ubuntu-latest
+    needs: desktop-native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Download desktop engines
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-engine-*
+          path: native/desktop
+          merge-multiple: true
+      - name: Package complete native matrix (release gate)
+        run: ./gradlew :portal-native-desktop:jar -Pportal.native.requireComplete=true
+      - name: Desktop tests
+        run: ./gradlew :portal-sdk:desktopTest

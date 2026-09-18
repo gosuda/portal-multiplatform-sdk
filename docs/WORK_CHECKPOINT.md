@@ -1,80 +1,74 @@
 # Work Checkpoint
 
 ## Active task
-KMP platform expansion planning — **Desktop plan complete; Kotlin/Wasm
-feasibility assessed; implementation not started**.
+KMP Desktop expansion (D0–D5) — **complete through D5**; D6 (publish) is
+gated on `license_review` in `native/source-lock.json`.
 
 ## State (2026-09-18)
-- Added `docs/DESKTOP_IMPLEMENTATION_PLAN.md`.
-- Desktop decision:
-  - first-class target is JVM `jvm("desktop")` on Java 17+, matching normal
-    Compose Desktop consumers;
-  - bind the existing v1 C ABI with JNA rather than reuse Android JNI or expose
-    Kotlin/Native desktop as the primary artifact;
-  - first runtime matrix is Linux x86_64 glibc, Windows x86_64, and macOS
-    universal (x86_64 + arm64);
-  - package verified native libraries in `:portal-native-desktop`, extract to a
-    content-addressed cache, and never download native code at runtime;
-  - add `PortalDesktop.client(...)` with application-scoped persistent identity
-    defaults and an explicit native-library override;
-  - prove the host Linux C ABI path before adding Gradle targets or public API.
-- Added `docs/WASM_SUPPORT_ASSESSMENT.md`.
-- Kotlin/Wasm decision:
-  - do not publish `wasmJs` or `wasmWasi` as runnable `portal-sdk` targets;
-  - browser Wasm cannot preserve local listener, arbitrary TCP/UDP, filesystem,
-    identity-path, or native-engine ownership semantics;
-  - Kotlin/Wasm currently supports WASI 0.1, while Go `wasip1` lacks portable
-    full socket open/listen support required by the engine;
-  - WASI 0.3 has async sockets, but Kotlin and Go do not currently share a
-    production Component Model target for this engine;
-  - a future browser control SDK is viable only as a separately named remote
-    management product, not a `PortalClient` implementation;
-  - a future WASI component needs a WIT/Component Model ABI and must clear the
-    explicit gates in the assessment.
-- Updated `TASKS.md` with Desktop D0–D6 and Wasm re-evaluation gates.
-- No production code, public API, build configuration, or release artifact was
-  changed in this planning session.
-- Prior SDK usability state remains:
-  - P0–P3 mostly implemented;
-  - P4/P5, Android/iOS host verification, real-relay coverage, clean consumer
-    checks, and sample UI migration remain open;
-  - `license_review` remains PENDING because `portal-android-sdk` ships no
-    LICENSE file; `android_ndk_revision` is resolved to r29.
+- Added a `desktop` (JVM 17+) target to `portal-sdk` with a JNA engine
+  adapter (`PortalNativeLibrary`, `DesktopPortalEngine`, lazy native load)
+  matching `native/include/portaltunnel.h` (11 symbols).
+- `PortalDesktop.client(applicationId, storageDirectory?, nativeLibraryPath?,
+  allowRemoteTargets)` validates `applicationId` eagerly (`INVALID_CONFIG`)
+  and resolves the identity path lazily inside `open`/`publish`
+  (`PERMISSION_DENIED` on directory failure, matching iOS). Per-OS defaults:
+  `$XDG_STATE_HOME/<app>/portal` (Linux), `%LOCALAPPDATA%/<app>/Portal`
+  (Windows), `~/Library/Application Support/<app>/Portal` (macOS).
+- `PortalClient.defaultIdentityPath` changed `String?` → `(() -> String?)?`
+  provider so desktop resolves lazily; Android factory and the builder wrap
+  values as lambdas. iOS resolves via `IosIdentityPath` unchanged.
+- `portal-native-desktop` JAR packages `META-INF/portal-native/{index.json,
+  <target>/lib}` deterministically (reproducible JAR). `GenerateNativeIndex`
+  emits sha256 index and fails the build unless all three targets exist
+  (`-Pportal.native.requireComplete=true`, release gate).
+- `DesktopNativeLibraryLoader` extracts to a content-addressed cache
+  `<cache>/portal-sdk/<ver>/<sha256>/<file>` under a file lock with fsync +
+  atomic move; hash mismatch → `NATIVE_UNAVAILABLE`, no silent fallback.
+- Built `native/desktop/linux-x64/libportaltunnel.so` from `native/bridge`
+  via `scripts/build-desktop-engine.sh` (go1.27.1 + zig 0.16.0 cc, glibc 2.17
+  target; artifact requires only GLIBC_2.14). Verified by
+  `scripts/verify-desktop-engine.sh`.
+- `samples/desktop`: Compose Desktop app publishing a loopback HTTP server
+  plus a headless `:samples:desktop:smoke` real-relay publish check.
+- CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
+  windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
+  `desktop-package` downloads all three and packages with
+  `requireComplete=true`, then runs `desktopTest`.
+- `source-lock.json`: windows-x64 and macos-universal entries marked
+  `built_by` the CI release matrix; `desktop_release_gate` documents the
+  requireComplete enforcement.
 
 ## Verification
-- Documentation link and Markdown fence validation passed for both plans,
-  `TASKS.md`, and this checkpoint.
-- Desktop plan contains no residual patch markers.
-- `git diff --check` passed.
-- Runtime/build tests were not run because this session changes planning
-  documentation only.
+- `./gradlew :portal-sdk:desktopTest` — 68 tests green (engine, loader,
+  packaged-load, identity).
+- `./gradlew :portal-sdk:linuxX64Test` — 39 tests green (commonTest +
+  native stub) after the `defaultIdentityPath` signature change.
+- `./gradlew :samples:desktop:smoke` — real tunnel through relay discovery;
+  `https://desktop-smoke.portal.thumbgo.kr` served the loopback page (200,
+  marker round-tripped), clean stop.
+- Clean Maven Local consumer (`/tmp/portal-consumer`) resolved
+  `io.github.gosuda:portal-sdk:0.1.0` → `portal-sdk-desktop` variant, loaded
+  the packaged `.so` offline, `PortalDesktop.client` worked.
+- `./gradlew :portal-native-desktop:jar` — JAR contains
+  `META-INF/portal-native/index.json` + `linux-x64/libportaltunnel.so`.
 
-## Next action
-Execute Desktop D0 on Linux:
-
-1. build the current `native/bridge` with `-buildmode=c-shared`;
-2. verify the required `Portal*` exports against
-   `native/include/portaltunnel.h`;
-3. run a throwaway JVM/JNA harness through identity generation/parsing,
-   callback delivery, start/status/stop, UTF-8, and every returned-string free;
-4. record ABI, glibc/dependency, binary-size, and real-relay evidence before
-   modifying Gradle targets or publishing public Desktop API.
-
-Do not start Kotlin/Wasm runtime implementation. Revisit only when the
-toolchain gates in `docs/WASM_SUPPORT_ASSESSMENT.md` are met, or begin a
-separately scoped browser-control product after its management/security
-contract is approved.
-
-## Prior environment notes (2026-09-17 macOS session)
-- Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via
-  `local.properties` (gitignored).
-- JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10, AGP 9.1.0.
-- Go 1.27.1 darwin/arm64, Xcode 27.0, xcodegen 2.46.0 (brew).
-- iPhone 15 Pro connected (UDID 00008130-001E58C13AE0001C), team
-  `37FAA8L9Q7` in `samples/ios/project.yml`.
-- AGP 9: no `org.jetbrains.kotlin.android` plugin; use `android {}` not
-  `androidLibrary {}` in the KMP block. See docs/TROUBLESHOOTING.md.
+## Environment notes (this host)
+- Linux x86_64, JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10.
+- Go 1.27.1 linux/amd64, zig 0.16.0 at `~/tools/zig/zig`.
+- **No Android SDK** — `:portal-sdk:publishToMavenLocal` (full, incl. AAR)
+  fails on `extractAndroidMainAnnotations`; the desktop variant publishes
+  fine via `publishDesktopPublicationToMavenLocal` +
+  `publishKotlinMultiplatformPublicationToMavenLocal`.
+- iOS targets disabled on this host (no cinterop toolchain).
 
 ## Blockers
-- `license_review` and `android_ndk_revision` still gate releases
-  (source-lock.json). No code blockers for iOS.
+- `license_review` still PENDING in `native/source-lock.json` — gates D6
+  publish (portal-android-sdk ships no LICENSE; needs upstream grant or a
+  rebuild from MIT-licensed portal-tunnel source).
+- windows-x64 / macos-universal engines are produced by the CI release
+  matrix, not this host.
+
+## Next action
+D6 publish gate: resolve `license_review`, then run the release matrix
+(`release-*` tag) to build windows/macos engines and package the complete
+`portal-native-desktop` runtime.

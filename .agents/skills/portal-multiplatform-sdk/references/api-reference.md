@@ -99,6 +99,37 @@ RELAY_UNAVAILABLE, NETWORK_UNAVAILABLE, PERMISSION_DENIED,
 UNSUPPORTED_CAPABILITY, PROTOCOL_ERROR, STOP_TIMEOUT, SECURITY_WARNING,
 CLIENT_CLOSED, TUNNEL_CLOSED, INTERNAL_ERROR.
 
+## Desktop facade (desktopMain, JVM 17+)
+
+```kotlin
+object PortalDesktop {
+    fun client(
+        applicationId: String,
+        storageDirectory: Path? = null,
+        nativeLibraryPath: Path? = null,
+        allowRemoteTargets: Boolean = false
+    ): PortalClient
+    fun runtime(nativeLibraryPath: Path? = null): PortalDesktopRuntime
+}
+data class PortalDesktopRuntime(
+    os: DesktopOs, architecture: DesktopArchitecture,
+    source: NativeLibrarySource,       // PACKAGED | OVERRIDE
+    nativeLibraryPath: Path, nativeSha256: String
+)
+```
+
+`PortalDesktop.client` loads the verified `libportaltunnel` from the
+`portal-native-desktop` runtime JAR (linux-x64 / windows-x64 /
+macos-universal) via JNA, extracting to a content-addressed cache
+(`<cache>/portal-sdk/<version>/<sha256>/<file>`) under a file lock with an
+atomic move. `applicationId` is validated eagerly (`INVALID_CONFIG`); the
+identity directory is created lazily inside `open`/`publish` so filesystem
+failures surface as `PERMISSION_DENIED`. Per-OS identity defaults:
+`$XDG_STATE_HOME/<app>/portal` (Linux), `%LOCALAPPDATA%/<app>/Portal`
+(Windows), `~/Library/Application Support/<app>/Portal` (macOS).
+`storageDirectory`/`nativeLibraryPath` override the defaults.
+
+
 ## iOS facade (iosMain)
 
 ```kotlin

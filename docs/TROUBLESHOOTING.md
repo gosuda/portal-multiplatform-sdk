@@ -1,5 +1,55 @@
 # Troubleshooting Log
 
+### [2026-09-18] `processResources` placed native runtime at JAR root
+
+- **Context / Symptom:** `portal-native-desktop` JAR contained `index.json`
+  and `linux-x64/libportaltunnel.so` at the root instead of under
+  `META-INF/portal-native/`, so `DesktopNativeLibraryLoader` could not find
+  the packaged resource.
+- **Root Cause:** `into("META-INF/portal-native")` was called on the
+  `processResources` task itself, not on the `from(...)` source — the
+  destination applies per-source, not per-task.
+- **Solution:** Nest the `into` inside the `from` block:
+  `from(layout.buildDirectory.dir("generated/portal-native")) { into("META-INF/portal-native") }`.
+- **Prevention / Reference:** In Gradle `CopySpec`, `into`/`exclude`/`include`
+  configure the enclosing `from` source; a bare `into` on the task sets the
+  destination dir, not a resource prefix.
+
+### [2026-09-18] Desktop `PortalClient()` failed without a packaged engine
+
+- **Context / Symptom:** `PortalClientTest.portalEntryPointCreatesClient` and
+  `builderCreatesWorkingClient` failed on desktop with `IllegalStateException`
+  even though the tests only construct and close a client.
+- **Root Cause:** `DesktopPortalEngine` loaded the native library eagerly in
+  its constructor, so `PortalClient()` threw `NATIVE_UNAVAILABLE` when no
+  packaged `.so` was on the classpath — unlike Android, where JNI loads
+  lazily.
+- **Solution:** Made `DesktopPortalEngine` resolve the library lazily on the
+  first native call (matching Android's JNI behavior); the constructor now
+  takes a `() -> PortalNativeLibrary` provider.
+- **Prevention / Reference:** Platform engines must not touch native code at
+  construction — a client with no sessions must close cleanly without a
+  native dependency.
+
+### [2026-09-18] Desktop identity path created the directory too early
+
+- **Context / Symptom:** Per-OS identity-path tests failed with
+  `PortalException: cannot create identity directory` because
+  `DesktopIdentityPath.resolve` ran `Files.createDirectories` eagerly at
+  `PortalDesktop.client(...)` construction.
+- **Root Cause:** `PortalClient.defaultIdentityPath` was a plain `String?`
+  resolved once at construction, so the directory was created before
+  `open`/`publish` — contradicting the lazy-creation contract (and iOS).
+- **Solution:** Changed `defaultIdentityPath` to a `(() -> String?)?`
+  provider invoked inside `open`; split `DesktopIdentityPath` into a pure
+  `pathFor` (no IO) and `resolve` (creates the dir, called lazily).
+  `PortalDesktop.client` validates `applicationId` eagerly but defers
+  directory creation to the operation.
+- **Prevention / Reference:** Identity-path resolution that touches the
+  filesystem must be deferred to `open`/`publish` so failures surface as
+  `PERMISSION_DENIED` through the operation, not at client construction.
+
+
 ### [2026-09-18] Gradle could not locate Android SDK on Windows
 
 - **Context / Symptom:** `publishToMavenLocal` failed with `SDK location not

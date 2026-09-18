@@ -2,6 +2,13 @@
 
 ## 2026-09-18
 
+- feat(desktop): added a `desktop` (JVM 17+) target with a JNA engine
+  adapter, the `PortalDesktop.client(applicationId)` facade, per-OS identity
+  paths, and a `portal-native-desktop` runtime JAR packaging verified
+  linux-x64 / windows-x64 / macos-universal `libportaltunnel` binaries into a
+  content-addressed cache — a single `io.github.gosuda:portal-sdk` dependency
+  resolves the desktop variant and loads the engine offline
+
 - fix(client): made post-start session registration atomic with `close()` so a
   concurrent close cannot stop/unregister a tunnel and then have `open`
   re-add its process-global event route

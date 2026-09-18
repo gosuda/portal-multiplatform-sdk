@@ -6,18 +6,28 @@ Detailed architecture, file ownership, packaging, CI matrix, RED/GREEN steps,
 and release criteria:
 [`docs/DESKTOP_IMPLEMENTATION_PLAN.md`](docs/DESKTOP_IMPLEMENTATION_PLAN.md).
 
-- [ ] D0 — Prove the current C ABI from a JVM/JNA Linux host.
-- [ ] D1 — Add `jvm("desktop")`, `PortalDesktop`, safe identity defaults, and
-      the desktop JNA engine.
-- [ ] D2 — Build and verify Linux x86_64, Windows x86_64, and macOS universal
-      native libraries from the existing Go bridge.
-- [ ] D3 — Package checksum-indexed native resources with deterministic,
-      content-addressed extraction and no runtime downloads.
-- [ ] D4 — Add a Compose Desktop sample that publishes a loopback HTTP server.
-- [ ] D5 — Verify each supported OS in CI plus clean Maven consumers and
-      end-to-end real-relay smoke scenarios.
+- [x] D0 — Proved the current C ABI from a JVM/JNA Linux host (throwaway
+      harness called `PortalGenerateIdentity`/`PortalParseIdentity` through
+      JNA against the real `.so`).
+- [x] D1 — Added `jvm("desktop")`, `PortalDesktop`, safe identity defaults,
+      and the desktop JNA engine (`PortalNativeLibrary`,
+      `DesktopPortalEngine`, lazy native load).
+- [x] D2 — Built and verified the linux-x64 `libportaltunnel.so` from the Go
+      bridge (`scripts/build-desktop-engine.sh` + `verify-desktop-engine.sh`,
+      glibc 2.17 baseline via zig cc); windows-x64 and macos-universal are
+      produced by the CI release matrix.
+- [x] D3 — Packaged checksum-indexed native resources in
+      `portal-native-desktop` with deterministic, content-addressed
+      extraction (file lock + fsync + atomic move) and no runtime downloads.
+- [x] D4 — Added a Compose Desktop sample publishing a loopback HTTP server
+      plus a headless `:samples:desktop:smoke` real-relay publish check.
+- [x] D5 — Added a per-OS `desktop-native` CI build/verify matrix and a
+      `desktop-package` job gating on the complete runtime matrix; verified a
+      clean Maven Local consumer resolves the desktop variant and loads the
+      packaged engine offline.
 - [ ] D6 — Publish only after provenance, licensing, size, signing, and
-      documentation gates pass.
+      documentation gates pass. (Docs updated; `license_review` still PENDING
+      in source-lock.json — see Blocked.)
 
 ## Assessed — Kotlin/Wasm support
 

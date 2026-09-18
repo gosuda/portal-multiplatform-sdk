@@ -6,7 +6,7 @@
 
 <p align="center">
   Expose app-local <b>HTTP</b> servers, <b>TCP/UDP</b> sockets, and static
-  assets from Android and iOS through
+ assets from Android, iOS, and desktop (JVM) through
   <a href="https://github.com/gosuda/portal-tunnel">Portal</a> relays.
 </p>
 
@@ -21,7 +21,7 @@
 
 ## What you can build with it
 
-Portal gives software running inside an Android or iOS app a public endpoint —
+Portal gives software running inside an Android, iOS, or desktop app a public endpoint —
 no public IP or port forwarding required:
 
 - **On-device APIs and webhooks** — expose a Ktor, NanoHTTPD, or other
@@ -95,6 +95,7 @@ flowchart LR
 |---|---|---|
 | `android` (arm64-v8a, x86_64) | ✅ shipped | prebuilt `libportaltunnel.so`, 16 KB-page aligned |
 | `iosArm64` / `iosSimulatorArm64` / `iosX64` | ✅ verified | `libportaltunnel.a` built from `native/bridge` via `scripts/build-ios-engine.sh` — see [native/README.md](native/README.md) |
+| `desktop` (JVM 17+, linux-x64 / windows-x64 / macos-universal) | ✅ verified | `libportaltunnel` shared library packaged in `portal-native-desktop`, loaded via JNA |
 | `linuxX64` | 🧪 experimental | C stub for tests; link the real `.so` for production |
 
 ## Install
@@ -109,6 +110,12 @@ iOS additionally needs the `PortalSDK` XCFramework plus `libportaltunnel.a`
 linked into the app target — see [samples/ios/README.md](samples/ios/README.md).
 The engine archive is rebuilt from `native/bridge` (clean-room Go bridge over
 portal-tunnel v2.4.3 `sdk.Exposure`) and is gitignored.
+
+Desktop (JVM) resolves the `portal-sdk-desktop` variant plus the
+`portal-native-desktop` runtime JAR automatically — no extra dependency or
+native install step. The engine is extracted to a content-addressed cache on
+first use and works offline.
+
 
 ## Quick start: expose a local HTTP server
 
@@ -143,6 +150,31 @@ tunnel.state.collect { snapshot ->
 val ready = tunnel.awaitReady(Capability.HTTP_TLS)
 // or: tunnel.awaitActive(15_000)
 ```
+
+
+### Kotlin (Desktop / JVM)
+
+```kotlin
+// Resolves the packaged native engine and a per-OS identity path.
+val client = PortalDesktop.client("com.example.myapp")
+
+val tunnel = client.publish(
+    PortalConfig.http("127.0.0.1:8080", name = "desktop-api")
+)
+println(tunnel.state.value.primaryPublicUrl)
+
+tunnel.stop()
+client.close()
+```
+
+`PortalDesktop.client(applicationId)` loads the verified `libportaltunnel`
+from the `portal-native-desktop` runtime JAR (extracted to a
+content-addressed cache) and defaults `identity_path` to a per-OS location:
+`$XDG_STATE_HOME/<app>/portal` on Linux, `%LOCALAPPDATA%/<app>/Portal` on
+Windows, `~/Library/Application Support/<app>/Portal` on macOS. Pass
+`storageDirectory` or `nativeLibraryPath` to override. See
+[samples/desktop](samples/desktop) for the Compose app and a headless
+`:samples:desktop:smoke` publish check.
 
 ### Swift (iOS)
 
@@ -273,7 +305,8 @@ store it in Keystore-wrapped storage / Keychain, never log it.
 
 When a config sets neither `identityJson` nor `identityPath`, the SDK supplies
 a platform-owned default: `filesDir/identity.json` on Android (via
-`PortalClient(context)`) and `Application Support/Portal/identity.json` on iOS.
+`PortalClient(context)`), `Application Support/Portal/identity.json` on iOS,
+and a per-OS application directory on desktop (via `PortalDesktop.client`).
 
 ### Kotlin DSL + Android Context
 
@@ -348,13 +381,15 @@ Rebuild and run the ABI smoke test after syncing.
 ## Repository layout
 
 ```
-portal-sdk/               KMP library (commonMain / androidMain / nativeMain / iosMain)
+portal-sdk/               KMP library (commonMain / androidMain / nativeMain / iosMain / desktopMain)
 portal-native-android/    JNI bridge + prebuilt libportaltunnel.so
+portal-native-desktop/    Verified desktop libportaltunnel runtime JAR (linux/windows/macos)
 portal-android-lifecycle/ Process-scoped client + foreground-service base
 native/                   portaltunnel.h, C test stub, source provenance
 samples/android/          Compose sample (config, identity, relays, events, diagnostics)
                           — see samples/android/README.md for the on-device model API
 samples/ios/              SwiftUI sample + XCFramework instructions
+samples/desktop/          Compose Desktop sample + headless publish smoke
 docs/                     DESIGN_RULES, TROUBLESHOOTING, WORK_CHECKPOINT
 .agents/skills/           agent skill: API reference, examples, troubleshooting
 ```

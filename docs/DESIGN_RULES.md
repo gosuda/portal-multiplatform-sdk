@@ -13,6 +13,7 @@ app (Kotlin / Swift)
   -> internal PortalNativeEngine (v1 C ABI)
      androidMain: PortalJni -> JNI -> libportaltunnel.so
      nativeMain:  cinterop  -> libportaltunnel (iOS .a / Linux .so)
+     desktopMain: JNA       -> libportaltunnel (packaged .so/.dll/.dylib)
 ```
 
 - The Go tunnel engine stays native. Kotlin owns config validation, identity
@@ -107,6 +108,18 @@ app (Kotlin / Swift)
   linked via per-target `linkerOpts` plus `-framework Security`.
 - linuxX64: experimental; exists to exercise the shared `nativeMain` adapter
   and cinterop path on CI/desktop.
+- Desktop (JVM 17+): `PortalDesktop.client(applicationId)` loads the verified
+  `libportaltunnel` from the `portal-native-desktop` runtime JAR via JNA.
+  The engine is extracted to a content-addressed cache
+  (`<cache>/portal-sdk/<version>/<sha256>/<file>`) under a file lock with an
+  atomic move; a hash mismatch fails `NATIVE_UNAVAILABLE` — no silent
+  fallback. `applicationId` is validated eagerly (`INVALID_CONFIG`); the
+  identity directory is created lazily inside `open`/`publish` so filesystem
+  failures surface as `PERMISSION_DENIED` through the operation (matching
+  iOS). Per-OS defaults: `$XDG_STATE_HOME/<app>/portal` (Linux),
+  `%LOCALAPPDATA%/<app>/Portal` (Windows),
+  `~/Library/Application Support/<app>/Portal` (macOS). The linux-x64 engine
+  targets glibc 2.17 via zig cc (built artifact requires only GLIBC_2.14).
 
 ## 7. Provenance & release gates
 
@@ -117,4 +130,11 @@ app (Kotlin / Swift)
   gitignored. iOS engine support is verified: `iosSimulatorArm64Test` links
   and runs against the real archive, and a real-relay tunnel was observed
   end-to-end on the simulator.
+- Desktop engines are built per-OS on the release matrix
+  (`scripts/build-desktop-engine.sh`), verified against the v1 ABI
+  (`scripts/verify-desktop-engine.sh`), and packaged into
+  `portal-native-desktop`. The `GenerateNativeIndex` task fails the build
+  unless all three targets are present
+  (`-Pportal.native.requireComplete=true`) — a published runtime JAR can
+  never silently ship an incomplete matrix.
 - CI runs only for `release-*` tags and `workflow_dispatch` (AGENTS.md).

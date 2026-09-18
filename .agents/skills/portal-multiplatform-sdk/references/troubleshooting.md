@@ -9,9 +9,10 @@
   the KMP Android target.
 - **cinterop type errors** — `char**` out-params are `CPointerVar<ByteVar>`;
   `const char*` params take `CValuesRef` (`s.cstr` inside `memScoped`).
-- **iosSimulatorArm64Test / iosX64Test disabled** — intentional: they would
-  link `libportaltunnel.a`, which is not shipped. `compileTestKotlinIos*`
-  still runs on macOS.
+- **iosSimulatorArm64Test / iosX64Test disabled** — only when the matching
+  `libportaltunnel.a` is absent; Gradle builds the archives from
+  `native/bridge` automatically on macOS (`buildIosEngine`), so the tests
+  run when the toolchain is present.
 
 ## Runtime
 
@@ -23,9 +24,9 @@
   `droppedEventCount`.
 - **`stop()` threw but tunnel seems alive** — by design: failure keeps the
   session registered in STOPPING; retry `stop()` or check
-  `state.value.lastFailure`.
-- **iOS link failure** — consumer must provide `libportaltunnel`; the
-  archive is not embedded in the klib yet (native/source-lock.json).
+- **iOS link failure** — consumers never link `libportaltunnel.a` manually:
+  each published klib embeds the archive and Security linkage; Swift
+  consumers use the self-contained `PortalSDK.xcframework`/Swift package.
 - **Insecure relay rejected** — relays are `https`-only; `http://` is
   accepted only for loopback hosts (upgraded to https); `ws://`/`wss://`
   are not valid relay schemes.

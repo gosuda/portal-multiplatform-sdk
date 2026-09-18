@@ -34,6 +34,6 @@ object SnakeGameContent : PublishableContent {
 
     override fun stop() = Unit
 
-    override fun applyTo(config: PortalConfig): PortalConfig =
-        config.copy(staticDir = siteDir.absolutePath, staticIndex = "index.html")
+    override fun baseConfig(): PortalConfig =
+        PortalConfig.staticSite(siteDir.absolutePath, index = "index.html")
 }

@@ -1,9 +1,9 @@
 # Work Checkpoint
 
 ## Active task
-Multiplatform SDK publication — desktop matrix paths and self-contained iOS
-distribution were corrected; the next release workflow must verify the Apple
-artifacts on macOS and publish Maven Central.
+SDK usability roadmap (P5/P6) implemented on this macOS host; release
+verification partially proven locally. Remaining work is release-gated:
+run the publish workflow, then cut samples to released artifacts.
 
 ## State (2026-09-18)
 - Added a `desktop` (JVM 17+) target to `portal-sdk` with a JNA engine
@@ -196,21 +196,49 @@ artifacts on macOS and publish Maven Central.
   `linkerOpts`.
 
 ## Environment notes (this host)
-- Linux x86_64, JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10.
-- Go 1.27.1 linux/amd64, zig 0.16.0 at `~/tools/zig/zig`.
-- **No Android SDK** — `:portal-sdk:publishToMavenLocal` (full, incl. AAR)
-  fails on `extractAndroidMainAnnotations`; the desktop variant publishes
-  fine via `publishDesktopPublicationToMavenLocal` +
-  `publishKotlinMultiplatformPublicationToMavenLocal`.
-- iOS targets disabled on this host (no cinterop toolchain).
+- macOS arm64 (M1 Pro), Xcode 27.0, Android SDK at `~/Library/Android/sdk`,
+  Go 1.27.1 darwin/arm64, JDK 17 at `~/tools/jdk-17.0.20.1+1` (or the
+  Android Studio JBR 21 — both build the project).
+- iOS targets build and test here: `iosSimulatorArm64Test` 47/47 green,
+  `package-ios-xcframework.sh` produces a verified XCFramework.
+- `linuxX64Test` cannot run on macOS (Kotlin/Native linuxX64 target is
+  Linux-only); `desktopTest` (JVM) covers the same suite: 65/65 green.
+- Prior session ran on Linux x86_64 (JDK 17, zig 0.16.0); its notes are in
+  git history.
+
+## Session 2026-09-19 (macOS) — usability roadmap implemented
+- `PortalTunnel.publicUrl` + `PortalIosSession.primaryPublicUrl`
+  (ready-result convenience surface).
+- `PortalClient.use {}` managed-lifetime for JVM/desktop/common;
+  `PortalClientHolder.publish` on Android.
+- Typed publish failures: `PortalFailure.operation` (`publish` /
+  `publish_cleanup` / `identity_path`), `terminalPhase`, `readinessFailure`.
+- `PortalDiagnostics.engineVersion` + per-session `activeRelay`/`lastFailure`.
+- `PortalIosConfigFactory.custom` — full-config Swift escape hatch without
+  `KotlinBoolean` or the all-fields initializer.
+- README: publish-first quick starts, Recipes section, Compatibility table,
+  API-reference links; `docs/SWIFT_API.md` reviewed against the real
+  `PortalSDK.h`; `docs/TROUBLESHOOTING.md` decision tree.
+- Dokka plugin added (`:portal-sdk:dokkaGenerate`); publish workflow now
+  attaches `PortalSDK.xcframework.zip`, `Package.swift`, and
+  `dokka-html.zip` to the tag's GitHub release after Maven Central succeeds.
+- Sample apps cut to `publish` + factory configs; `AdvancedContract` fixtures
+  keep raw `PortalConfig` + `open` compiled.
+- Verified: all 3 staged iOS cinterop klibs embed `libportaltunnel.a`;
+  `verify-ios-maven-consumer.sh` links `iosArm64` clean;
+  `desktopTest` 65/65, `iosSimulatorArm64Test` 47/47 green.
 
 ## Blockers
 - windows-x64 / macos-universal engines are produced by the CI release
   matrix, not this host.
+- Maven Central publish + GitHub release require the release workflow run
+  (credentials/secrets not on this host).
+- On-device tunnel exercise from the app UI remains a manual step.
 
 ## Next action
 Run a new `Publish Multiplatform SDK` workflow on the release commit. Confirm
-the Android source build, desktop runtime matrix, signing, and Maven Central
-upload all complete; publish the matching Swift package release. After the
-artifacts are externally available, cut all samples over to those exact
-released artifacts and run the new independent post-release consumer checks.
+the Android source build, desktop runtime matrix, signing, Maven Central
+upload, and the new release-asset attach (XCFramework zip, Package.swift,
+dokka-html.zip) all complete. After the artifacts are externally available,
+cut all samples over to those exact released artifacts and run the new
+independent post-release consumer checks.

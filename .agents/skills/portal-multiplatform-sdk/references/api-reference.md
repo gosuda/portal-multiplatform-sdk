@@ -37,6 +37,7 @@ val events: SharedFlow<PortalEvent>
 val isActive: Boolean
 val name: String?     // native status name, else config.name
 val address: String?  // native status address
+val publicUrl: String? // first public URL from the latest snapshot
 suspend fun awaitReady(capability: Capability, timeoutMillis: Long = 30_000): PortalSnapshot
 suspend fun awaitActive(timeoutMillis: Long = 30_000): PortalSnapshot
 suspend fun refresh(): PortalSnapshot
@@ -45,6 +46,9 @@ suspend fun removeRelay(relayUrl: String)
 suspend fun updateMetadata(metadata: PortalMetadata)
 suspend fun stop()
 ```
+
+`PortalClient.use { … }` (suspend extension) closes the client after the
+block — the managed-lifetime pattern for JVM/desktop/common callers.
 
 ## PortalSnapshot
 
@@ -92,6 +96,18 @@ identity.document / .jsonString  // secret — redacted in toString
 identity.name / .address
 ```
 
+## PortalFailure
+
+```kotlin
+data class PortalFailure(
+    code: String, message: String, retryable: Boolean,
+    operation: String?,       // "publish", "publish_cleanup", "identity_path", native op name…
+    nativeCode: Int?,
+    terminalPhase: TunnelPhase?,      // FAILED/STOPPED when the session ended first
+    readinessFailure: PortalFailure?  // original readiness error on publish_cleanup
+)
+```
+
 ## PortalFailure.Codes
 
 NATIVE_UNAVAILABLE, ABI_MISMATCH, INVALID_CONFIG, IDENTITY_INVALID,
@@ -99,6 +115,21 @@ RELAY_UNAVAILABLE, NETWORK_UNAVAILABLE, PERMISSION_DENIED,
 UNSUPPORTED_CAPABILITY, PROTOCOL_ERROR, STOP_TIMEOUT, SECURITY_WARNING,
 CLIENT_CLOSED, TUNNEL_CLOSED, INTERNAL_ERROR.
 
+## PortalDiagnostics
+
+```kotlin
+data class PortalDiagnostics(
+    sdkVersion: String, engineVersion: String,
+    abiVersion: Int, wireSchemaVersion: Int,
+    activeSessions: Int,
+    droppedOrphanEvents: Long, droppedAggregateEvents: Long,
+    sessions: List<SessionDiagnostics>  // sessionId, generation, phase,
+                                      // revision, droppedEvents,
+                                      // activeRelay, lastFailure
+)
+```
+
+Never contains identity documents, keys, tokens, or request bodies.
 ## Desktop facade (desktopMain, JVM 17+)
 
 ```kotlin
@@ -143,6 +174,7 @@ class PortalIosClient(allowRemoteTargets, defaultIdentityPath) {
 }
 class PortalIosSession {
     val sessionId: String; val snapshot: PortalSnapshot
+    val primaryPublicUrl: String?   // first public URL from the snapshot
     fun observeState(cb: (PortalSnapshot) -> Unit): PortalSubscription
     fun observeEvents(cb: (PortalEvent) -> Unit): PortalSubscription
     fun stop(completion: (PortalFailure?) -> Unit)
@@ -157,7 +189,20 @@ When a config sets neither `identityJson` nor `identityPath`, the client
 resolves `Application Support/Portal/identity.json` at open/publish time
 (filesystem failures surface as PERMISSION_DENIED through the completion).
 `defaultIdentityPath` overrides that platform default.
-
 `PortalIosConfigFactory` gives Swift callers the intent factories with a
 stable spelling: `PortalIosConfigFactory.shared.http(targetAddress:name:)`,
-`.routes`, `.tcp`, `.udp`, `.staticSite`.
+`.routes`, `.tcp`, `.udp`, `.staticSite`, plus `.custom(...)` — the advanced
+escape hatch covering every `PortalConfig` field without the generated
+all-fields initializer or `KotlinBoolean`.
+
+## Android lifecycle (portal-android-lifecycle)
+
+```kotlin
+PortalClientHolder.init(context)                    // Application.onCreate
+PortalClientHolder.open(config) { result -> … }     // accepted-before-ready
+PortalClientHolder.publish(config, timeoutMillis) { result -> … }  // ACTIVE-on-return
+PortalClientHolder.client / .isInitialized / .shutdown()
+
+abstract class PortalTunnelService : Service()      // foreground owner
+    .startTunnel(config) { result -> … } / .stopAllTunnels()
+```

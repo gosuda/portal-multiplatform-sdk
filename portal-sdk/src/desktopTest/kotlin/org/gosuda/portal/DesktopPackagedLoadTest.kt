@@ -30,8 +30,8 @@ class DesktopPackagedLoadTest {
         val tmp = Files.createTempDirectory("portal-packaged-test")
         DesktopNativeLibraryLoader.cacheRoot = { tmp }
         DesktopNativeLibraryLoader.sdkVersion = { "test-1.0" }
-        DesktopNativeLibraryLoader.osName = { "Linux" }
-        DesktopNativeLibraryLoader.osArch = { "amd64" }
+        DesktopNativeLibraryLoader.osName = { System.getProperty("os.name") ?: "" }
+        DesktopNativeLibraryLoader.osArch = { System.getProperty("os.arch") ?: "" }
         try {
             val resolved = DesktopNativeLibraryLoader.resolve(null)
             assertEquals(NativeLibrarySource.PACKAGED, resolved.source)

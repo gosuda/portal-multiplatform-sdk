@@ -10,7 +10,19 @@ public data class PortalFailure(
     val message: String,
     val retryable: Boolean = false,
     val operation: String? = null,
-    val nativeCode: Int? = null
+    val nativeCode: Int? = null,
+    /**
+     * Terminal phase the session reached when this failure ended it
+     * ([TunnelPhase.FAILED]/[TunnelPhase.STOPPED]); null when the failure is
+     * not tied to a terminal transition.
+     */
+    val terminalPhase: TunnelPhase? = null,
+    /**
+     * The readiness failure that triggered cleanup when this failure is a
+     * `publish_cleanup` outcome; null otherwise. Lets callers inspect both
+     * the cleanup result and the original cause without parsing [message].
+     */
+    val readinessFailure: PortalFailure? = null
 ) {
     public object Codes {
         public const val NATIVE_UNAVAILABLE: String = "NATIVE_UNAVAILABLE"

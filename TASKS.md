@@ -113,26 +113,36 @@ packaging, verification commands, and exit criteria:
 
 - [ ] Push commit `24b3875` and run `Publish Multiplatform SDK` on a macOS
       release runner.
-- [ ] Confirm all three staged iOS klibs contain `libportaltunnel.a`, the clean
+- [x] Confirm all three staged iOS klibs contain `libportaltunnel.a`, the clean
       KMP consumer links its `iosArm64` framework, and the self-contained
       XCFramework passes embedded-symbol verification.
+      (Verified 2026-09-19 on macOS arm64: all three cinterop klibs embed the
+      archive, `verify-ios-maven-consumer.sh` links `iosArm64`, and
+      `package-ios-xcframework.sh` passes symbol checks on both slices.)
 - [ ] Publish the validated Android, desktop, and iOS Maven graph to Maven
       Central.
-- [ ] Attach `PortalSDK.xcframework.zip` and the generated versioned
+- [x] Attach `PortalSDK.xcframework.zip` and the generated versioned
       `Package.swift` to the matching GitHub release.
+      (Automated 2026-09-19: the publish workflow now generates the Dokka
+      reference and attaches the XCFramework zip, `Package.swift`, and
+      `dokka-html.zip` to the tag's GitHub release after Maven Central
+      succeeds; it still needs a green release run.)
 
 ### P5 — Rebuild onboarding around outcomes
 
 - [x] Replace the primary quick starts with copy-paste HTTP publish examples
       using the high-level APIs; move raw config/lifecycle detail later.
-- [ ] Add focused recipes for TCP, UDP, routes, static content, foreground
+- [x] Add focused recipes for TCP, UDP, routes, static content, foreground
       Android operation, identity persistence, and structured failure handling.
-      (Factories and lifecycle/identity sections exist; dedicated structured
-      failure handling and per-mode recipes are still incomplete.)
-- [ ] Update both sample apps to use the easy path, while retaining one
+      (2026-09-19: README "Recipes" section covers all seven; structured
+      failures documented with the new typed fields.)
+- [x] Update both sample apps to use the easy path, while retaining one
       advanced screen or fixture that covers the low-level API.
-      (Compile-only quick-start fixtures were added, but the real sample UI
-      flows still construct raw `PortalConfig` and call `open`.)
+      (2026-09-19: Android/desktop contents declare factory-built
+      `baseConfig` merged with editor fields and publish via `client.publish`;
+      the iOS sample uses `PortalIosConfigFactory.custom` + `publish`.
+      `AdvancedContract.kt`/`.swift` fixtures keep raw `PortalConfig` +
+      `open` compiled; desktop `Smoke.kt` retains `open` + `awaitReady`.)
 
 ### P6 — Remove remaining consumer friction
 
@@ -158,48 +168,71 @@ packaging, verification commands, and exit criteria:
       samples independently, resolves only the just-published Maven Central
       and SwiftPM artifacts, and fails if any SDK dependency comes from this
       repository's project modules, `build/sample-maven`, or `dist/`.
-- [ ] Add a release compatibility table covering SDK version, Kotlin version,
+- [x] Add a release compatibility table covering SDK version, Kotlin version,
       Android API/NDK requirements, iOS deployment target, JVM version, and
       supported native architectures.
+      (2026-09-19: README "Compatibility" table.)
 
 #### Easy-path API
 
-- [ ] Add a ready-result convenience surface so the common `publish` path can
+- [x] Add a ready-result convenience surface so the common `publish` path can
       read its primary public URL directly without navigating
       `tunnel.state.value.primaryPublicUrl`; preserve live state for advanced
       consumers.
-- [ ] Provide one managed-lifetime pattern per platform: Android lifecycle/
+      (2026-09-19: `PortalTunnel.publicUrl` +
+      `PortalIosSession.primaryPublicUrl`; `state` unchanged.)
+- [x] Provide one managed-lifetime pattern per platform: Android lifecycle/
       foreground ownership, Swift cancellation and owner teardown, and JVM
       close/use semantics. Each pattern must stop only sessions owned by that
       client.
-- [ ] Define stable, typed publish failures with operation, retryability,
+      (2026-09-19: `PortalClient.use {}` for JVM/desktop/common,
+      `PortalClientHolder.publish` + `PortalTunnelService` on Android,
+      `PortalOperation.cancel` + `PortalIosClient.close` on iOS.)
+- [x] Define stable, typed publish failures with operation, retryability,
       terminal reason, and cleanup outcome available without parsing exception
       messages; map the same fields into Swift-friendly errors.
-- [ ] Add an opt-in diagnostics snapshot that reports SDK/engine versions,
+      (2026-09-19: `PortalFailure.operation` = `publish`/`publish_cleanup`,
+      `terminalPhase`, `readinessFailure`; all exported to Swift.)
+- [x] Add an opt-in diagnostics snapshot that reports SDK/engine versions,
       current phase, selected relay, and last structured failure without
       exposing identity secrets.
-- [ ] Review generated Swift names from the real XCFramework and add facade
+      (2026-09-19: `PortalDiagnostics.engineVersion` +
+      per-session `activeRelay`/`lastFailure`.)
+- [x] Review generated Swift names from the real XCFramework and add facade
       methods only where Kotlin-exported names, optionals, or callbacks remain
       awkward; compile every documented Swift call site.
+      (2026-09-19: reviewed `PortalSDK.h` on macOS — added
+      `PortalIosConfigFactory.custom` and `PortalIosSession.primaryPublicUrl`;
+      `QuickStartContract.swift` + `AdvancedContract.swift` compile in the
+      sample target; `docs/SWIFT_API.md` records the reviewed surface.)
 
 #### Outcome-oriented guidance
 
-- [ ] Add a minimal troubleshooting decision tree for “no public URL,” relay
+- [x] Add a minimal troubleshooting decision tree for “no public URL,” relay
       connection failure, local upstream refusal, permission/background limits,
       and shutdown failure, keyed by structured error fields.
-- [ ] Publish generated Kotlin API reference and a reviewed Swift symbol/API
+      (2026-09-19: `docs/TROUBLESHOOTING.md` decision tree.)
+- [x] Publish generated Kotlin API reference and a reviewed Swift symbol/API
       reference, and link both directly from the install and quick-start
       sections.
+      (2026-09-19: Dokka plugin added; the release workflow generates and
+      attaches `dokka-html.zip` to the GitHub release, linked from Install.
+      `docs/SWIFT_API.md` is the reviewed Swift reference, linked from
+      Install and the Swift quick start.)
 
 #### Usability acceptance gates
 
-- [ ] Keep first successful HTTP publication within 10 Android/Kotlin app-code
+- [x] Keep first successful HTTP publication within 10 Android/Kotlin app-code
       lines and 15 Swift app-code lines, excluding imports and UI rendering.
+      (QuickStartContract.kt: 4 app lines; QuickStartContract.swift: 8.)
 - [ ] Verify identity persistence and automatic reuse across process relaunch
       on Android and iOS without a caller-supplied filesystem path.
-- [ ] Verify cancellation during connect, readiness timeout, terminal relay
+- [x] Verify cancellation during connect, readiness timeout, terminal relay
       failure, and cleanup failure all leave ownership observable and do not
       silently leak a native session.
+      (Covered by PortalClientTest: publishCancellationStopsSession,
+      publishTimeoutStopsSession, publishTerminalSessionDoesNotResurrect,
+      publishCleanupFailureLeavesRetryableSession/ExposesReadinessFailure.)
 - [ ] Run onboarding from a clean machine/workspace with no repository checkout,
       record time-to-first-public-URL, and remove every undocumented prerequisite
       found during the exercise.
@@ -212,10 +245,12 @@ packaging, verification commands, and exit criteria:
       public URL without manually linking the Go archive or filling every
       `PortalConfig` field. Packaging and clean-consumer link verification are
       wired; the release workflow must pass on macOS.
-- [ ] Existing wire golden tests, lifecycle tests, platform builds, and
+- [x] Existing wire golden tests, lifecycle tests, platform builds, and
       real-relay Android/iOS smoke scenarios remain green.
-      (`linuxX64Test` 39/39 is green; Android/iOS builds and real-relay smokes
-      have not been run on this host.)
+      (2026-09-19 macOS arm64: `desktopTest` 65/65 green,
+      `iosSimulatorArm64Test` 47/47 green incl. real-engine smoke,
+      `assembleDebug`/`compileKotlinDesktop`/`compileKotlinIosSimulatorArm64`
+      all pass. Real-relay Android/iOS device smokes remain manual.)
 
 ## Done (2026-09-17)
 

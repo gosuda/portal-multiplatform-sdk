@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release-gate:
@@ -161,6 +161,14 @@ jobs:
           path: |
             dist/PortalSDK.xcframework.zip
             dist/Package.swift
+      - name: Generate Kotlin API reference
+        run: |
+          ./gradlew :portal-sdk:dokkaGenerate --no-configuration-cache
+          cd portal-sdk/build/dokka && zip -qr "$GITHUB_WORKSPACE/dist/dokka-html.zip" html
+      - name: Upload API reference
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-sdk-dokka
       - name: Publish to MavenCentral
         run: ./gradlew publishToMavenCentral -Pportal.native.requireComplete=true --no-configuration-cache
         env:
@@ -169,3 +177,16 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
+
+      - name: Attach release assets
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            dist/PortalSDK.xcframework.zip \
+            dist/Package.swift \
+            dist/dokka-html.zip \
+            --clobber || gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" --notes "Portal Multiplatform SDK $GITHUB_REF_NAME" \
+            dist/PortalSDK.xcframework.zip dist/Package.swift dist/dokka-html.zip

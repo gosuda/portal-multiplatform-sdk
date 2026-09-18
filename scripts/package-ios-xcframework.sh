@@ -34,7 +34,9 @@ echo "==> verifying embedded engine symbols"
 framework_count=0
 while IFS= read -r bin; do
     for sym in PortalStart PortalStop PortalFreeString; do
-        nm -g "$bin" 2>/dev/null | grep -Eq " _?${sym}$" || {
+        # grep -q would exit on the first match and SIGPIPE nm (exit 141)
+        # under pipefail on large archives; consume the full listing instead.
+        nm -g "$bin" 2>/dev/null | grep -E " _?${sym}$" >/dev/null || {
             echo "error: $sym missing from $bin" >&2; exit 1;
         }
     done

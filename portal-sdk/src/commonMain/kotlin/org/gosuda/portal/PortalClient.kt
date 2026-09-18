@@ -35,6 +35,8 @@ import org.gosuda.portal.internal.SessionRegistry
  */
 public data class PortalDiagnostics(
     val sdkVersion: String,
+    /** Version of the bundled `libportaltunnel` engine (portal-tunnel core). */
+    val engineVersion: String,
     val abiVersion: Int,
     val wireSchemaVersion: Int,
     val activeSessions: Int,
@@ -47,7 +49,11 @@ public data class PortalDiagnostics(
         val generation: Int,
         val phase: TunnelPhase,
         val revision: Long,
-        val droppedEvents: Long
+        val droppedEvents: Long,
+        /** Relay currently serving the session, if the engine reported one. */
+        val activeRelay: String? = null,
+        /** Last structured failure on the session; never contains secrets. */
+        val lastFailure: PortalFailure? = null
     )
 }
 
@@ -225,17 +231,18 @@ public class PortalClient internal constructor(
             stopAfterFailedPublish(tunnel)
             throw e
         } catch (e: PortalException) {
+            val readiness = e.failure.copy(operation = e.failure.operation ?: "publish")
             stopAfterFailedPublish(tunnel)?.let { cleanup ->
                 throw PortalException(
-                    cleanup.code,
-                    "publish cleanup failed after readiness error " +
-                        "${e.failure.code}: ${cleanup.failure.message}",
-                    retryable = cleanup.failure.retryable,
-                    operation = "publish_cleanup",
-                    nativeCode = cleanup.failure.nativeCode
+                    cleanup.failure.copy(
+                        message = "publish cleanup failed after readiness error " +
+                            "${readiness.code}: ${cleanup.failure.message}",
+                        operation = "publish_cleanup",
+                        readinessFailure = readiness
+                    )
                 )
             }
-            throw e
+            throw PortalException(readiness)
         } catch (t: Throwable) {
             stopAfterFailedPublish(tunnel)
             throw t
@@ -294,11 +301,14 @@ public class PortalClient internal constructor(
                 generation = it.generation,
                 phase = s.phase,
                 revision = s.revision,
-                droppedEvents = s.droppedEventCount
+                droppedEvents = s.droppedEventCount,
+                activeRelay = s.relays.firstOrNull { r -> r.isActive }?.relayUrl,
+                lastFailure = s.lastFailure
             )
         }
         return PortalDiagnostics(
             sdkVersion = SDK_VERSION,
+            engineVersion = ENGINE_VERSION,
             abiVersion = ABI_VERSION,
             wireSchemaVersion = WIRE_SCHEMA_VERSION,
             activeSessions = sessions.size,
@@ -345,6 +355,9 @@ public class PortalClient internal constructor(
         const val EVENT_BUFFER = 128
 
         const val SDK_VERSION = "0.1.0"
+
+        /** portal-tunnel core version the bundled `native/bridge` builds on. */
+        const val ENGINE_VERSION = "2.4.3"
         const val ABI_VERSION = 1
         const val WIRE_SCHEMA_VERSION = 1
 
@@ -387,6 +400,28 @@ public class PortalClientBuilder internal constructor() {
 
     public fun build(): PortalClient =
         PortalClient(platformNativeEngine(), allowRemoteTargets, defaultIdentityPath?.let { p -> { p } })
+}
+
+/**
+ * Runs [block] with this client and closes it afterwards — the managed
+ * lifetime pattern for JVM/desktop and common callers. [close] stops only
+ * the sessions this client owns; a close failure propagates after [block]'s
+ * own outcome, never silently swallowing it.
+ */
+public suspend fun <T> PortalClient.use(block: suspend (PortalClient) -> T): T {
+    var failure: Throwable? = null
+    try {
+        return block(this)
+    } catch (t: Throwable) {
+        failure = t
+        throw t
+    } finally {
+        try {
+            close()
+        } catch (e: PortalException) {
+            failure?.addSuppressed(e) ?: throw e
+        }
+    }
 }
 
 

@@ -6,7 +6,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.gosuda.portal.Capability
 import org.gosuda.portal.PortalClient
 import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalException
@@ -16,13 +15,14 @@ import java.io.File
 
 /**
  * End-to-end example: persist an identity, host a static site from app
- * storage, observe the authoritative snapshot, stop from the owner scope.
+ * storage, publish it ready-on-return, observe the authoritative snapshot,
+ * stop from the owner scope.
  */
 class StaticSiteActivity : Activity() {
-
-    // Owner scope outlives UI collectors; the client owns native sessions.
-    private val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val client = PortalClient()
+    // PortalClient(context) defaults identity_path to filesDir/identity.json —
+    // persistent across relaunch with no caller-managed path. Lazy because
+    // applicationContext is only valid after attach().
+    private val client by lazy { PortalClient(applicationContext) }
     private var tunnel: PortalTunnel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,53 +32,68 @@ class StaticSiteActivity : Activity() {
 
     private suspend fun startTunnel() {
         try {
-            // 1. Identity: reuse a stored document or generate once. The
-            //    document is secret — store it Keystore-wrapped, never log it.
-            val identityFile = File(filesDir, "portal-secrets/identity.json")
-            val identity = if (identityFile.exists()) {
-                PortalIdentity.parse(identityFile.readText())
-            } else {
-                PortalIdentity.generate("kmp-sample").also {
-                    identityFile.parentFile?.mkdirs()
-                    identityFile.writeText(it.document)
-                }
-            }
-
-            // 2. Public content lives in a dedicated directory — never serve
-            //    filesDir itself or the secrets directory.
+            // 1. Public content lives in a dedicated directory — never serve
+            //    filesDir itself or a secrets directory.
             val siteDir = File(filesDir, "portal-public/site").apply { mkdirs() }
             assets.open("site/index.html").use { input ->
                 File(siteDir, "index.html").outputStream().use { input.copyTo(it) }
             }
 
-            // 3. Open: returns once ownership is registered.
-            val t = client.open(
-                PortalConfig(
-                    name = "kmp-sample",
-                    identityJson = identity.document,
-                    staticDir = siteDir.absolutePath,
-                    staticIndex = "index.html",
-                    discovery = true,
+            // 2. Publish: returns only after the tunnel reports ACTIVE and
+            //    rolls the session back if readiness fails. The intent
+            //    factory sets only the fields this mode needs.
+            val t = client.publish(
+                PortalConfig.staticSite(
+                    siteDir.absolutePath,
+                    index = "index.html",
+                    name = "kmp-sample"
+                ).copy(
                     maxActiveRelays = 2,
                     description = "Hosted from a KMP app"
                 )
             )
             tunnel = t
+            println("public: ${t.publicUrl}")
 
-            // 4. Observe authoritative state.
+            // 3. Observe authoritative state for live updates.
             ownerScope.launch {
                 t.state.collect { s ->
                     println("phase=${s.phase} url=${s.primaryPublicUrl} " +
                         "relays=${s.relays.count { it.isReady }} warn=${s.hasSecurityWarning}")
                 }
             }
-
-            // 5. Or suspend until the site is actually reachable.
-            val ready = t.awaitReady(Capability.STATIC_SITE)
-            println("public: ${ready.primaryPublicUrl}")
         } catch (e: PortalException) {
+            // Structured failure: e.failure.code / .operation / .retryable /
+            // .terminalPhase / .readinessFailure — no message parsing.
             println("portal error ${e.code}: ${e.message}")
         }
+    }
+
+    // Advanced path retained for reference: manage the identity document
+    // yourself (Keystore-wrapped storage, never logged) and use open() when
+    // accepted-before-ready observation is required.
+    @Suppress("unused")
+    private suspend fun advancedOpen() {
+        val identityFile = File(filesDir, "portal-secrets/identity.json")
+        val identity = if (identityFile.exists()) {
+            PortalIdentity.parse(identityFile.readText())
+        } else {
+            PortalIdentity.generate("kmp-sample").also {
+                identityFile.parentFile?.mkdirs()
+                identityFile.writeText(it.document)
+            }
+        }
+        val t = client.open(
+            PortalConfig(
+                name = "kmp-sample",
+                identityJson = identity.document,
+                staticDir = File(filesDir, "portal-public/site").absolutePath,
+                staticIndex = "index.html",
+                discovery = true
+            )
+        )
+        // open() returns before readiness — observe CONNECTING live.
+        t.awaitReady(org.gosuda.portal.Capability.STATIC_SITE)
     }
 
     override fun onDestroy() {

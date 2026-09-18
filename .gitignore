@@ -26,3 +26,6 @@ native/bridge/bridge
 
 # Packaged distribution artifacts (scripts/package-ios-xcframework.sh)
 dist/
+
+# SwiftPM scratch dir (verify-ios-maven-consumer.sh)
+.build/

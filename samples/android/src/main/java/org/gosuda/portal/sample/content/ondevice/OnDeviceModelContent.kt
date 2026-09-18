@@ -163,8 +163,8 @@ object OnDeviceModelContent : PublishableContent {
         _engineStatus.value = EngineStatus.Idle
     }
 
-    override fun applyTo(config: PortalConfig, context: Context): PortalConfig =
-        config.copy(targetAddr = "127.0.0.1:$PORT")
+    override fun baseConfig(context: Context): PortalConfig =
+        PortalConfig.http("127.0.0.1:$PORT")
 
     // ---- engine lifecycle ---------------------------------------------------
 

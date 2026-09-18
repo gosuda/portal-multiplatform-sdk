@@ -73,8 +73,8 @@ object MinecraftContent : PublishableContent {
         server = null
     }
 
-    override fun applyTo(config: PortalConfig, context: Context): PortalConfig =
-        config.copy(tcp = true, targetAddr = "127.0.0.1:$PORT")
+    override fun baseConfig(context: Context): PortalConfig =
+        PortalConfig.tcp().copy(targetAddr = "127.0.0.1:$PORT")
 
     // ---- connection handling -------------------------------------------------
 

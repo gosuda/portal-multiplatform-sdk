@@ -29,4 +29,60 @@ public object PortalIosConfigFactory {
     /** Serves a directory without an embedded HTTP server. */
     public fun staticSite(directory: String, index: String, name: String?): PortalConfig =
         PortalConfig.staticSite(directory, index, name)
+
+    /**
+     * Advanced escape hatch: builds a config with every field the
+     * intent factories do not cover, without the generated all-fields
+     * `PortalConfig` initializer or `KotlinBoolean` at the Swift call site.
+     * Boolean parameters are
+     * non-nullable on purpose: `encodeDefaults=false` makes an explicit
+     * `true`/`false` wire-identical to the field default, so there is no
+     * "unset" state to preserve. Pass null only for the `String?`/`List?`/
+     * object fields.
+     */
+    public fun custom(
+        name: String?,
+        identityJson: String?,
+        identityPath: String?,
+        relays: List<String>?,
+        discovery: Boolean,
+        maxActiveRelays: Int,
+        banMitm: Boolean,
+        ech: Boolean,
+        udp: Boolean,
+        tcp: Boolean,
+        description: String?,
+        tags: List<String>?,
+        owner: String?,
+        thumbnail: String?,
+        hide: Boolean,
+        staticDir: String?,
+        staticIndex: String?,
+        targetAddr: String?,
+        udpAddr: String?,
+        httpRoutes: List<PortalHTTPRoute>?,
+        x402: PortalX402Config?
+    ): PortalConfig = PortalConfig(
+        name = name,
+        identityJson = identityJson,
+        identityPath = identityPath,
+        relays = relays,
+        discovery = discovery,
+        maxActiveRelays = maxActiveRelays,
+        banMitm = banMitm,
+        ech = ech,
+        udp = udp,
+        tcp = tcp,
+        description = description,
+        tags = tags,
+        owner = owner,
+        thumbnail = thumbnail,
+        hide = hide,
+        staticDir = staticDir,
+        staticIndex = staticIndex,
+        targetAddr = targetAddr,
+        udpAddr = udpAddr,
+        httpRoutes = httpRoutes,
+        x402 = x402
+    )
 }

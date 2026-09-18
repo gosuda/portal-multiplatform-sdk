@@ -84,14 +84,14 @@ final class PortalHomeModel: ObservableObject {
             lastError = "Could not prepare identity: \(error.localizedDescription)"
             return
         }
-        let config = PortalConfig(
+        let config = PortalIosConfigFactory.shared.custom(
             name: name.trimmingCharacters(in: .whitespaces).isEmpty ? nil : name.trimmingCharacters(in: .whitespaces),
             identityJson: nil,
             identityPath: resolvedIdentityPath,
             relays: commaValues(relayInput),
-            discovery: KotlinBoolean(bool: discovery),
+            discovery: discovery,
             maxActiveRelays: 3,
-            banMitm: banMitm, ech: ech, overlay: false,
+            banMitm: banMitm, ech: ech,
             udp: udp, tcp: content.tcp,
             description: configDescription.isEmpty ? nil : configDescription,
             tags: commaValues(configTags),
@@ -99,7 +99,7 @@ final class PortalHomeModel: ObservableObject {
             staticDir: content.staticDir, staticIndex: content.staticIndex,
             targetAddr: content.targetAddr, udpAddr: nil, httpRoutes: nil, x402: nil
         )
-        startOp = client.open(config: config) { [weak self] session, failure in
+        startOp = client.publish(config: config, timeoutMillis: 30_000) { [weak self] session, failure in
             guard let self else { return }
             self.startOp = nil
             self.busy = false

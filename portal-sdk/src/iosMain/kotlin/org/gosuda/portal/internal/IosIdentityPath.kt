@@ -33,6 +33,7 @@ internal object IosIdentityPath {
     }
 
     /** Test seam: overrides directory creation for failure injection. */
+    @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
     internal var ensureDirectory: (String) -> Boolean = { path ->
         NSFileManager.defaultManager.createDirectoryAtPath(
             path, true, null, null

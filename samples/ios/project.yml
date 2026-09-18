@@ -11,6 +11,7 @@ targets:
     sources:
       - path: PortalSampleApp.swift
       - path: QuickStartContract.swift
+      - path: AdvancedContract.swift
       - path: PortalHomeView.swift
       - path: Contents.swift
       - path: LaunchScreen.storyboard

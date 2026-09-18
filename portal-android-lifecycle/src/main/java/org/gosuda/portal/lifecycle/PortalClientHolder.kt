@@ -69,6 +69,22 @@ public object PortalClientHolder {
     }
 
     /**
+     * Publishes a tunnel on the process-wide client and reports the result
+     * only after it is ACTIVE — the ready-on-return counterpart of [open].
+     * On readiness failure the session is rolled back before the callback
+     * fires. The callback fires on the main dispatcher.
+     */
+    public fun publish(
+        config: PortalConfig,
+        timeoutMillis: Long = 30_000,
+        onResult: (Result<PortalTunnel>) -> Unit
+    ) {
+        scope.launch(Dispatchers.Main) {
+            onResult(runCatching { client.publish(config, timeoutMillis) })
+        }
+    }
+
+    /**
      * Stops all sessions and releases the client. Call from
      * `Application.onTerminate` (emulator/testing only) or an explicit
      * shutdown path; Android does not call `onTerminate` on real devices.

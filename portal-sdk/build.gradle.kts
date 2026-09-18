@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.vanniktech.mavenPublish)
+    alias(libs.plugins.dokka)
 }
 
 group = "io.github.gosuda"
@@ -155,7 +156,16 @@ kotlin.targets.named(
 
 // The desktop test binary loads a C stub implementing the portaltunnel ABI
 // through JNA so the adapter is exercised end-to-end without the Go engine.
+// The shared-library extension follows the host OS (.so/.dylib/.dll).
 val desktopStubDir = layout.buildDirectory.dir("desktopStub")
+val desktopStubLibName = run {
+    val osName = (System.getProperty("os.name") ?: "").lowercase()
+    when {
+        osName.startsWith("mac") || osName.startsWith("darwin") -> "libportaltunnel_stub.dylib"
+        osName.startsWith("windows") || osName.startsWith("win") -> "portaltunnel_stub.dll"
+        else -> "libportaltunnel_stub.so"
+    }
+}
 val buildDesktopStub = tasks.register("buildDesktopStub", Exec::class.java) {
     val outDir = desktopStubDir.get().asFile
     inputs.file(rootProject.file("native/stub/portaltunnel_stub.c"))
@@ -166,7 +176,7 @@ val buildDesktopStub = tasks.register("buildDesktopStub", Exec::class.java) {
         "cc", "-fPIC", "-shared", "-O2",
         "-I", rootProject.file("native/include").absolutePath,
         rootProject.file("native/stub/portaltunnel_stub.c").absolutePath,
-        "-o", File(outDir, "libportaltunnel_stub.so").absolutePath
+        "-o", File(outDir, desktopStubLibName).absolutePath
     )
 }
 
@@ -180,7 +190,7 @@ tasks.matching {
 tasks.named("desktopTest", Test::class.java) {
     systemProperty(
         "portal.test.stubLibrary",
-        File(desktopStubDir.get().asFile, "libportaltunnel_stub.so").absolutePath
+        File(desktopStubDir.get().asFile, desktopStubLibName).absolutePath
     )
 }
 

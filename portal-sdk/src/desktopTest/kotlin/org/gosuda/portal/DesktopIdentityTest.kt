@@ -126,10 +126,27 @@ class DesktopIdentityTest {
     @Test
     fun runtimeReportsPackagedSource() {
         val rt = PortalDesktop.runtime()
-        assertEquals(DesktopOs.LINUX, rt.os)
-        assertEquals(org.gosuda.portal.internal.DesktopArchitecture.X86_64, rt.architecture)
+        val hostOs = (System.getProperty("os.name") ?: "").lowercase()
+        val expectedOs = when {
+            hostOs.startsWith("mac") || hostOs.startsWith("darwin") -> DesktopOs.MACOS
+            hostOs.startsWith("windows") || hostOs.startsWith("win") -> DesktopOs.WINDOWS
+            else -> DesktopOs.LINUX
+        }
+        val expectedExt = when (expectedOs) {
+            DesktopOs.MACOS -> ".dylib"
+            DesktopOs.WINDOWS -> ".dll"
+            DesktopOs.LINUX -> ".so"
+        }
+        assertEquals(expectedOs, rt.os)
+        val hostArch = (System.getProperty("os.arch") ?: "").lowercase()
+        val expectedArch = if (hostArch == "aarch64" || hostArch == "arm64") {
+            org.gosuda.portal.internal.DesktopArchitecture.ARM64
+        } else {
+            org.gosuda.portal.internal.DesktopArchitecture.X86_64
+        }
+        assertEquals(expectedArch, rt.architecture)
         assertEquals(org.gosuda.portal.internal.NativeLibrarySource.PACKAGED, rt.source)
         assertTrue(rt.nativeSha256.matches(Regex("[0-9a-f]{64}")))
-        assertTrue(rt.nativeLibraryPath.toString().endsWith(".so"))
+        assertTrue(rt.nativeLibraryPath.toString().endsWith(expectedExt))
     }
 }

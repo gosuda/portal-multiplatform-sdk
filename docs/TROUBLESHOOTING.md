@@ -1,5 +1,126 @@
 # Troubleshooting Log
 
+## Decision tree — runtime symptoms → structured fields → fix
+
+Start from the symptom, read the named field, apply the fix. All fields are
+on `PortalFailure` (`tunnel.state.value.lastFailure`, the `PortalException`,
+or the iOS completion's `PortalFailure`) unless noted.
+
+### "No public URL" — tunnel runs but `publicUrls` stays empty
+
+1. `snapshot.phase` is `CONNECTING` for a long time → the relay handshake is
+   still in flight; keep waiting or check `snapshot.relays[].state`.
+2. `snapshot.relays[].state == "failed"` → read `relay.failure`/`relay.error`;
+   a `mitm` failure sets `snapshot.hasSecurityWarning` — do not trust that
+   endpoint, switch networks or relays.
+3. `snapshot.lastFailure.code == "RELAY_UNAVAILABLE"` → the configured relay
+   is unreachable; verify the URL (`https`, no `ws://`), or enable discovery.
+4. `snapshot.lastFailure.code == "NETWORK_UNAVAILABLE"` → device connectivity;
+   retry when the network returns (`retryable == true`).
+
+### Relay connection failure
+
+- `code == "RELAY_UNAVAILABLE"` → relay refused or unreachable; check the URL
+  and that the relay serves the v1 protocol.
+- `code == "INVALID_CONFIG"` with a relay message → scheme/host rejected:
+  `https` only, `http` only for loopback, no user-info, port 1–65535.
+- `hasSecurityWarning == true` → MITM self-probe failed on a relay; treat the
+  endpoint as untrusted.
+
+### Local upstream refusal (tunnel ACTIVE, requests fail)
+
+- `code == "INVALID_CONFIG"` mentioning `target_addr`/`udp_addr` →
+  non-loopback target without `allowRemoteTargets`, or a missing port.
+- Requests time out while the tunnel is ACTIVE → the app-local server is not
+  listening on the configured loopback address; verify `target_addr` matches
+  the server's bind address and that the server started before `publish`.
+
+### Permission / background limits
+
+- `code == "PERMISSION_DENIED"`, `operation == "identity_path"` → the
+  platform identity directory could not be created; check app storage
+  permissions (Android `filesDir`, iOS Application Support, desktop app dir).
+- Tunnel dies when the app backgrounds → Android: move the tunnel to a
+  `PortalTunnelService` foreground service; iOS: no indefinite background
+  execution is promised — keep the app foregrounded.
+
+### Shutdown failure
+
+- `stop()` threw → the session stays registered in `STOPPING`
+  (`snapshot.phase`), retry `stop()`; `lastFailure` holds the native error.
+- `publish` failed with `operation == "publish_cleanup"` → readiness failed
+  AND rollback failed; `failure.readinessFailure` has the original cause and
+  the session remains in `client.sessions` for a manual `stop()` retry.
+
+### Native engine problems
+
+- `code == "NATIVE_UNAVAILABLE"` → engine binary missing/mismatched:
+  Android ABI not shipped (arm64-v8a/x86_64 only), desktop packaged runtime
+  absent or hash-mismatched, iOS archive not embedded in the klib.
+- `code == "ABI_MISMATCH"` → engine older/newer than ABI v1; rebuild from
+  `native/bridge` at the pinned portal-tunnel version.
+
+
+### [2026-09-19] `@Optional` input directory still failed validation on fresh clones
+
+- **Context / Symptom:** `./gradlew :portal-sdk:compileKotlinDesktop` on a
+  clone without `native/desktop/` failed with `Input file does not exist …
+  property 'nativeDesktopDir'` even though the property was annotated
+  `@Optional`.
+- **Root Cause:** `@Optional` permits a null/unset value but does not
+  suppress existence validation for a set `@InputDirectory` — the directory
+  was always set, so Gradle still demanded it exist.
+- **Solution:** Mark the directory `@Internal` and track the expected
+  binaries through a `ConfigurableFileCollection` `@InputFiles` input, which
+  skips missing entries. `requireComplete` remains the release gate that
+  turns absence into an error.
+- **Prevention / Reference:** For "may not exist" inputs prefer file
+  collections over `@Optional` scalar/directory inputs; verify on a clean
+  checkout, not only where the directory already exists.
+
+### [2026-09-19] XCFramework symbol check failed on macOS despite present symbols
+
+- **Context / Symptom:** `scripts/package-ios-xcframework.sh` reported
+  `PortalStart missing` from the simulator framework even though `nm`
+  listed the symbol.
+- **Root Cause:** `nm -g … | grep -Eq` — `grep -q` exits on the first match
+  and closes the pipe; `nm` kept writing to the large static archive and
+  died with SIGPIPE (141), which `set -o pipefail` turned into a pipeline
+  failure. Linux runs never hit it because the archive was smaller.
+- **Solution:** Consume the full listing (`grep -E … >/dev/null`) instead of
+  `grep -q` inside `pipefail` pipelines.
+- **Prevention / Reference:** Under `pipefail`, never pair `grep -q` with a
+  producer that writes more than a few lines; redirect to `/dev/null` or
+  capture then match.
+
+### [2026-09-19] iOS sources had never compiled on macOS
+
+- **Context / Symptom:** First `compileKotlinIosSimulatorArm64` on a macOS
+  host failed: `IosIdentityPath.kt` used `NSFileManager` without the
+  `ExperimentalForeignApi` opt-in.
+- **Root Cause:** Previous verification ran on Linux where Apple cinterop is
+  disabled, so the opt-in error was never compiled.
+- **Solution:** Added `@OptIn(ExperimentalForeignApi::class)`; all three iOS
+  variants now compile and `iosSimulatorArm64Test` runs 47 tests green.
+- **Prevention / Reference:** Platform-gated source sets need a real host
+  build in the verification matrix; dry-run task-graph checks do not compile.
+
+### [2026-09-19] Desktop tests hardcoded Linux assumptions
+
+- **Context / Symptom:** `desktopTest` on macOS failed: the JNA stub was
+  built as `libportaltunnel_stub.so` (rejected — macOS needs `.dylib`), and
+  two tests asserted `DesktopOs.LINUX`/`linux-x64` unconditionally.
+- **Root Cause:** The stub task and the packaged-runtime tests were written
+  and only ever run on the Linux checkpoint host.
+- **Solution:** The stub extension now follows the host OS
+  (`.so`/`.dylib`/`.dll`); `runtimeReportsPackagedSource` and
+  `packagedResourceResolvesAndLoads` derive expected OS/arch from
+  `os.name`/`os.arch`.
+- **Prevention / Reference:** Any test that loads a real binary must
+  parameterize host OS/arch; hardcoding the CI host's platform is a latent
+  cross-platform failure.
+
+
 ### [2026-09-18] Downloaded desktop matrix was flattened and appeared missing
 
 - **Context / Symptom:** The publish job downloaded all three successful

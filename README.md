@@ -114,6 +114,9 @@ Android apps that use the optional process/lifecycle helpers also add:
 implementation("io.github.gosuda:portal-android-lifecycle:0.1.0")
 ```
 
+API references: [Kotlin (Dokka)](https://github.com/gosuda/portal-multiplatform-sdk/releases/latest/download/dokka-html.zip)
+· [Swift](docs/SWIFT_API.md) — generated from the shipped artifacts.
+
 The samples consume the intended Maven coordinates rather than `project()`
 dependencies. Android JNI libraries are built directly from this repository's
 MIT-licensed `native/bridge` with Go and Android NDK r29 during
@@ -158,7 +161,7 @@ val tunnel = client.publish(
     PortalConfig.http("127.0.0.1:8080", name = "device-api")
 )
 
-println(tunnel.state.value.primaryPublicUrl)
+println(tunnel.publicUrl)   // first public URL; live updates stay on tunnel.state
 
 tunnel.stop()      // retryable on native failure
 client.close()     // stops only the sessions this client owns
@@ -188,7 +191,7 @@ val client = PortalDesktop.client("com.example.myapp")
 val tunnel = client.publish(
     PortalConfig.http("127.0.0.1:8080", name = "desktop-api")
 )
-println(tunnel.state.value.primaryPublicUrl)
+println(tunnel.publicUrl)
 
 tunnel.stop()
 client.close()
@@ -214,7 +217,7 @@ let config = PortalIosConfigFactory.shared.http(
 )
 operation = client.publish(config: config, timeoutMillis: 30_000) {
     session, failure in
-    // session?.snapshot.primaryPublicUrl, or a structured PortalFailure
+    // session?.primaryPublicUrl, or a structured PortalFailure
 }
 ```
 
@@ -223,7 +226,8 @@ self-contained. Static serving is optional; the same lifecycle API owns HTTP,
 TCP, and UDP tunnels.
 
 See [samples/android](samples/android) for the complete Compose app and
-[samples/ios](samples/ios) for the SwiftUI equivalent.
+[samples/ios](samples/ios) for the SwiftUI equivalent. The full Swift call
+surface is documented in [docs/SWIFT_API.md](docs/SWIFT_API.md).
 
 
 ## Usage
@@ -370,10 +374,157 @@ class TunnelService : PortalTunnelService() {
 
 ```kotlin
 val d = client.diagnostics()
-// d.sdkVersion, d.abiVersion, d.activeSessions, d.droppedOrphanEvents,
-// d.droppedAggregateEvents, d.sessions[]
+// d.sdkVersion, d.engineVersion, d.abiVersion, d.activeSessions,
+// d.droppedOrphanEvents, d.droppedAggregateEvents, d.sessions[]
+// per session: phase, revision, droppedEvents, activeRelay, lastFailure
 ```
 
+Diagnostics never contain identity documents, keys, tokens, or request
+bodies — safe to attach to a bug report.
+
+### Managed lifetime
+
+One owner per tunnel lifetime; each pattern stops only sessions that owner
+created:
+
+```kotlin
+// JVM / desktop / common: scope-bound use{} — close() runs even on failure.
+PortalDesktop.client("com.example.myapp").use { client ->
+    val tunnel = client.publish(PortalConfig.http("127.0.0.1:8080"))
+    println(tunnel.publicUrl)
+}   // client.close() stops only its own sessions
+
+// Android: process-owned client + ready-on-return callback.
+PortalClientHolder.init(this)   // Application.onCreate
+PortalClientHolder.publish(PortalConfig.http("127.0.0.1:8080")) { result ->
+    result.onSuccess { println(it.publicUrl) }
+}
+// Backgrounded tunnels: subclass PortalTunnelService (foreground service).
+```
+
+```swift
+// iOS: the client owns sessions; close tears down only its own.
+let client = PortalIosClient(allowRemoteTargets: false, defaultIdentityPath: nil)
+let op = client.publish(config: config, timeoutMillis: 30_000) { s, f in … }
+op.cancel()          // cancels the in-flight publish; completion never fires
+client.close { _ in } // stops every session this client opened
+```
+
+### Structured publish failures
+
+`publish` failures are typed — no message parsing needed:
+
+```kotlin
+try {
+    client.publish(config)
+} catch (e: PortalException) {
+    val f = e.failure
+    f.code              // STOP_TIMEOUT, TUNNEL_CLOSED, INVALID_CONFIG, …
+    f.operation         // "publish" or "publish_cleanup"
+    f.retryable         // safe to retry the operation
+    f.terminalPhase     // FAILED/STOPPED when the session ended first
+    f.readinessFailure  // the readiness error when cleanup itself failed
+}
+```
+
+The same fields reach Swift through `PortalFailure` — `failure.operation`,
+`failure.retryable`, `failure.terminalPhase`, `failure.readinessFailure`.
+
+
+## Recipes
+
+### Expose a TCP listener (game server, custom protocol)
+
+```kotlin
+val tunnel = client.publish(PortalConfig.tcp(name = "minecraft"))
+// The relay hands out a TCP endpoint; read it from the relay status:
+tunnel.state.value.relays.firstOrNull()?.tcpAddr
+```
+
+### Expose a UDP listener
+
+```kotlin
+val tunnel = client.publish(PortalConfig.udp("127.0.0.1:7777", name = "voice"))
+tunnel.state.value.relays.firstOrNull()?.udpAddr
+```
+
+### Route URL prefixes to different local services
+
+```kotlin
+val tunnel = client.publish(
+    PortalConfig.routes(
+        listOf(
+            PortalHTTPRoute(prefix = "/api", upstream = "http://127.0.0.1:8080"),
+            PortalHTTPRoute(prefix = "/", staticRoot = siteDir.absolutePath)
+        ),
+        name = "app"
+    )
+)
+```
+
+### Publish a directory without an HTTP server
+
+```kotlin
+val tunnel = client.publish(
+    PortalConfig.staticSite(dir.absolutePath, index = "index.html", name = "site")
+)
+```
+
+### Keep an Android tunnel alive in the background
+
+Android kills background processes; a tunnel that must serve while the app
+is backgrounded needs a foreground service the app explicitly owns:
+
+```kotlin
+class TunnelService : PortalTunnelService() {
+    override fun buildNotification(): Notification = …
+}
+// manifest: <service android:name=".TunnelService"
+//   android:foregroundServiceType="dataSync"/>
+// then: service.startTunnel(config) — tunnels outlive any Activity.
+```
+
+### Persist and reuse an identity
+
+No code needed on the easy path: `PortalClient(context)` (Android),
+`PortalIosClient()` (iOS), and `PortalDesktop.client(appId)` (desktop) each
+default `identity_path` to persistent platform storage, so the public name
+survives relaunch. To manage keys yourself:
+
+```kotlin
+val identity = PortalIdentity.generate("my-app")
+// store identity.document in Keystore-wrapped storage / Keychain — never log it
+val config = PortalConfig.http("127.0.0.1:8080").copy(identityJson = identity.document)
+```
+
+### Handle failures by structured fields
+
+```kotlin
+try {
+    client.publish(config)
+} catch (e: PortalException) {
+    when (e.failure.code) {
+        PortalFailure.Codes.STOP_TIMEOUT -> /* relay slow; retry */
+        PortalFailure.Codes.TUNNEL_CLOSED -> /* inspect e.failure.terminalPhase */
+        PortalFailure.Codes.INVALID_CONFIG -> /* fix the config */
+        else -> if (e.failure.retryable) /* retry */ else /* report */
+    }
+}
+```
+
+See the [troubleshooting decision tree](docs/TROUBLESHOOTING.md#decision-tree--runtime-symptoms--structured-fields--fix)
+for symptom → field → fix mappings.
+
+## Compatibility
+
+| SDK | Kotlin | Android | iOS | Desktop JVM | Native architectures |
+|---|---|---|---|---|---|
+| 0.1.0 | 2.4.x | minSdk 26, NDK r29 (build-time only) | iOS 16+ | 17+ | android: arm64-v8a, x86_64 · ios: arm64, sim arm64/x86_64 · desktop: linux-x64, windows-x64, macos-universal |
+
+The bundled `libportaltunnel` engine is built from `native/bridge` over
+portal-tunnel v2.4.3 (C ABI v1). Kotlin/Native consumers get the engine
+archive embedded in each published klib; JVM consumers get it inside
+`portal-native-desktop`.
 
 
 ## Design rules (the short version)

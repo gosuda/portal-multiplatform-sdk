@@ -14,16 +14,19 @@ in `org.gosuda.portal`; the engine boundary is `internal PortalNativeEngine`.
 
 - `PortalClient` owns sessions. Create once per app; `close()` stops only its
   own tunnels. No global `stopAll` in the public API.
-- `client.open(config)` = ownership registered + native start accepted.
-  Readiness is `tunnel.state` / `tunnel.awaitReady(capability)`, never
-  assumed from `open` returning.
+- `client.publish(config)` is the easy path: returns after the tunnel is
+  ACTIVE and rolls the session back if readiness fails. `client.open(config)`
+  = ownership registered + native start accepted (advanced path); readiness
+  is `tunnel.state` / `tunnel.awaitReady(capability)`, never assumed from
+  `open` returning.
 - `state: StateFlow<PortalSnapshot>` is authoritative (phase, urls, relays,
   lastFailure, hasSecurityWarning, droppedEventCount). `events: SharedFlow`
-  is auxiliary, bounded, no replay.
+  is auxiliary, bounded, no replay. `tunnel.publicUrl` reads the first URL
+  directly.
 - `stop()` is retryable: failure leaves the session in STOPPING, still
   registered. Terminal phases (STOPPED/FAILED) never resurrect on late events.
-- Cancelling `open` rolls the native handle back; cancelling an observation
-  never stops the tunnel.
+- Cancelling `open`/`publish` rolls the native handle back; cancelling an
+  observation never stops the tunnel.
 
 ## Rules
 
@@ -36,8 +39,8 @@ in `org.gosuda.portal`; the engine boundary is `internal PortalNativeEngine`.
 3. `encodeDefaults=false` on the wire codec is load-bearing. Do not change.
 4. Never rename `org.gosuda.portal.android.internal.NativeBridge` — the
    shipped `.so` binds JNI symbols to that exact class.
-5. iOS needs `libportaltunnel` linked by the consumer until the Go bridge is
-   recovered (native/source-lock.json). Do not claim iOS works end-to-end.
+5. iOS engine archives embed in each published klib/XCFramework slice;
+   consumers never build or link `libportaltunnel.a` manually.
 6. Android is foreground-first; long-running tunnels need an explicit
    foreground-service owner chosen by the app.
 7. All SDK exceptions are `PortalException` with `failure.code` from

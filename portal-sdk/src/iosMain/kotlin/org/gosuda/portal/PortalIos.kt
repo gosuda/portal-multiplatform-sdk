@@ -53,6 +53,9 @@ public class PortalIosSession internal constructor(
     /** True while the session is in [TunnelPhase.ACTIVE]. */
     public val isActive: Boolean get() = tunnel.isActive
 
+    /** First public URL from the latest snapshot, or null before assignment. */
+    public val primaryPublicUrl: String? get() = tunnel.publicUrl
+
     /**
      * Observes state snapshots. The callback receives the current snapshot
      * immediately, then every revision. Returns a subscription that must be

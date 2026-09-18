@@ -142,10 +142,22 @@ class MainActivity : ComponentActivity() {
                     startForegroundService(Intent(this@MainActivity, KeepAliveService::class.java))
                 }
                 content.start(this@MainActivity)
-                val resolved = content.applyTo(config.copy(
+                val base = content.baseConfig(this@MainActivity)
+                val resolved = base.copy(
+                    name = config.name,
+                    description = config.description,
+                    tags = config.tags,
+                    relays = config.relays,
+                    discovery = config.discovery,
+                    ech = config.ech,
+                    banMitm = config.banMitm,
+                    hide = config.hide,
+                    udp = config.udp || base.udp,
+                    udpAddr = config.udpAddr ?: base.udpAddr,
+                    tcp = config.tcp || base.tcp,
                     identityPath = resolveIdentityFile(config)
-                ), this@MainActivity)
-                tunnel.value = client.open(resolved)
+                )
+                tunnel.value = client.publish(resolved)
                 activeContent = content
             } catch (e: CancellationException) {
                 content.stop()

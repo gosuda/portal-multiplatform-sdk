@@ -498,4 +498,93 @@ class PortalClientTest {
             PortalIdentity.parse(engine, """{"name":"no-address"}""")
         }
     }
+
+    @Test
+    fun publishExposesPublicUrlDirectly() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+
+        val tunnel = client.publish(siteConfig())
+
+        assertEquals("https://site.portal.example", tunnel.publicUrl)
+        assertEquals(tunnel.state.value.primaryPublicUrl, tunnel.publicUrl)
+        client.close()
+    }
+
+    @Test
+    fun publishReadinessFailureCarriesOperationAndTerminalPhase() = runTest {
+        val engine = FakeEngine().apply { emitStoppedInsideStart = true }
+        val client = clientWith(engine)
+
+        val e = assertFailsWith<PortalException> {
+            client.publish(siteConfig())
+        }
+        assertEquals(PortalFailure.Codes.TUNNEL_CLOSED, e.code)
+        assertEquals("publish", e.failure.operation)
+        assertEquals(TunnelPhase.STOPPED, e.failure.terminalPhase)
+        client.close()
+    }
+
+    @Test
+    fun publishCleanupFailureExposesReadinessFailure() = runTest {
+        val engine = FakeEngine().apply { statusActive = false }
+        val client = clientWith(engine)
+        engine.stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop boom")
+
+        val e = assertFailsWith<PortalException> {
+            client.publish(siteConfig(), timeoutMillis = 50)
+        }
+        assertEquals("publish_cleanup", e.failure.operation)
+        assertEquals(PortalFailure.Codes.STOP_TIMEOUT, e.failure.readinessFailure?.code)
+        assertEquals("publish", e.failure.readinessFailure?.operation)
+
+        engine.stopFailure = null
+        client.sessions.value.single().stop()
+        client.close()
+    }
+
+    @Test
+    fun diagnosticsReportEngineRelayAndLastFailure() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        val tunnel = client.open(siteConfig())
+
+        engine.emit(tunnel.tunnelId, "ERROR", """{"error":"relay down"}""")
+
+        val d = client.diagnostics()
+        assertTrue(d.engineVersion.isNotBlank())
+        val session = d.sessions.single { it.sessionId == tunnel.tunnelId }
+        assertEquals("https://relay.fake", session.activeRelay)
+        assertEquals(PortalFailure.Codes.PROTOCOL_ERROR, session.lastFailure?.code)
+        client.close()
+    }
+
+    @Test
+    fun useClosesClientAfterBlock() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+
+        val url = client.use { c ->
+            c.publish(siteConfig()).publicUrl
+        }
+
+        assertEquals("https://site.portal.example", url)
+        assertTrue(client.isClosed)
+        assertTrue(client.sessions.value.isEmpty())
+    }
+
+    @Test
+    fun usePropagatesBlockFailureAndStillCloses() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+
+        assertFailsWith<IllegalStateException> {
+            client.use {
+                it.open(siteConfig())
+                throw IllegalStateException("boom")
+            }
+        }
+        assertTrue(client.isClosed)
+        assertEquals(engine.startedIds.toList(), engine.stoppedIds.toList())
+    }
 }

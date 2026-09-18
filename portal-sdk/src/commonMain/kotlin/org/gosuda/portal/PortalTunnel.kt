@@ -78,6 +78,13 @@ public class PortalTunnel internal constructor(
     /** Identity address from the latest native status, if reported. */
     public val address: String? get() = state.value.nativeStatus?.address
 
+    /**
+     * First public URL from the latest snapshot, or null before the relay
+     * assigns one. Convenience for the common `publish` path; live updates
+     * and additional URLs remain on [state].
+     */
+    public val publicUrl: String? get() = state.value.primaryPublicUrl
+
     private val opsMutex = Mutex()
     private val revisionCounter = AtomicLong(0)
     private val droppedEvents = AtomicLong(0)
@@ -101,8 +108,11 @@ public class PortalTunnel internal constructor(
                 state.first { snapshot ->
                     if (snapshot.isTerminal) {
                         throw PortalException(
-                            PortalFailure.Codes.TUNNEL_CLOSED,
-                            "tunnel reached ${snapshot.phase} before $capability became ready"
+                            PortalFailure(
+                                PortalFailure.Codes.TUNNEL_CLOSED,
+                                "tunnel reached ${snapshot.phase} before $capability became ready",
+                                terminalPhase = snapshot.phase
+                            )
                         )
                     }
                     capability in snapshot.readyCapabilities
@@ -126,8 +136,11 @@ public class PortalTunnel internal constructor(
                 state.first { snapshot ->
                     if (snapshot.isTerminal) {
                         throw PortalException(
-                            PortalFailure.Codes.TUNNEL_CLOSED,
-                            "tunnel reached ${snapshot.phase} before becoming active"
+                            PortalFailure(
+                                PortalFailure.Codes.TUNNEL_CLOSED,
+                                "tunnel reached ${snapshot.phase} before becoming active",
+                                terminalPhase = snapshot.phase
+                            )
                         )
                     }
                     snapshot.phase == TunnelPhase.ACTIVE
@@ -344,8 +357,11 @@ public class PortalTunnel internal constructor(
     private fun ensureUsable(operation: String) {
         if (state.value.isTerminal) {
             throw PortalException(
-                PortalFailure.Codes.TUNNEL_CLOSED,
-                "tunnel is ${state.value.phase}; $operation rejected"
+                PortalFailure(
+                    PortalFailure.Codes.TUNNEL_CLOSED,
+                    "tunnel is ${state.value.phase}; $operation rejected",
+                    terminalPhase = state.value.phase
+                )
             )
         }
     }

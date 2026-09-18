@@ -61,6 +61,20 @@ app (Kotlin / Swift)
   STOPPING (retryable via `stop()`) and is reported with
   `operation="publish_cleanup"`; cancellation still propagates as
   `CancellationException`.
+- Publish failures are typed: `PortalFailure.operation` is `publish` or
+  `publish_cleanup`, `terminalPhase` records the phase that ended the
+  session, and `readinessFailure` carries the original readiness error when
+  cleanup itself failed — no message parsing.
+- `tunnel.publicUrl` is the ready-result convenience surface (first URL of
+  the authoritative snapshot); `PortalIosSession.primaryPublicUrl` mirrors
+  it for Swift.
+- Managed lifetime: `PortalClient.use {}` (suspend extension) closes the
+  client after the block; `PortalClientHolder.publish` is the process-owned
+  ready-on-return callback; iOS teardown is `PortalIosClient.close` +
+  `PortalOperation.cancel`. Each pattern stops only its owner's sessions.
+- `PortalDiagnostics` reports `engineVersion` (portal-tunnel core), and
+  per-session `activeRelay`/`lastFailure`; it never contains identity
+  documents, keys, tokens, or request bodies.
 
 ## 4. Memory & threads (native)
 
@@ -106,6 +120,10 @@ app (Kotlin / Swift)
   published iOS klib embeds its matching engine archive built from
   `native/bridge` and propagates `Security.framework` linkage. KMP and Swift
   consumers never build or manually link `libportaltunnel.a`.
+  `PortalIosConfigFactory` is the stable Swift config surface: intent
+  factories plus `custom(...)`, the advanced escape hatch covering every
+  `PortalConfig` field without the generated all-fields initializer or
+  `KotlinBoolean`.
 - linuxX64: experimental; exists to exercise the shared `nativeMain` adapter
   and cinterop path on CI/desktop.
 - Desktop (JVM 17+): `PortalDesktop.client(applicationId)` loads the verified

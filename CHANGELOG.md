@@ -1,5 +1,43 @@
 # Changelog
 
+
+## 2026-09-19
+
+- feat(client): added the ready-result convenience surface
+  (`PortalTunnel.publicUrl`, `PortalIosSession.primaryPublicUrl`), typed
+  publish failures (`PortalFailure.operation` = `publish`/`publish_cleanup`,
+  `terminalPhase`, `readinessFailure`), an opt-in diagnostics upgrade
+  (`engineVersion`, per-session `activeRelay`/`lastFailure`), and managed
+  lifetime patterns (`PortalClient.use {}`, `PortalClientHolder.publish`,
+  iOS `PortalIosConfigFactory.custom` escape hatch)
+
+- refactor(samples): migrated the Android, desktop, and iOS sample publish
+  flows to intent factories plus `publish`; each content now declares a
+  factory-built `baseConfig`, and `AdvancedContract` fixtures keep the raw
+  `PortalConfig`/`open` low-level path compiled
+
+- fix(ios): marked `IosIdentityPath.ensureDirectory` with the required
+  `ExperimentalForeignApi` opt-in so iOS targets compile on macOS
+
+- fix(desktop): made the desktop test stub extension host-aware
+  (`.so`/`.dylib`/`.dll`) and the packaged-runtime tests OS/arch-aware so
+  `desktopTest` passes on macOS and Windows, not only Linux
+
+- fix(build): replaced the ineffective `@Optional` native-desktop directory
+  input with a lenient `@InputFiles` binary collection so fresh clones
+  without `native/desktop/` configure cleanly while the release gate still
+  enforces the complete matrix
+
+- fix(ios): consumed the full `nm` listing in the XCFramework symbol check —
+  `grep -q` exited on the first match and SIGPIPEd `nm` under `pipefail`,
+  failing the packaging script on macOS
+
+- docs(onboarding): added outcome recipes (TCP, UDP, routes, static,
+  foreground Android, identity persistence, structured failures), a
+  troubleshooting decision tree keyed by structured error fields, a release
+  compatibility table, and updated the agent skill reference to the
+  publish-first API
+
 ## 2026-09-18
 
 - fix(publishing): preserved each desktop artifact's target directory when

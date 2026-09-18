@@ -22,10 +22,23 @@ java {
 // never silently ship an incomplete runtime matrix.
 abstract class GenerateNativeIndex : DefaultTask() {
 
-    @get:InputDirectory
-    @get:Optional
-    @get:PathSensitive(PathSensitivity.RELATIVE)
+    /**
+     * The native/desktop tree. Internal: the tracked inputs are the
+     * individual binaries in [nativeBinaries], which tolerate a missing
+     * directory on fresh clones (dev builds package a partial matrix).
+     */
+    @get:Internal
     abstract val nativeDesktopDir: DirectoryProperty
+
+    /**
+     * Expected binaries, one per matrix target. A file collection input
+     * skips missing entries instead of failing input validation, so a
+     * checkout without `native/desktop/` still configures; [requireComplete]
+     * is the release gate that turns absence into an error.
+     */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val nativeBinaries: ConfigurableFileCollection
 
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -33,12 +46,6 @@ abstract class GenerateNativeIndex : DefaultTask() {
     /** When true, every matrix binary must exist (release/CI gate). */
     @get:Input
     abstract val requireComplete: Property<Boolean>
-
-    private val requiredTargets = listOf(
-        "linux-x64" to "libportaltunnel.so",
-        "windows-x64" to "portaltunnel.dll",
-        "macos-universal" to "libportaltunnel.dylib"
-    )
 
     @TaskAction
     fun generate() {
@@ -48,7 +55,7 @@ abstract class GenerateNativeIndex : DefaultTask() {
         val index = StringBuilder("{\n  \"abi_version\": 1,\n  \"libraries\": {\n")
         var first = true
         val missing = mutableListOf<String>()
-        for ((target, fileName) in requiredTargets) {
+        for ((target, fileName) in REQUIRED_TARGETS) {
             val bin = nativeDesktopDir.get().dir(target).file(fileName).asFile
             if (!bin.isFile) {
                 missing += bin.path
@@ -78,10 +85,25 @@ abstract class GenerateNativeIndex : DefaultTask() {
             logger.warn("$msg — packaging partial matrix (dev build)")
         }
     }
+
+    companion object {
+        /** Expected engine binary per desktop matrix target. */
+        val REQUIRED_TARGETS = listOf(
+            "linux-x64" to "libportaltunnel.so",
+            "windows-x64" to "portaltunnel.dll",
+            "macos-universal" to "libportaltunnel.dylib"
+        )
+    }
 }
 
 val generateNativeIndex = tasks.register<GenerateNativeIndex>("generateNativeIndex") {
-    nativeDesktopDir.set(rootProject.layout.projectDirectory.dir("native/desktop"))
+    val desktopDir = rootProject.layout.projectDirectory.dir("native/desktop")
+    nativeDesktopDir.set(desktopDir)
+    nativeBinaries.from(
+        GenerateNativeIndex.REQUIRED_TARGETS.map { (target, fileName) ->
+            desktopDir.dir(target).file(fileName)
+        }
+    )
     outputDir.set(layout.buildDirectory.dir("generated/portal-native"))
     val publishingToCentral = gradle.startParameter.taskNames.any { taskName ->
         taskName.contains("publishToMavenCentral", ignoreCase = true) ||

@@ -39,8 +39,12 @@ interface PublishableContent {
     /** Releases the local payload. Idempotent. */
     fun stop()
 
-    /** Merges this content's exposure fields into [config]. */
-    fun applyTo(config: PortalConfig): PortalConfig
+    /**
+     * The intent-factory config that exposes this content's payload
+     * (`PortalConfig.staticSite` for sites, `http`/`tcp` for servers).
+     * Called after [start]; editor fields are merged on top by the caller.
+     */
+    fun baseConfig(): PortalConfig
 }
 
 /** Every content the sample can publish, in picker order. */

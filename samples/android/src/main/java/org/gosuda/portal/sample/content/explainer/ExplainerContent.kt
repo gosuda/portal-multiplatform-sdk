@@ -30,6 +30,6 @@ object ExplainerContent : PublishableContent {
 
     override fun stop() = Unit
 
-    override fun applyTo(config: PortalConfig, context: Context): PortalConfig =
-        config.copy(staticDir = siteDir.absolutePath, staticIndex = "index.html")
+    override fun baseConfig(context: Context): PortalConfig =
+        PortalConfig.staticSite(siteDir.absolutePath, index = "index.html")
 }

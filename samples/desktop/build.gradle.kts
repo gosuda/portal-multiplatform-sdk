@@ -43,3 +43,11 @@ tasks.register<JavaExec>("smoke") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("org.gosuda.portal.sample.SmokeKt")
 }
+
+// Headless on-device content check: starts the Ollama/Markov loopback server
+// and exercises its endpoints. `./gradlew :samples:desktop:ondeviceSmoke`.
+tasks.register<JavaExec>("ondeviceSmoke") {
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.gosuda.portal.sample.OnDeviceSmokeKt")
+}

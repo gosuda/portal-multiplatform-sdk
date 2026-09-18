@@ -9,6 +9,13 @@
   content-addressed cache — a single `io.github.gosuda:portal-sdk` dependency
   resolves the desktop variant and loads the engine offline
 
+- feat(desktop): rebuilt the Compose Desktop sample to mirror the Android
+  app — Publish / Settings / Activity destinations, the same four
+  publishable contents (Snake game, explainer, on-device model, Minecraft
+  ping), live metadata/relay/identity/diagnostics panels, and a system-tray
+  keep-alive; the on-device model is backed by a local Ollama daemon with a
+  Markov fallback instead of LiteRT-LM
+
 - fix(client): made post-start session registration atomic with `close()` so a
   concurrent close cannot stop/unregister a tunnel and then have `open`
   re-add its process-global event route

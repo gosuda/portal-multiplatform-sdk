@@ -2,7 +2,8 @@
 
 ## Active task
 KMP Desktop expansion (D0–D5) — **complete through D5**; D6 (publish) is
-gated on `license_review` in `native/source-lock.json`.
+gated on `license_review` in `native/source-lock.json`. The Compose Desktop
+sample was rebuilt to mirror the Android app (2026-09-18).
 
 ## State (2026-09-18)
 - Added a `desktop` (JVM 17+) target to `portal-sdk` with a JNA engine
@@ -28,8 +29,14 @@ gated on `license_review` in `native/source-lock.json`.
   via `scripts/build-desktop-engine.sh` (go1.27.1 + zig 0.16.0 cc, glibc 2.17
   target; artifact requires only GLIBC_2.14). Verified by
   `scripts/verify-desktop-engine.sh`.
-- `samples/desktop`: Compose Desktop app publishing a loopback HTTP server
-  plus a headless `:samples:desktop:smoke` real-relay publish check.
+- `samples/desktop`: Compose Desktop app rebuilt to mirror the Android
+  sample — Publish / Settings / Activity destinations, the same four
+  publishable contents (Snake game, explainer, on-device model, Minecraft
+  ping), live metadata/relay/identity/diagnostics panels, and a system-tray
+  keep-alive. The on-device model is backed by a local Ollama daemon
+  (`OllamaClient`/`OllamaModels`, pull-managed tags) with a Markov fallback
+  instead of LiteRT-LM. Headless `:samples:desktop:smoke` (real-relay
+  publish) and `:samples:desktop:ondeviceSmoke` (endpoint check) tasks.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with
@@ -41,6 +48,9 @@ gated on `license_review` in `native/source-lock.json`.
 ## Verification
 - `./gradlew :portal-sdk:desktopTest` — 68 tests green (engine, loader,
   packaged-load, identity).
+- `./gradlew :samples:desktop:ondeviceSmoke` — on-device content serves
+  `/v1/health`, `/v1/model`, `/v1/generate`, `/` (200 each); Markov fallback
+  active (Ollama not installed on this host — the intended out-of-box path).
 - `./gradlew :portal-sdk:linuxX64Test` — 39 tests green (commonTest +
   native stub) after the `defaultIdentityPath` signature change.
 - `./gradlew :samples:desktop:smoke` — real tunnel through relay discovery;

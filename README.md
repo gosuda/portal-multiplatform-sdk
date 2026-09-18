@@ -173,8 +173,10 @@ content-addressed cache) and defaults `identity_path` to a per-OS location:
 `$XDG_STATE_HOME/<app>/portal` on Linux, `%LOCALAPPDATA%/<app>/Portal` on
 Windows, `~/Library/Application Support/<app>/Portal` on macOS. Pass
 `storageDirectory` or `nativeLibraryPath` to override. See
-[samples/desktop](samples/desktop) for the Compose app and a headless
-`:samples:desktop:smoke` publish check.
+[samples/desktop](samples/desktop) for the Compose app — a Publish /
+Settings / Activity UI mirroring the Android sample (Snake game, explainer,
+Ollama on-device model, Minecraft ping) — plus headless
+`:samples:desktop:smoke` and `:samples:desktop:ondeviceSmoke` checks.
 
 ### Swift (iOS)
 

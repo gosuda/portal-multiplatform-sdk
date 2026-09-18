@@ -106,8 +106,14 @@ object OnDeviceModelContent : PublishableContent {
             }
         }
         // Engine probe is slow; run it off the accept loop so the port is
-        // listening immediately.
+        // listening immediately. Also re-probe when the managed daemon
+        // finishes installing — the first probe may have fallen back.
         s.launch { initEngine() }
+        s.launch {
+            OllamaSetup.state.collect { setup ->
+                if (setup is OllamaSetup.State.Running && engineTag == null) initEngine()
+            }
+        }
     }
 
     override fun stop() {
@@ -130,6 +136,17 @@ object OnDeviceModelContent : PublishableContent {
             _engineStatus.value = EngineStatus.Loading("ollama")
             val spec = OllamaModels.selected.value
             try {
+                if (!OllamaClient.isRunning()) {
+                    // Kick the managed daemon/install path and give it a
+                    // bounded window to come up before falling back.
+                    OllamaSetup.ensureRunning()
+                    val deadline = System.currentTimeMillis() + 25_000
+                    while (!OllamaClient.isRunning() &&
+                        System.currentTimeMillis() < deadline &&
+                        OllamaSetup.state.value !is OllamaSetup.State.Failed) {
+                        kotlinx.coroutines.delay(400)
+                    }
+                }
                 if (!OllamaClient.isRunning()) {
                     engineBackend = "unavailable:ollama-not-running"
                     engineTag = null

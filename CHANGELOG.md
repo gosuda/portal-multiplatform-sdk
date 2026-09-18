@@ -16,6 +16,22 @@
   keep-alive; the on-device model is backed by a local Ollama daemon with a
   Markov fallback instead of LiteRT-LM
 
+- feat(desktop): redesigned the sample UI away from the mobile layout — a
+  permanent left sidebar (destination nav, phase badge, publish/stop
+  action), a LazyColumn content area, a landscape 1080×720 window, and
+  desktop-native copy and controls
+
+- feat(desktop): replaced the Minecraft ping mock with a real playable
+  1.21/1.21.1 server — full handshake → status → login → configuration
+  (vanilla registry sync) → play path, a flat creative world, movement
+  broadcast, block edits, chat, and player entities; verified by a
+  headless `:samples:desktop:minecraftSmoke` join test
+
+- feat(desktop): added in-app Ollama setup — the sample downloads the
+  official archive, extracts `ollama`, and runs `ollama serve` as a
+  managed daemon with an isolated model store; a system daemon is adopted
+  when present and install is explicit from Settings
+
 - fix(client): made post-start session registration atomic with `close()` so a
   concurrent close cannot stop/unregister a tunnel and then have `open`
   re-add its process-global event route

@@ -21,6 +21,9 @@ and release criteria:
       extraction (file lock + fsync + atomic move) and no runtime downloads.
 - [x] D4 — Added a Compose Desktop sample publishing a loopback HTTP server
       plus a headless `:samples:desktop:smoke` real-relay publish check.
+      Follow-up (2026-09-18): desktop-native sidebar layout, a real playable
+      Minecraft 1.21.1 server (`:samples:desktop:minecraftSmoke` join test),
+      and in-app Ollama setup (`OllamaSetup` managed daemon).
 - [x] D5 — Added a per-OS `desktop-native` CI build/verify matrix and a
       `desktop-package` job gating on the complete runtime matrix; verified a
       clean Maven Local consumer resolves the desktop variant and loads the

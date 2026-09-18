@@ -51,3 +51,11 @@ tasks.register<JavaExec>("ondeviceSmoke") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("org.gosuda.portal.sample.OnDeviceSmokeKt")
 }
+
+// Headless Minecraft join smoke: drives a fake 1.21.1 client through the
+// full login → configuration → play path. `./gradlew :samples:desktop:minecraftSmoke`.
+tasks.register<JavaExec>("minecraftSmoke") {
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.gosuda.portal.sample.MinecraftSmokeKt")
+}

@@ -86,6 +86,9 @@ object OllamaModels {
         val running = OllamaClient.isRunning()
         _daemonRunning.value = running
         if (!running) {
+            // Kick the managed install/serve path — the daemon may simply
+            // not be started yet. The UI reflects OllamaSetup.state.
+            OllamaSetup.ensureRunning()
             _state.value = State.NotInstalled
             return
         }
@@ -107,6 +110,19 @@ object OllamaModels {
         if (_state.value is State.Pulling) return
         val spec = _selected.value
         scope.launch {
+            // Make sure a daemon exists before asking it to pull.
+            if (!OllamaClient.isRunning()) {
+                OllamaSetup.ensureRunning()
+                val deadline = System.currentTimeMillis() + 30_000
+                while (!OllamaClient.isRunning() && System.currentTimeMillis() < deadline) {
+                    kotlinx.coroutines.delay(400)
+                }
+                if (!OllamaClient.isRunning()) {
+                    _state.value = State.Failed("Ollama daemon is not running — install/start it first")
+                    return@launch
+                }
+            }
+            _daemonRunning.value = true
             _state.value = State.Pulling(0, 1)
             try {
                 OllamaClient.pull(spec.tag) { done, total ->

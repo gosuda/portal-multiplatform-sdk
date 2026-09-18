@@ -15,7 +15,7 @@ import org.gosuda.portal.sample.content.ondevice.OllamaModels
 private val app = PortalApp()
 
 fun main() = application {
-    val windowState = rememberWindowState(width = 460.dp, height = 820.dp)
+    val windowState = rememberWindowState(width = 1080.dp, height = 720.dp)
     var windowVisible by remember { mutableStateOf(true) }
     val keepAlive by app.keepAlive.collectAsState()
     val snapshot by app.snapshot.collectAsState()

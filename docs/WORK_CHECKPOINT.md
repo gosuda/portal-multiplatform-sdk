@@ -37,6 +37,26 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   (`OllamaClient`/`OllamaModels`, pull-managed tags) with a Markov fallback
   instead of LiteRT-LM. Headless `:samples:desktop:smoke` (real-relay
   publish) and `:samples:desktop:ondeviceSmoke` (endpoint check) tasks.
+- 2026-09-18 follow-up: the desktop UI was redesigned away from the mobile
+  layout — a permanent left sidebar (destination nav + phase badge +
+  publish/stop action) with a LazyColumn content area, landscape 1080×720
+  window, denser controls, and desktop copy (system-tray keep-alive,
+  clipboard/browser actions via AWT).
+- Minecraft content is now a real playable server, not a ping mock:
+  `MinecraftProtocol` (767 codec: VarInt, strings, positions, UUIDs, NBT),
+  `MinecraftRegistries` (vanilla 1.21.1 registry keys, values omitted →
+  client defaults), and `MinecraftServer` — handshake → status → login →
+  configuration (11 registries + feature_flags) → play (login, 9×9 flat
+  creative chunks, spawn teleport, keep-alives, movement broadcast,
+  creative block edits, chat, player entities). Same port answers HTTP.
+  `:samples:desktop:minecraftSmoke` drives a fake client through the full
+  join path.
+- Ollama is now set up in-app: `OllamaSetup` downloads the official
+  archive per-OS into the app dir, extracts `ollama`, and runs
+  `ollama serve` as a managed child (isolated `OLLAMA_MODELS`, log tail).
+  `ensureRunning` adopts a system daemon or starts the managed one —
+  never auto-downloads; `install` is explicit from Settings. The engine
+  re-probes when the daemon comes up.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with
@@ -46,16 +66,17 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   requireComplete enforcement.
 
 ## Verification
-- `./gradlew :portal-sdk:desktopTest` — 68 tests green (engine, loader,
-  packaged-load, identity).
-- `./gradlew :samples:desktop:ondeviceSmoke` — on-device content serves
-  `/v1/health`, `/v1/model`, `/v1/generate`, `/` (200 each); Markov fallback
-  active (Ollama not installed on this host — the intended out-of-box path).
-- `./gradlew :portal-sdk:linuxX64Test` — 39 tests green (commonTest +
-  native stub) after the `defaultIdentityPath` signature change.
 - `./gradlew :samples:desktop:smoke` — real tunnel through relay discovery;
   `https://desktop-smoke.portal.thumbgo.kr` served the loopback page (200,
   marker round-tripped), clean stop.
+- `./gradlew :samples:desktop:minecraftSmoke` — fake 1.21.1 client through
+  the full join path: status ping, login, configuration (11 registries),
+  play (login + 81 chunks + spawn teleport). All asserted green.
+- `./gradlew :samples:desktop:build` — compiles clean after the sidebar
+  redesign, Minecraft server, and Ollama setup.
+- `./gradlew :portal-sdk:linuxX64Test` — 39 tests green (commonTest +
+  native stub) after the `defaultIdentityPath` signature change.
+
 - Clean Maven Local consumer (`/tmp/portal-consumer`) resolved
   `io.github.gosuda:portal-sdk:0.1.0` → `portal-sdk-desktop` variant, loaded
   the packaged `.so` offline, `PortalDesktop.client` worked.

@@ -1,5 +1,35 @@
 # Troubleshooting Log
 
+### [2026-09-18] `inner` class + `enum` inside a Kotlin `object` fails to compile
+
+- **Context / Symptom:** `MinecraftServer` (a singleton `object`) declared
+  `private inner class Session` containing `enum class State`; the build
+  failed with `Modifier 'inner' is not applicable inside 'standalone
+  object'` and `'Enum class' is prohibited here`.
+- **Root Cause:** An `object` has no outer instance, so `inner` is
+  meaningless; Kotlin also forbids `enum`/`inner`/`sealed`/`interface`
+  declarations inside an `inner` class. Both rules fired at once.
+- **Solution:** Dropped `inner` (a nested class in an `object` still reads
+  the object's members unqualified) and moved the enum to object level as
+  `SessionState`.
+- **Prevention / Reference:** In a Kotlin `object`, use plain nested
+  classes and object-level enums; reserve `inner` for real outer classes.
+
+### [2026-09-18] `mark/reset` on an unbuffered socket stream silently no-ops
+
+- **Context / Symptom:** Sniffing the first byte of a Minecraft connection
+  (HTTP vs protocol) via `DataInputStream(socket.getInputStream())` +
+  `mark(1)/read/reset` would not have worked — `markSupported()` is false
+  on a raw socket stream, so `reset()` throws `IOException`.
+- **Root Cause:** `mark/reset` is only honored by streams that buffer;
+  `Socket.getInputStream()` does not.
+- **Solution:** Wrapped the socket stream in `BufferedInputStream` before
+  `DataInputStream`, giving real `mark/reset` support.
+- **Prevention / Reference:** Always wrap socket input in
+  `BufferedInputStream` when peeking; check `markSupported()` before
+  relying on `mark/reset`.
+
+
 ### [2026-09-18] `processResources` placed native runtime at JAR root
 
 - **Context / Symptom:** `portal-native-desktop` JAR contained `index.json`

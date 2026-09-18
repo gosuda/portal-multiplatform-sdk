@@ -1,39 +1,41 @@
 # Work Checkpoint
 
 ## Active task
-README tunnel-runtime repositioning — **complete**.
+SDK usability roadmap — **planning complete; implementation not started**.
 
 ## State (2026-09-18)
-- The SDK implementation already supported loopback HTTP upstreams,
-  route-based HTTP forwarding, TCP, UDP, and static directories, but the
-  README hero and primary quick start made static serving look like the
-  product's main purpose.
-- The README now presents Portal as a mobile tunnel runtime for app-local
-  HTTP/TCP/UDP services. Static directories remain documented as an optional
-  convenience mode.
-- The primary quick start now exposes `127.0.0.1:8080` with `targetAddr` and
-  waits for `Capability.HTTP_TLS`.
-- Added an exposure-mode matrix and an architecture diagram that show local
-  HTTP servers, TCP/UDP listeners, static assets, the native runtime, relays,
-  and public endpoints.
-- Configuration examples now lead with HTTP upstreams and routes, followed by
-  TCP/UDP and then static serving.
-- Changed files: `README.md`, `CHANGELOG.md`, and this checkpoint.
-- Verification:
-  - Examples were checked against `PortalConfig`, `PortalHTTPRoute`, and
-    `Capability` definitions in `commonMain`.
-  - `git diff --check` passed.
-  - README code fences were balanced, every local Markdown link resolved, the
-    HTTP quick start preceded static configuration, and static-first wording
-    from the previous quick start was absent.
-  - GitHub rendered the new section order, exposure table, Mermaid diagram,
-    and loopback HTTP quick start; the hero/runtime copy was present and no
-    rendered images were broken.
+- The current low-level contract is sound: `PortalClient` owns sessions,
+  `PortalConfig` preserves the v1 wire DTO, and `PortalTunnel.state` remains
+  authoritative.
+- The easiest documented Android path is unsafe/inconsistent: the README starts
+  with context-free `PortalClient()`, while the Android overload is needed to
+  default identity storage to a writable app directory.
+- `PortalClientHolder` and `PortalTunnelService` also construct context-free
+  clients, so their advertised easy lifecycle path does not supply that safe
+  Android identity default.
+- Swift callers currently fill the generated all-fields `PortalConfig`
+  initializer, bridge nullable booleans through `KotlinBoolean`, resolve an
+  identity path themselves, and manually link `libportaltunnel.a`.
+- The planned approach is additive: retain `PortalConfig`, `open`, and all
+  lifecycle invariants; layer intent-oriented config factories and a
+  rollback-safe `publish` operation above them.
+- Distribution is part of usability, not a documentation follow-up: Android
+  needs a released Maven artifact, while iOS needs one package/artifact that
+  includes the native engine.
+- The phased plan and exit criteria are recorded in `TASKS.md` under
+  `Planned — SDK usability roadmap`.
+- Changed files: `TASKS.md` and this checkpoint.
+- Planning verification:
+  - Compared the README quick starts with the exported common, Android, iOS,
+    and lifecycle APIs.
+  - Checked both sample apps' real configuration/start flows.
+  - Kept the proposed API layers compatible with `docs/DESIGN_RULES.md`.
 
 ## Next action
-Run `Gradle CI` once via GitHub Actions `workflow_dispatch` (or on the next
-valid `release-*` tag) to seed the README build badge. Product documentation
-work is otherwise complete.
+Implement P0 and P1 together: add consumer compile fixtures, then make Android
+and iOS identity defaults platform-safe before introducing convenience
+factories. Treat Android context propagation as the first RED/GREEN behavior
+change.
 
 ## Prior environment notes (2026-09-17 macOS session)
 - Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via

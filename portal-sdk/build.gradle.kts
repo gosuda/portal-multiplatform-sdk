@@ -26,6 +26,12 @@ kotlin {
         }
     }
 
+    jvm("desktop") {
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_17
+        }
+    }
+
     val xcf = XCFramework("PortalSDK")
     val appleTargets = listOf(iosArm64(), iosSimulatorArm64(), iosX64())
     appleTargets.forEach { target ->
@@ -79,6 +85,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(project(":portal-native-android"))
+        }
+        desktopMain.dependencies {
+            implementation(libs.jna)
+            implementation(project(":portal-native-desktop"))
         }
     }
 }

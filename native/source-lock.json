@@ -3,9 +3,11 @@
   "wire_schema_version": 1,
   "core_repository": "https://github.com/gosuda/portal-tunnel",
   "core_commit": "119d143bc1ad4d38e8cf6a427fa89deb9b8fff25 (tag v2.4.3)",
-  "mobile_bridge_source": "native/bridge (clean-room reimplementation of the removed portal-tunnel/mobile; builds with -buildmode=c-archive via scripts/build-ios-engine.sh)",
+  "mobile_bridge_source": "native/bridge (clean-room reimplementation of the removed portal-tunnel/mobile; builds with -buildmode=c-archive via scripts/build-ios-engine.sh and -buildmode=c-shared via scripts/build-desktop-engine.sh)",
   "go_toolchain": "go1.27.1 darwin/arm64",
   "android_ndk_revision": "r29 (clang-r563880c; read from .comment section of shipped .so files, 2026-09-18)",
+  "desktop_toolchain": "go1.27.1 linux/amd64 + zig 0.16.0 (zig cc -target x86_64-linux-gnu.2.17); zig tarball sha256 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
+  "desktop_glibc_baseline": "glibc 2.17 target via zig cc; built artifact requires only GLIBC_2.14 (verified 2026-09-18)",
   "xcode_version": "27.0",
   "license_review": "PENDING: portal-tunnel is MIT (verified 2026-09-18); portal-android-sdk — the source repo of the shipped .so artifacts — has no LICENSE file, so binary redistribution terms remain unverified",
   "artifacts": {
@@ -35,6 +37,16 @@
       "source": "native/bridge @ portal-tunnel v2.4.3",
       "sha256": "a4e23d1f464984455cb4af02aa51d2cd9500b84bb277a370724a0a591a5c7984",
       "min_ios": "16.0"
+    }
+    ,
+    "desktop/linux-x64/libportaltunnel.so": {
+      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "sha256": "e1b33b6752c9b4c382424d68e29373a1fd742df9f3bda5f77cb67a04fe5a82b5",
+      "size_bytes": 42272184,
+      "glibc_target": "x86_64-linux-gnu.2.17",
+      "glibc_required_max": "GLIBC_2.14",
+      "toolchain": "go1.27.1 + zig 0.16.0 cc",
+      "note": "development build; release binaries are rebuilt and re-hashed on the release matrix"
     }
   },
   "release_gate": "Do not publish a release while any field reads UNRESOLVED, PENDING, MISSING, or TO_BE_FILLED."

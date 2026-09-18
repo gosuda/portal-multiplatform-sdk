@@ -261,7 +261,7 @@ fun SampleScreen(
                         tcp, { tcp = it }, ech, { ech = it },
                         banMitm, { banMitm = it }, hide, { hide = it },
                         keepAlive, editable, missingRelay, running,
-                        modelState, selectedModel, daemonRunning, ollamaSetup, installedModels,
+                        modelState, selectedModel, ollamaSetup, installedModels,
                         actions, scope,
                         onInstalledChange = { installedModels = it }
                     )
@@ -450,7 +450,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsContent(
     running: Boolean,
     modelState: OllamaModels.State,
     selectedModel: OllamaModels.ModelSpec,
-    daemonRunning: Boolean,
     ollamaSetup: OllamaSetup.State,
     installedModels: Set<String>,
     actions: SampleActions,

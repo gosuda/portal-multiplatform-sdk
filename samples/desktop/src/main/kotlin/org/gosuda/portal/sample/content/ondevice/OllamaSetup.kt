@@ -88,16 +88,18 @@ object OllamaSetup {
     val isSupported: Boolean get() = binary != null &&
         !(osName.startsWith("linux") && !(osArch == "x86_64" || osArch == "amd64" || osArch == "aarch64" || osArch == "arm64"))
 
-    /** Download URL for the host platform. */
+    /** Download URL for the host platform (GitHub release assets). */
     private fun downloadUrl(): String? = when {
         osName.startsWith("linux") && (osArch == "x86_64" || osArch == "amd64") ->
-            "https://ollama.com/download/ollama-linux-amd64.tgz"
+            "https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64.tar.zst"
         osName.startsWith("linux") && (osArch == "aarch64" || osArch == "arm64") ->
-            "https://ollama.com/download/ollama-linux-arm64.tgz"
+            "https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64.tar.zst"
         osName.startsWith("mac") || osName.startsWith("darwin") ->
-            "https://ollama.com/download/ollama-darwin.zip"
+            "https://github.com/ollama/ollama/releases/latest/download/Ollama-darwin.zip"
+        osName.startsWith("windows") && (osArch == "aarch64" || osArch == "arm64") ->
+            "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-arm64.zip"
         osName.startsWith("windows") ->
-            "https://ollama.com/download/ollama-windows-amd64.zip"
+            "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
         else -> null
     }
 
@@ -195,6 +197,7 @@ object OllamaSetup {
         binDir.mkdirs()
         when {
             archive.name.endsWith(".zip") -> extractZip(archive, bin)
+            archive.name.endsWith(".tar.zst") -> extractTarZst(archive, bin)
             archive.name.endsWith(".tgz") || archive.name.endsWith(".tar.gz") ->
                 extractTgz(archive, bin)
             else -> throw IllegalStateException("unknown archive: ${archive.name}")
@@ -205,12 +208,25 @@ object OllamaSetup {
 
     private fun extractZip(zip: File, bin: File) {
         ZipFile(zip).use { z ->
-            // macOS zip contains Ollama.app; the CLI lives inside it.
-            val entry = z.entries().asSequence().firstOrNull {
-                it.name.endsWith("/ollama") || it.name == "ollama" || it.name == "ollama.exe"
-            } ?: throw IllegalStateException("ollama binary not in zip")
-            z.getInputStream(entry).use { input ->
-                bin.outputStream().use { input.copyTo(it) }
+            if (osName.startsWith("windows")) {
+                // Windows zip is a full install tree (ollama.exe + lib/);
+                // extract everything so the binary finds its DLLs.
+                for (entry in z.entries().asSequence()) {
+                    if (entry.isDirectory) continue
+                    val out = File(installDir, entry.name)
+                    out.parentFile?.mkdirs()
+                    z.getInputStream(entry).use { input ->
+                        out.outputStream().use { input.copyTo(it) }
+                    }
+                }
+            } else {
+                // macOS zip contains Ollama.app; the CLI lives inside it.
+                val entry = z.entries().asSequence().firstOrNull {
+                    it.name.endsWith("/ollama") || it.name == "ollama"
+                } ?: throw IllegalStateException("ollama binary not in zip")
+                z.getInputStream(entry).use { input ->
+                    bin.outputStream().use { input.copyTo(it) }
+                }
             }
         }
     }
@@ -225,6 +241,24 @@ object OllamaSetup {
         // The tgz lays binaries under bin/ already; nothing else to move.
         if (!bin.exists()) {
             // Some archives put it at top level.
+            val alt = File(installDir, "ollama")
+            if (alt.exists()) alt.renameTo(bin)
+        }
+    }
+
+    private fun extractTarZst(archive: File, bin: File) {
+        // .tar.zst: decompress with zstd-jni (no zstd binary needed), then
+        // untar the whole tree — the binary needs its bundled lib/ollama/*.so.
+        val tar = File(installDir, archive.name.removeSuffix(".zst"))
+        com.github.luben.zstd.ZstdInputStream(archive.inputStream().buffered()).use { input ->
+            tar.outputStream().use { input.copyTo(it) }
+        }
+        val proc = ProcessBuilder("tar", "-xf", tar.absolutePath, "-C", installDir.absolutePath)
+            .redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().readText()
+        tar.delete()
+        if (proc.waitFor() != 0) throw IllegalStateException("tar failed: $out")
+        if (!bin.exists()) {
             val alt = File(installDir, "ollama")
             if (alt.exists()) alt.renameTo(bin)
         }

@@ -29,7 +29,7 @@ fun main() = application {
     // desktop analogue of Android's foreground-service keep-alive.
     if (keepAlive) {
         Tray(
-            icon = trayIcon(),
+            icon = appIcon(),
             tooltip = "Portal — ${snapshot?.phase?.name ?: "idle"}",
             onAction = { windowVisible = true },
             menu = {
@@ -55,6 +55,7 @@ fun main() = application {
             },
             state = windowState,
             title = "Portal Desktop Sample",
+            icon = appIcon(),
             resizable = true
         ) {
             PortalSampleTheme {
@@ -84,20 +85,7 @@ fun main() = application {
         }
     }
 }
-
-/** A simple generated tray icon (cyan dot on dark). */
-private fun trayIcon(): androidx.compose.ui.graphics.painter.Painter {
-    val size = 22
-    val bitmap = androidx.compose.ui.graphics.ImageBitmap(size, size)
-    val canvas = androidx.compose.ui.graphics.Canvas(bitmap)
-    val paint = androidx.compose.ui.graphics.Paint()
-    paint.color = androidx.compose.ui.graphics.Color(0xFF080F1D)
-    canvas.drawRoundRect(0f, 0f, size.toFloat(), size.toFloat(), 6f, 6f, paint)
-    paint.color = androidx.compose.ui.graphics.Color(0xFF64DCEC)
-    canvas.drawCircle(
-        androidx.compose.ui.geometry.Offset(size / 2f, size / 2f),
-        size / 2f - 4f,
-        paint
-    )
-    return androidx.compose.ui.graphics.painter.BitmapPainter(bitmap)
-}
+/** The app icon — the same launcher asset the Android sample ships. */
+@androidx.compose.runtime.Composable
+private fun appIcon(): androidx.compose.ui.graphics.painter.Painter =
+    androidx.compose.ui.res.painterResource("icon.png")

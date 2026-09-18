@@ -1,5 +1,26 @@
 # Troubleshooting Log
 
+### [2026-09-18] Ollama download 404 — wrong asset names and format
+
+- **Context / Symptom:** `OllamaSetup.install()` failed with
+  `download failed: HTTP 404` on Linux. The URLs pointed at
+  `ollama.com/download/ollama-linux-amd64.tgz` and
+  `ollama.com/download/ollama-darwin.zip`.
+- **Root Cause:** Two problems. (1) The Linux release asset is
+  `ollama-linux-amd64.tar.zst` (Zstandard), not `.tgz` — the `.tgz` name
+  was never published. (2) The macOS asset is `Ollama-darwin.zip` with a
+  capital O; the lowercase name 404s. `ollama.com/download/` also
+  redirects inconsistently; GitHub release assets are the stable source.
+- **Solution:** Switched all URLs to
+  `github.com/ollama/ollama/releases/latest/download/…` with the correct
+  names. Linux `.tar.zst` is decompressed via `zstd-jni` (no `zstd`
+  binary needed) then untarred; Windows extracts the full install tree
+  so `ollama.exe` finds its bundled `lib/` DLLs.
+- **Prevention / Reference:** Verify release asset names against
+  `api.github.com/repos/ollama/ollama/releases/latest` — they differ per
+  OS and change format (`.tar.zst`, not `.tgz`/`.zip` for Linux).
+
+
 ### [2026-09-18] `inner` class + `enum` inside a Kotlin `object` fails to compile
 
 - **Context / Symptom:** `MinecraftServer` (a singleton `object`) declared

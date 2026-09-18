@@ -32,6 +32,17 @@
   managed daemon with an isolated model store; a system daemon is adopted
   when present and install is explicit from Settings
 
+- fix(desktop): corrected the Ollama download URLs — the Linux asset is
+  `.tar.zst` (decompressed via `zstd-jni`, no `zstd` binary needed), the
+  macOS asset is `Ollama-darwin.zip` (capital O), and Windows extracts the
+  full install tree so `ollama.exe` finds its bundled libraries; all URLs
+  now point at GitHub release assets
+
+- feat(desktop): set the app icon to the Android launcher asset —
+  `icon.png` in resources for the window/tray, generated
+  `icon.ico`/`icon.icns`/`icon.png` under `packaging/` for native
+  distributions
+
 - fix(client): made post-start session registration atomic with `close()` so a
   concurrent close cannot stop/unregister a tunnel and then have `open`
   re-add its process-global event route

@@ -19,8 +19,8 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.zstd.jni)
 }
-
 compose.desktop {
     application {
         mainClass = "org.gosuda.portal.sample.MainKt"
@@ -28,6 +28,15 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "PortalDesktopSample"
             packageVersion = "1.0.0"
+            linux {
+                iconFile.set(project.file("packaging/icon.png"))
+            }
+            windows {
+                iconFile.set(project.file("packaging/icon.ico"))
+            }
+            macOS {
+                iconFile.set(project.file("packaging/icon.icns"))
+            }
         }
     }
 }

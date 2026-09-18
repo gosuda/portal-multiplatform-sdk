@@ -57,6 +57,13 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   `ensureRunning` adopts a system daemon or starts the managed one —
   never auto-downloads; `install` is explicit from Settings. The engine
   re-probes when the daemon comes up.
+- 2026-09-18 follow-up 2: the desktop app icon is the Android launcher
+  asset (`icon.png` in resources for the window/tray, generated
+  `icon.ico`/`icon.icns`/`icon.png` under `packaging/` for native
+  distributions). Ollama download URLs moved to GitHub release assets —
+  Linux is `.tar.zst` (decompressed via `zstd-jni`, no `zstd` binary
+  needed), macOS is `Ollama-darwin.zip` (capital O), Windows extracts the
+  full install tree so `ollama.exe` finds its bundled libs.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with

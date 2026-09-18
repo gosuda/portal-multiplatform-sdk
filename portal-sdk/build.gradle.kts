@@ -86,9 +86,11 @@ kotlin {
         androidMain.dependencies {
             implementation(project(":portal-native-android"))
         }
-        desktopMain.dependencies {
-            implementation(libs.jna)
-            implementation(project(":portal-native-desktop"))
+        named("desktopMain") {
+            dependencies {
+                implementation(libs.jna)
+                implementation(project(":portal-native-desktop"))
+            }
         }
     }
 }
@@ -117,6 +119,37 @@ kotlin.targets.named(
     binaries.getTest(NativeBuildType.DEBUG).apply {
         linkerOpts.add(File(portalStubDir.get().asFile, "portaltunnel_stub.o").absolutePath)
     }
+}
+
+// The desktop test binary loads a C stub implementing the portaltunnel ABI
+// through JNA so the adapter is exercised end-to-end without the Go engine.
+val desktopStubDir = layout.buildDirectory.dir("desktopStub")
+val buildDesktopStub = tasks.register("buildDesktopStub", Exec::class.java) {
+    val outDir = desktopStubDir.get().asFile
+    inputs.file(rootProject.file("native/stub/portaltunnel_stub.c"))
+    inputs.dir(rootProject.file("native/include"))
+    outputs.dir(outDir)
+    doFirst { outDir.mkdirs() }
+    commandLine(
+        "cc", "-fPIC", "-shared", "-O2",
+        "-I", rootProject.file("native/include").absolutePath,
+        rootProject.file("native/stub/portaltunnel_stub.c").absolutePath,
+        "-o", File(outDir, "libportaltunnel_stub.so").absolutePath
+    )
+}
+
+tasks.matching {
+    it.name == "desktopTest" || it.name == "compileTestKotlinDesktop"
+}.configureEach {
+    dependsOn(buildDesktopStub)
+}
+
+// Pass the stub path to the desktop test JVM.
+tasks.named("desktopTest", Test::class.java) {
+    systemProperty(
+        "portal.test.stubLibrary",
+        File(desktopStubDir.get().asFile, "libportaltunnel_stub.so").absolutePath
+    )
 }
 
 tasks.matching {

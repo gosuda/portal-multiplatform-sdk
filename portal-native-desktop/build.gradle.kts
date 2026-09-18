@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     `java-library`
     alias(libs.plugins.vanniktech.mavenPublish)
@@ -14,34 +16,41 @@ java {
 
 // Verified engine binaries are produced by scripts/build-desktop-engine.sh
 // into native/desktop/<target>/ and checked by scripts/verify-desktop-engine.sh.
-// The resource task fails when a required artifact is missing so a published
-// JAR can never silently ship an incomplete runtime matrix.
-val nativeDesktopDir = rootProject.layout.projectDirectory.dir("native/desktop")
-val requiredTargets = listOf(
-    "linux-x64" to "libportaltunnel.so",
-    "windows-x64" to "portaltunnel.dll",
-    "macos-universal" to "libportaltunnel.dylib"
-)
+// The task fails when a required artifact is missing so a published JAR can
+// never silently ship an incomplete runtime matrix.
+abstract class GenerateNativeIndex : DefaultTask() {
 
-val generateNativeIndex = tasks.register("generateNativeIndex") {
-    val outDir = layout.buildDirectory.dir("generated/portal-native")
-    outputs.dir(outDir)
-    inputs.dir(nativeDesktopDir).optional(true)
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val nativeDesktopDir: DirectoryProperty
 
-    doLast {
-        val out = outDir.get().asFile
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    private val requiredTargets = listOf(
+        "linux-x64" to "libportaltunnel.so",
+        "windows-x64" to "portaltunnel.dll",
+        "macos-universal" to "libportaltunnel.dylib"
+    )
+
+    /** When true, every matrix binary must exist (release/CI gate). */
+    @get:Input
+    abstract val requireComplete: Property<Boolean>
+
+    @TaskAction
+    fun generate() {
+        val out = outputDir.get().asFile
         out.deleteRecursively()
         val index = StringBuilder("{\n  \"abi_version\": 1,\n  \"libraries\": {\n")
         var first = true
+        val missing = mutableListOf<String>()
         for ((target, fileName) in requiredTargets) {
-            val bin = nativeDesktopDir.dir(target).file(fileName).asFile
+            val bin = nativeDesktopDir.get().dir(target).file(fileName).asFile
             if (!bin.isFile) {
-                throw GradleException(
-                    "missing desktop engine binary: ${bin.path} " +
-                        "(run scripts/build-desktop-engine.sh $target)"
-                )
+                missing += bin.path
+                continue
             }
-            val sha = java.security.MessageDigest.getInstance("SHA-256")
+            val sha = MessageDigest.getInstance("SHA-256")
                 .digest(bin.readBytes())
                 .joinToString("") { "%02x".format(it) }
             val resDir = File(out, target)
@@ -55,14 +64,30 @@ val generateNativeIndex = tasks.register("generateNativeIndex") {
         }
         index.append("\n  }\n}\n")
         File(out, "index.json").writeText(index.toString())
+        if (missing.isNotEmpty()) {
+            val msg = "desktop engine binaries not packaged: ${missing.joinToString()}"
+            if (requireComplete.get()) {
+                throw GradleException("$msg (run scripts/build-desktop-engine.sh)")
+            }
+            logger.warn("$msg — packaging partial matrix (dev build)")
+        }
     }
 }
 
-tasks.named("processResources") {
+val generateNativeIndex = tasks.register<GenerateNativeIndex>("generateNativeIndex") {
+    nativeDesktopDir.set(rootProject.layout.projectDirectory.dir("native/desktop"))
+    outputDir.set(layout.buildDirectory.dir("generated/portal-native"))
+    requireComplete.set(
+        providers.gradleProperty("portal.native.requireComplete")
+            .map(String::toBoolean)
+            .orElse(false)
+    )
+}
+
+tasks.named("processResources", ProcessResources::class.java) {
     dependsOn(generateNativeIndex)
-    from(layout.buildDirectory.dir("generated/portal-native")) {
-        into("META-INF/portal-native")
-    }
+    into("META-INF/portal-native")
+    from(layout.buildDirectory.dir("generated/portal-native"))
 }
 
 // Reproducible JAR: stable ordering and timestamps.

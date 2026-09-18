@@ -74,7 +74,10 @@ int PortalStart(const char* configJSON, char** outTunnelID, char** outError) {
 }
 
 int PortalStop(const char* tunnelID, char** outError) {
-    (void)outError;
+    if (!tunnelID || strcmp(tunnelID, "stub-tunnel-1") != 0) {
+        set_err(outError, "unknown tunnel");
+        return 1;
+    }
     if (g_callback) g_callback(tunnelID, "STOPPED", "{}");
     return 0;
 }

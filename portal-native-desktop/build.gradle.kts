@@ -78,10 +78,14 @@ abstract class GenerateNativeIndex : DefaultTask() {
 val generateNativeIndex = tasks.register<GenerateNativeIndex>("generateNativeIndex") {
     nativeDesktopDir.set(rootProject.layout.projectDirectory.dir("native/desktop"))
     outputDir.set(layout.buildDirectory.dir("generated/portal-native"))
+    val publishingToCentral = gradle.startParameter.taskNames.any { taskName ->
+        taskName.contains("publishToMavenCentral", ignoreCase = true) ||
+            taskName.contains("MavenCentralRepository", ignoreCase = true)
+    }
     requireComplete.set(
         providers.gradleProperty("portal.native.requireComplete")
             .map(String::toBoolean)
-            .orElse(false)
+            .orElse(publishingToCentral)
     )
 }
 

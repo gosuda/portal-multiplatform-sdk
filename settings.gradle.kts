@@ -8,6 +8,19 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
+        // Samples consume released Maven coordinates, never Gradle project()
+        // dependencies. CI/local release verification can point them at an
+        // isolated staging repository with:
+        // -Pportal.samples.repository=/absolute/path/or/file-uri
+        providers.gradleProperty("portal.samples.repository").orNull?.let { repository ->
+            maven {
+                name = "portalSamples"
+                url = uri(repository)
+            }
+        }
+        if (providers.gradleProperty("portal.samples.useMavenLocal").orNull.toBoolean()) {
+            mavenLocal()
+        }
         google()
         mavenCentral()
     }

@@ -9,13 +9,12 @@ plugins {
 group = "org.gosuda.portal.sample"
 version = "0.1.0"
 
-repositories {
-    mavenCentral()
-    google()
-}
 
 dependencies {
-    implementation(project(":portal-sdk"))
+    // Deliberately consume the published KMP coordinate. This prevents the
+    // sample from hiding broken Maven metadata/native-runtime dependencies
+    // behind a same-build project dependency.
+    implementation(libs.portal.sdk)
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(libs.kotlinx.coroutines.core)

@@ -34,8 +34,11 @@ android {
 }
 
 dependencies {
-    implementation(project(":portal-sdk"))
-    implementation(project(":portal-android-lifecycle"))
+    // Consume exactly what application developers get from Maven. Keeping
+    // samples off project() dependencies makes publication metadata part of
+    // every sample build.
+    implementation(libs.portal.sdk)
+    implementation(libs.portal.android.lifecycle)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))

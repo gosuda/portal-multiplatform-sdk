@@ -188,7 +188,7 @@ mavenPublishing {
 
     pom {
         name = "Portal Multiplatform SDK"
-        description = "Kotlin Multiplatform SDK for Portal Tunnel: expose local services and static sites from Android and iOS app processes through Portal relays."
+        description = "Kotlin Multiplatform SDK for Portal Tunnel: expose app-local HTTP, TCP, UDP, and static content from Android, iOS, and desktop through Portal relays."
         inceptionYear = "2026"
         url = "https://github.com/gosuda/portal-multiplatform-sdk"
         licenses {

@@ -100,10 +100,35 @@ flowchart LR
 
 ## Install
 
+Application builds consume the SDK from Maven Central:
+
 ```kotlin
-// settings.gradle.kts — include the modules in your build, or consume the
-// published coordinates once a release is cut.
-implementation("io.github.gosuda:portal-sdk:0.1.0")
+dependencies {
+    implementation("io.github.gosuda:portal-sdk:0.1.0")
+}
+```
+
+Android apps that use the optional process/lifecycle helpers also add:
+
+```kotlin
+implementation("io.github.gosuda:portal-android-lifecycle:0.1.0")
+```
+
+The `0.1.0` release is not visible on Maven Central until the repository's
+native-source license gate is cleared and a `release-*` publication completes.
+The samples still use these exact coordinates rather than `project()`
+dependencies. To verify an unpublished checkout through an isolated Maven
+repository:
+
+```bash
+./gradlew publishDesktopSdkToSampleRepository
+./gradlew :samples:desktop:build \
+  -Pportal.samples.repository="$PWD/build/sample-maven"
+
+# Requires an installed Android SDK:
+./gradlew publishAndroidSdkToSampleRepository
+./gradlew :samples:android:assembleDebug \
+  -Pportal.samples.repository="$PWD/build/sample-maven"
 ```
 
 iOS additionally needs the `PortalSDK` XCFramework plus `libportaltunnel.a`
@@ -112,7 +137,7 @@ The engine archive is rebuilt from `native/bridge` (clean-room Go bridge over
 portal-tunnel v2.4.3 `sdk.Exposure`) and is gitignored.
 
 Desktop (JVM) resolves the `portal-sdk-desktop` variant plus the
-`portal-native-desktop` runtime JAR automatically — no extra dependency or
+`portal-native-desktop` runtime JAR transitively — no extra dependency or
 native install step. The engine is extracted to a content-addressed cache on
 first use and works offline.
 

@@ -31,8 +31,10 @@ jobs:
         run: ./gradlew :portal-sdk:testAndroidHostTest
       - name: Native stub tests (linuxX64 + cinterop)
         run: ./gradlew :portal-sdk:linuxX64Test
-      - name: Assemble Android outputs
-        run: ./gradlew :portal-sdk:bundleAndroidMainAar :portal-native-android:assembleRelease :samples:android:assembleDebug
+      - name: Publish Android SDK graph to isolated Maven repository
+        run: ./gradlew publishAndroidSdkToSampleRepository
+      - name: Assemble Android sample as a Maven consumer
+        run: ./gradlew :samples:android:assembleDebug -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven"
 
   ios-compile:
     runs-on: macos-latest
@@ -118,7 +120,15 @@ jobs:
           pattern: desktop-engine-*
           path: native/desktop
           merge-multiple: true
-      - name: Package complete native matrix (release gate)
-        run: ./gradlew :portal-native-desktop:jar -Pportal.native.requireComplete=true
-      - name: Desktop tests
+      - name: Publish complete desktop SDK graph to isolated Maven repository
+        run: ./gradlew publishDesktopSdkToSampleRepository -Pportal.native.requireComplete=true
+      - name: Build and package desktop sample as a Maven consumer
+        run: |
+          ./gradlew :samples:desktop:build :samples:desktop:createDistributable \
+            -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven"
+      - name: Desktop Maven-consumer runtime checks
+        run: |
+          ./gradlew :samples:desktop:minecraftSmoke :samples:desktop:ondeviceSmoke \
+            -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven"
+      - name: Desktop SDK tests
         run: ./gradlew :portal-sdk:desktopTest

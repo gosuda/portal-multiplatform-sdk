@@ -71,6 +71,16 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   (`native/desktop/windows-x64/portaltunnel.dll`) was copied to the
   Windows checkout at `D:\my\portal-multiplatform-sdk` so
   `packageMsi`/`createDistributable` can package a working runtime.
+- 2026-09-18 follow-up 4: Android and desktop samples now depend on the
+  released Maven coordinates (`portal-sdk` and
+  `portal-android-lifecycle`) rather than same-build Gradle projects.
+  `publishDesktopSdkToSampleRepository` /
+  `publishAndroidSdkToSampleRepository` stage the complete transitive graph
+  under `build/sample-maven`; `-Pportal.samples.repository=…` makes samples
+  consume that isolated repository before Central. Release CI now builds the
+  native desktop matrix before publication, exercises both samples against
+  staged artifacts, and refuses Maven Central publication with an incomplete
+  desktop runtime.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with
@@ -96,6 +106,21 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   the packaged `.so` offline, `PortalDesktop.client` worked.
 - `./gradlew :portal-native-desktop:jar` — JAR contains
   `META-INF/portal-native/index.json` + `linux-x64/libportaltunnel.so`.
+- `./gradlew publishDesktopSdkToSampleRepository` followed by
+  `./gradlew :samples:desktop:clean :samples:desktop:build
+  -Pportal.samples.repository=file://…/build/sample-maven --offline` —
+  resolved `portal-sdk` → `portal-sdk-desktop` →
+  `portal-native-desktop`; no SDK/native project task entered the sample
+  build graph.
+- `./gradlew :samples:desktop:smoke
+  -Pportal.samples.repository=file://…/build/sample-maven --offline` —
+  loaded the staged native runtime, opened a real relay tunnel, fetched
+  `https://desktop-smoke.portal.thumbgo.kr` with HTTP 200, round-tripped the
+  marker, and stopped cleanly (`SMOKE OK`).
+- `./gradlew :portal-native-desktop:publishToMavenCentral --offline` —
+  publication was rejected because the macOS runtime was absent, proving the
+  Central task forces the complete native matrix (credentials were also
+  intentionally absent).
 
 ## Environment notes (this host)
 - Linux x86_64, JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10.

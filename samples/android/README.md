@@ -8,6 +8,19 @@ The publish screen offers four contents: **Snake game** (bundled static
 site), **How Portal works** (explainer page), **On-device model** (LLM
 served over HTTP), and **Minecraft server** (server-list ping over TCP).
 
+## Build
+
+This sample consumes `io.github.gosuda:portal-sdk:0.1.0` and
+`io.github.gosuda:portal-android-lifecycle:0.1.0` from Maven; it does not
+compile the SDK projects as substitutes. Before the release is available on
+Maven Central, stage the publications from this checkout:
+
+```bash
+./gradlew publishAndroidSdkToSampleRepository
+./gradlew :samples:android:assembleDebug \
+  -Pportal.samples.repository="$PWD/build/sample-maven"
+```
+
 ## On-device model API
 
 The "On-device model" content runs a real HTTP server on `127.0.0.1:18080`

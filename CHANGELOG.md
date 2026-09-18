@@ -2,6 +2,12 @@
 
 ## 2026-09-18
 
+- fix(publishing): changed Android and desktop samples to consume
+  `io.github.gosuda` Maven coordinates instead of same-build project
+  dependencies, added isolated staging-repository publication tasks and CI
+  consumer builds, and blocked Maven Central publication unless the complete
+  desktop native runtime matrix was packaged
+
 - feat(desktop): added a `desktop` (JVM 17+) target with a JNA engine
   adapter, the `PortalDesktop.client(applicationId)` facade, per-OS identity
   paths, and a `portal-native-desktop` runtime JAR packaging verified

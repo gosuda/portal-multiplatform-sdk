@@ -1,5 +1,21 @@
 # Troubleshooting Log
 
+### [2026-09-18] Sample ignored isolated Maven repository and queried Central
+
+- **Context / Symptom:** After publishing `portal-sdk:0.1.0` into
+  `build/sample-maven`, the desktop sample still failed with `Could not
+  resolve io.github.gosuda:portal-sdk:0.1.0` and queried Maven Central.
+- **Root Cause:** `samples/desktop/build.gradle.kts` declared its own
+  `repositories` block. Gradle preferred project repositories over the
+  repository injected by `dependencyResolutionManagement` from
+  `-Pportal.samples.repository`.
+- **Solution:** Removed the project-level repository block so all projects
+  use the settings-level repositories. The staged repository now precedes
+  Google and Maven Central.
+- **Prevention / Reference:** Keep repository policy centralized in
+  `settings.gradle.kts`; otherwise consumer-verification repositories can be
+  silently shadowed by project-local declarations.
+
 ### [2026-09-18] `generateNativeIndex` fails on a fresh clone — `Input file does not exist`
 
 - **Context / Symptom:** On a Windows checkout without `native/desktop/`,

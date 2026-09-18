@@ -12,9 +12,50 @@ permissions:
   contents: read
 
 jobs:
+  desktop-native:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: windows-latest, target: windows-x64 }
+          - { os: macos-latest, target: macos-universal }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+      - name: Set up zig
+        if: matrix.target == 'linux-x64'
+        run: |
+          curl -sSL -o zig.tar.xz https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  zig.tar.xz" | sha256sum -c -
+          mkdir -p "$HOME/tools/zig" && tar -xJf zig.tar.xz -C "$HOME/tools/zig" --strip-components=1
+          echo "ZIG=$HOME/tools/zig/zig" >> "$GITHUB_ENV"
+      - name: Set up mingw
+        if: matrix.target == 'windows-x64'
+        run: choco install mingw --yes --no-progress
+      - name: Build and verify desktop engine
+        shell: bash
+        run: |
+          ./scripts/build-desktop-engine.sh "${{ matrix.target }}"
+          case "${{ matrix.target }}" in
+            linux-x64) bin=native/desktop/linux-x64/libportaltunnel.so ;;
+            windows-x64) bin=native/desktop/windows-x64/portaltunnel.dll ;;
+            macos-universal) bin=native/desktop/macos-universal/libportaltunnel.dylib ;;
+          esac
+          ./scripts/verify-desktop-engine.sh "$bin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-engine-${{ matrix.target }}
+          path: native/desktop/${{ matrix.target }}/
+          retention-days: 7
+
   publish:
     name: Release build and publish
     runs-on: macOS-latest
+    needs: desktop-native
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -46,9 +87,28 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: 21
+      - name: Install Android platform 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
+
+      - name: Download complete desktop engine matrix
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-engine-*
+          path: native/desktop
+          merge-multiple: true
+
+      - name: Verify Maven artifacts with samples
+        run: |
+          ./gradlew publishDesktopSdkToSampleRepository publishAndroidSdkToSampleRepository \
+            -Pportal.native.requireComplete=true --no-configuration-cache
+          ./gradlew :samples:desktop:build :samples:desktop:minecraftSmoke :samples:desktop:ondeviceSmoke \
+            :samples:android:assembleDebug \
+            -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven" --no-configuration-cache
       - name: Publish to MavenCentral
-        run: ./gradlew publishToMavenCentral --no-configuration-cache
+        run: ./gradlew publishToMavenCentral -Pportal.native.requireComplete=true --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

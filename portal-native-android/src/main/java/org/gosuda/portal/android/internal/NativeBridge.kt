@@ -1,12 +1,11 @@
 package org.gosuda.portal.android.internal
 
 /**
- * JNI bridge to `libportaltunnel`.
+ * JNI bridge to the generated `libportaltunnel`.
  *
- * The package and class name are load-bearing: the prebuilt
- * `libportaltunnel.so` exports name-mangled JNI symbols bound to
- * `org.gosuda.portal.android.internal.NativeBridge`. Do not rename or move
- * this class without rebuilding the native binary.
+ * The package and class name are load-bearing: `native/bridge/jni_android.c`
+ * exports name-mangled JNI symbols bound to this exact class. Do not rename
+ * or move it without rebuilding the generated Android libraries.
  */
 internal object NativeBridge {
     internal var isLoaded = false

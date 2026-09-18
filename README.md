@@ -114,10 +114,11 @@ Android apps that use the optional process/lifecycle helpers also add:
 implementation("io.github.gosuda:portal-android-lifecycle:0.1.0")
 ```
 
-The `0.1.0` release is not visible on Maven Central until the repository's
-native-source license gate is cleared and a `release-*` publication completes.
-The samples still use these exact coordinates rather than `project()`
-dependencies. To verify an unpublished checkout through an isolated Maven
+The samples consume the intended Maven coordinates rather than `project()`
+dependencies. Android JNI libraries are built directly from this repository's
+MIT-licensed `native/bridge` with Go and Android NDK r29 during
+`portal-native-android` assembly/publication; no external `.so` is downloaded
+or republished. To verify an unpublished checkout through an isolated Maven
 repository:
 
 ```bash

@@ -1,5 +1,38 @@
 # Troubleshooting Log
 
+### [2026-09-18] AGP rejected a Provider-backed JNI source directory
+
+- **Context / Symptom:** `:portal-native-android:buildAndroidEngine` failed
+  during configuration with `You cannot add Provider instances to the Android
+  SourceSet API`.
+- **Root Cause:** AGP cannot classify a `DirectoryProvider` passed through the
+  legacy `sourceSets.main.jniLibs.srcDir` API as generated or static.
+- **Solution:** Resolve the deterministic build-directory path to a `File`
+  when registering it as the JNI source directory, and keep explicit
+  `dependsOn(buildAndroidEngine)` wiring on native merge/AAR tasks.
+- **Prevention / Reference:** Use AGP's variant generated-source API when a
+  custom task exposes a typed `DirectoryProperty`; otherwise pass a concrete
+  path and wire the producer task explicitly.
+
+### [2026-09-18] Multiplatform publication stopped at the source-lock gate
+
+- **Context / Symptom:** `Publish Multiplatform SDK` stopped with
+  `native/source-lock.json still has unresolved release gates` after native
+  runtime builds completed.
+- **Root Cause:** `portal-native-android` shipped two `.so` files copied from
+  `gosuda/portal-android-sdk`. That repository has no LICENSE, so the files
+  had neither a reproducible build path here nor established redistribution
+  terms. The generic grep check also matched its own policy sentence and ran
+  only after the expensive desktop matrix.
+- **Solution:** Deleted the inherited binaries. Added an Android JNI shim to
+  `native/bridge` and `build-android-engine.sh`; Gradle now builds arm64-v8a
+  and x86_64 libraries with Go 1.27.1 and NDK r29 before AAR assembly or
+  publication. CI installs the pinned toolchain, validates release gates
+  first, and publishes only generated binaries.
+- **Prevention / Reference:** Never clear a provenance/licensing marker merely
+  to make CI green. Every native artifact published to consumers needs a
+  traceable source, toolchain, checksum, and redistribution basis.
+
 ### [2026-09-18] Desktop release verifier rejected valid Windows and macOS engines
 
 - **Context / Symptom:** The release matrix reported all 11 Windows

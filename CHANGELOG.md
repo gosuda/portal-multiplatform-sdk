@@ -2,6 +2,12 @@
 
 ## 2026-09-18
 
+- fix(release): replaced externally sourced Android `.so` files with
+  reproducible arm64-v8a and x86_64 JNI builds from the MIT-licensed
+  `native/bridge`, pinned Go 1.27.1 and Android NDK r29 in CI, generalized
+  the publication workflow name, and moved provenance validation ahead of
+  platform builds
+
 - fix(ci): made Windows DLL export verification tolerant of MinGW `objdump`
   column, annotation, and CRLF variations by extracting exact `Portal*`
   tokens from the complete PE metadata

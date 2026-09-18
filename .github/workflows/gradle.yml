@@ -23,10 +23,15 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Install Android platform 36
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+      - name: Install Android SDK and NDK
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
       - name: Host tests (common suite on JVM)
         run: ./gradlew :portal-sdk:testAndroidHostTest
       - name: Native stub tests (linuxX64 + cinterop)

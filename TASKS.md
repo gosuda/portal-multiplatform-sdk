@@ -29,8 +29,9 @@ and release criteria:
       clean Maven Local consumer resolves the desktop variant and loads the
       packaged engine offline.
 - [ ] D6 — Publish only after provenance, licensing, size, signing, and
-      documentation gates pass. (Docs updated; `license_review` still PENDING
-      in source-lock.json — see Blocked.)
+      documentation gates pass. Android binaries are now reproducibly built
+      from `native/bridge`; release publication still needs a green full
+      matrix and Maven Central upload.
 
 ## Assessed — Kotlin/Wasm support
 
@@ -97,12 +98,10 @@ packaging, verification commands, and exit criteria:
 
 ### P4 — Simplify distribution
 
-- [ ] Clear `license_review` and `android_ndk_revision`, then publish the
-      Android/KMP artifact to Maven Central.
-      (`android_ndk_revision` resolved → r29 via `.so` `.comment`; `license_review`
-      still PENDING — `portal-android-sdk`, the `.so` source repo, ships no
-      LICENSE file. Needs an upstream license grant or a rebuild from
-      MIT-licensed `portal-tunnel` source.)
+- [ ] Publish the Android/KMP artifact to Maven Central.
+      `android_ndk_revision` is pinned to r29 and the previous external
+      binary-license blocker was removed: Gradle now builds both JNI `.so`
+      files from the MIT-licensed `native/bridge`.
 - [ ] Package the iOS engine with the SDK distribution so consumers do not
       build or manually link `libportaltunnel.a`.
       (`scripts/package-ios-xcframework.sh` written — merges the Go archive
@@ -175,7 +174,7 @@ packaging, verification commands, and exit criteria:
   launched on iPhone 15 Pro
 - [ ] Exercise a tunnel from the on-device app UI (manual step; no UI
   automation)
-- [ ] Resolve `license_review` + `android_ndk_revision` in
-  `native/source-lock.json` (release gate)
+- [x] Replaced externally sourced Android `.so` files with reproducible JNI
+      builds from `native/bridge` using Go 1.27.1 and Android NDK r29
 - [ ] ABI v2 (create/attach/start split, observer quiescence, native
   revisions) — tracked in docs/DESIGN_RULES.md

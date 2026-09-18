@@ -1,9 +1,9 @@
 # Work Checkpoint
 
 ## Active task
-KMP Desktop expansion (D0–D5) — **complete through D5**; D6 (publish) is
-gated on `license_review` in `native/source-lock.json`. The Compose Desktop
-sample was rebuilt to mirror the Android app (2026-09-18).
+Multiplatform SDK publication — Android JNI binaries now build reproducibly
+from `native/bridge`; the next release workflow must verify the full matrix
+and publish the Maven artifacts.
 
 ## State (2026-09-18)
 - Added a `desktop` (JVM 17+) target to `portal-sdk` with a JNA engine
@@ -92,6 +92,17 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   now scans complete PE metadata for exact `Portal*` tokens and tolerates
   extra columns, annotations, and CRLF without weakening the required-symbol
   check.
+- 2026-09-18 follow-up 7: release workflow is now named
+  `Publish Multiplatform SDK`. Its first job prints exact unresolved
+  provenance/licensing fields before any platform build. The desktop runtime
+  matrix remains a clearly named platform-specific prerequisite; the final
+  job verifies and publishes Android, KMP, and desktop Maven artifacts.
+- 2026-09-18 follow-up 8: deleted externally sourced Android `.so` files.
+  `native/bridge/jni_android.c` implements the exact `NativeBridge` JNI ABI,
+  and `build-android-engine.sh` builds arm64-v8a/x86_64 outputs with Go 1.27.1
+  plus NDK r29 into `portal-native-android/build/generated/jniLibs`. Gradle
+  runs the build before AAR merge/publication; release CI installs both pinned
+  toolchains. No Android native binary is downloaded or committed.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with
@@ -141,6 +152,14 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   native/desktop/linux-x64/libportaltunnel.so` — existing Linux verification
   remained green.
 
+- `PATH=/tmp/go/bin:$PATH ANDROID_NDK_HOME=/tmp/android-ndk-r29
+  ./scripts/build-android-engine.sh` — both Android ABIs built from source.
+  Each generated library exported all 10 required JNI entry points and used
+  `0x4000` alignment for every ELF LOAD segment.
+- `PATH=/tmp/go/bin:$PATH ANDROID_NDK_HOME=/tmp/android-ndk-r29
+  ./gradlew :portal-native-android:buildAndroidEngine` — Gradle producer task
+  rebuilt both ABI outputs successfully.
+
 ## Environment notes (this host)
 - Linux x86_64, JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10.
 - Go 1.27.1 linux/amd64, zig 0.16.0 at `~/tools/zig/zig`.
@@ -151,13 +170,10 @@ sample was rebuilt to mirror the Android app (2026-09-18).
 - iOS targets disabled on this host (no cinterop toolchain).
 
 ## Blockers
-- `license_review` still PENDING in `native/source-lock.json` — gates D6
-  publish (portal-android-sdk ships no LICENSE; needs upstream grant or a
-  rebuild from MIT-licensed portal-tunnel source).
 - windows-x64 / macos-universal engines are produced by the CI release
   matrix, not this host.
 
 ## Next action
-D6 publish gate: resolve `license_review`, then run the release matrix
-(`release-*` tag) to build windows/macos engines and package the complete
-`portal-native-desktop` runtime.
+Run a new `Publish Multiplatform SDK` workflow on the release commit. Confirm
+the Android source build, desktop runtime matrix, Maven-consumer sample builds,
+signing, and Maven Central upload all complete.

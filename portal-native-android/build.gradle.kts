@@ -8,6 +8,17 @@ plugins {
 group = "io.github.gosuda"
 version = "0.1.0"
 
+val generatedJniLibs = layout.buildDirectory.dir("generated/jniLibs")
+val buildAndroidEngine = tasks.register<Exec>("buildAndroidEngine") {
+    group = "build"
+    description = "Builds Android JNI libraries from the repository's Go bridge."
+    inputs.dir(rootProject.file("native/bridge"))
+    inputs.file(rootProject.file("scripts/build-android-engine.sh"))
+    outputs.dir(generatedJniLibs)
+    workingDir(rootProject.projectDir)
+    commandLine("bash", rootProject.file("scripts/build-android-engine.sh").absolutePath)
+}
+
 android {
     namespace = "org.gosuda.portal.android"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -25,6 +36,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    sourceSets.getByName("main").jniLibs.srcDir(generatedJniLibs.get().asFile)
 }
 
 kotlin {
@@ -32,6 +44,16 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_17)
     }
 }
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }
+    .configureEach {
+        dependsOn(buildAndroidEngine)
+    }
+
+tasks.matching { it.name.startsWith("bundle") && it.name.endsWith("Aar") }
+    .configureEach {
+        dependsOn(buildAndroidEngine)
+    }
 
 
 
@@ -48,7 +70,7 @@ mavenPublishing {
 
     pom {
         name = "Portal Native Engine (Android)"
-        description = "Prebuilt libportaltunnel binaries and the JNI bridge consumed by the Portal Multiplatform SDK Android target."
+        description = "Reproducibly built libportaltunnel JNI binaries consumed by the Portal Multiplatform SDK Android target."
         inceptionYear = "2026"
         url = "https://github.com/gosuda/portal-multiplatform-sdk"
         licenses {

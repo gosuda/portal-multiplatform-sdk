@@ -1,5 +1,43 @@
 # Tasks
 
+## Planned — KMP Desktop expansion
+
+Detailed architecture, file ownership, packaging, CI matrix, RED/GREEN steps,
+and release criteria:
+[`docs/DESKTOP_IMPLEMENTATION_PLAN.md`](docs/DESKTOP_IMPLEMENTATION_PLAN.md).
+
+- [ ] D0 — Prove the current C ABI from a JVM/JNA Linux host.
+- [ ] D1 — Add `jvm("desktop")`, `PortalDesktop`, safe identity defaults, and
+      the desktop JNA engine.
+- [ ] D2 — Build and verify Linux x86_64, Windows x86_64, and macOS universal
+      native libraries from the existing Go bridge.
+- [ ] D3 — Package checksum-indexed native resources with deterministic,
+      content-addressed extraction and no runtime downloads.
+- [ ] D4 — Add a Compose Desktop sample that publishes a loopback HTTP server.
+- [ ] D5 — Verify each supported OS in CI plus clean Maven consumers and
+      end-to-end real-relay smoke scenarios.
+- [ ] D6 — Publish only after provenance, licensing, size, signing, and
+      documentation gates pass.
+
+## Assessed — Kotlin/Wasm support
+
+Feasibility evidence, rejected compatibility shims, future gates, and the
+separate browser-control alternative:
+[`docs/WASM_SUPPORT_ASSESSMENT.md`](docs/WASM_SUPPORT_ASSESSMENT.md).
+
+- [x] Browser `wasmJs` cannot preserve the current local HTTP/TCP/UDP,
+      filesystem, identity, or native-engine `PortalClient` contract.
+- [x] Kotlin `wasmWasi` currently targets WASI 0.1, while Go `wasip1` lacks
+      portable full socket open/listen support required by the Portal engine.
+- [x] Do not publish a compile-only/no-op Wasm target or hide a remote fallback
+      behind `PortalClient`.
+- [ ] Re-evaluate a WASI component only when Kotlin and the Portal engine share
+      a production Component Model/socket generation and pass real network
+      scenarios on at least two runtimes.
+- [ ] If browser management becomes a product requirement, design a separately
+      named web-control artifact over a secure management API; do not treat it
+      as a local tunnel runtime.
+
 ## Planned — SDK usability roadmap
 
 Detailed API contracts, file-by-file steps, RED/GREEN checks, release

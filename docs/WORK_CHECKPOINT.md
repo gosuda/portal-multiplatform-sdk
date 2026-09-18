@@ -1,62 +1,69 @@
 # Work Checkpoint
 
 ## Active task
-SDK usability implementation — **P0–P3 mostly done; P4/P5 and platform verification open**.
+KMP platform expansion planning — **Desktop plan complete; Kotlin/Wasm
+feasibility assessed; implementation not started**.
 
 ## State (2026-09-18)
-- Implemented per `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`:
-  - `PortalConfig` companion factories: `http`, `routes`, `tcp`, `udp`,
-    `staticSite` (commonMain; wire DTO unchanged).
-  - `PortalClient.publish(config, timeoutMillis)`: `open` + `awaitActive` +
-    rollback `stop` on failure/cancellation; cleanup failures surface with
-    `operation="publish_cleanup"` and leave the session retryable.
-  - `PortalIosClient.publish` + `PortalIosConfigFactory` (Swift facade);
-    `PortalIosClient` gained a private primary ctor + internal engine-injecting
-    ctor for tests.
-  - `IosIdentityPath` (iosMain/internal): Application Support
-    `Portal/identity.json` resolved inside `open`/`publish`; filesystem
-    failures → PERMISSION_DENIED, never a temp-path fallback.
-  - `PortalClientHolder.init(context)` + `PortalTunnelService` now build
-    context-backed clients (application context only).
-  - Compile fixtures: `QuickStartContract.kt` (Android sample) and
-    `QuickStartContract.swift` (added to `samples/ios/project.yml`).
-  - `scripts/package-ios-xcframework.sh`: merges `libportaltunnel.a` into each
-    framework slice, rebuilds the XCFramework, emits SwiftPM `Package.swift`.
-  - `publish.yml`: `release-*` tag + `release(scope):` subject gate +
-    provenance-lock check (was GitHub-release trigger).
-  - `source-lock.json`: `android_ndk_revision` resolved → r29
-    (clang-r563880c, read from `.so` `.comment`); `license_review` stays
-    PENDING — `portal-android-sdk` (the `.so` source repo) has no LICENSE.
-- Bug found by the new tests and fixed: `open` registered the tunnel with the
-  session registry only *after* draining orphan events, so a STOPPED emitted
-  inside the native start left a zombie session — registration order swapped
-  (recorded in docs/TROUBLESHOOTING.md).
-- Verification on this host (WSL2, no Android SDK / macOS):
-  - `./gradlew :portal-sdk:linuxX64Test --offline` → 39/39 green, including
-    publish/factory coverage and concurrent-close registration cleanup.
-  - `compileCommonMainKotlinMetadata` clean.
-  - NOT verifiable here: Android/iOS target compilation, iosMain/iosTest,
-    sample builds, real-relay smokes, XCFramework packaging, Maven publish.
-- Review corrections in commit following `c574bdf`:
-  - made final tunnel registration atomic with `close()` via `closeMutex`; the
-    previous ordering could re-add a hub route after concurrent close;
-  - fixed Apple packaging checks to accept Mach-O underscore-prefixed C
-    symbols and call `lipo -info` once per binary;
-  - added `closeDuringNativeStartRejectsAndStopsLateHandle`; linuxX64 now
-    passes 39/39 tests;
-  - reopened TASKS items that were previously marked complete without Android,
-    iOS, real-relay, clean-consumer, or sample-UI evidence.
-- Docs updated: README (publish-first quick starts, factories, identity
-  defaults), skill api-reference, DESIGN_RULES (publish + platform identity
-  contracts), CHANGELOG, TASKS (status + blockers), TROUBLESHOOTING.
+- Added `docs/DESKTOP_IMPLEMENTATION_PLAN.md`.
+- Desktop decision:
+  - first-class target is JVM `jvm("desktop")` on Java 17+, matching normal
+    Compose Desktop consumers;
+  - bind the existing v1 C ABI with JNA rather than reuse Android JNI or expose
+    Kotlin/Native desktop as the primary artifact;
+  - first runtime matrix is Linux x86_64 glibc, Windows x86_64, and macOS
+    universal (x86_64 + arm64);
+  - package verified native libraries in `:portal-native-desktop`, extract to a
+    content-addressed cache, and never download native code at runtime;
+  - add `PortalDesktop.client(...)` with application-scoped persistent identity
+    defaults and an explicit native-library override;
+  - prove the host Linux C ABI path before adding Gradle targets or public API.
+- Added `docs/WASM_SUPPORT_ASSESSMENT.md`.
+- Kotlin/Wasm decision:
+  - do not publish `wasmJs` or `wasmWasi` as runnable `portal-sdk` targets;
+  - browser Wasm cannot preserve local listener, arbitrary TCP/UDP, filesystem,
+    identity-path, or native-engine ownership semantics;
+  - Kotlin/Wasm currently supports WASI 0.1, while Go `wasip1` lacks portable
+    full socket open/listen support required by the engine;
+  - WASI 0.3 has async sockets, but Kotlin and Go do not currently share a
+    production Component Model target for this engine;
+  - a future browser control SDK is viable only as a separately named remote
+    management product, not a `PortalClient` implementation;
+  - a future WASI component needs a WIT/Component Model ABI and must clear the
+    explicit gates in the assessment.
+- Updated `TASKS.md` with Desktop D0–D6 and Wasm re-evaluation gates.
+- No production code, public API, build configuration, or release artifact was
+  changed in this planning session.
+- Prior SDK usability state remains:
+  - P0–P3 mostly implemented;
+  - P4/P5, Android/iOS host verification, real-relay coverage, clean consumer
+    checks, and sample UI migration remain open;
+  - `license_review` remains PENDING because `portal-android-sdk` ships no
+    LICENSE file; `android_ndk_revision` is resolved to r29.
+
+## Verification
+- Documentation link and Markdown fence validation passed for both plans,
+  `TASKS.md`, and this checkpoint.
+- Desktop plan contains no residual patch markers.
+- `git diff --check` passed.
+- Runtime/build tests were not run because this session changes planning
+  documentation only.
 
 ## Next action
-On the macOS host: run `./gradlew :portal-sdk:iosSimulatorArm64Test
-:samples:android:assembleDebug`, build the iOS sample via xcodegen+xcodebuild
-(compiles `QuickStartContract.swift` and validates the Swift API spelling),
-then run `scripts/package-ios-xcframework.sh` and a clean SwiftPM consumer.
-`license_review` needs an upstream LICENSE on `gosuda/portal-android-sdk` or a
-rebuild of the `.so`s from MIT-licensed `portal-tunnel` source.
+Execute Desktop D0 on Linux:
+
+1. build the current `native/bridge` with `-buildmode=c-shared`;
+2. verify the required `Portal*` exports against
+   `native/include/portaltunnel.h`;
+3. run a throwaway JVM/JNA harness through identity generation/parsing,
+   callback delivery, start/status/stop, UTF-8, and every returned-string free;
+4. record ABI, glibc/dependency, binary-size, and real-relay evidence before
+   modifying Gradle targets or publishing public Desktop API.
+
+Do not start Kotlin/Wasm runtime implementation. Revisit only when the
+toolchain gates in `docs/WASM_SUPPORT_ASSESSMENT.md` are met, or begin a
+separately scoped browser-control product after its management/security
+contract is approved.
 
 ## Prior environment notes (2026-09-17 macOS session)
 - Android SDK at `~/Android/Sdk` (platform 36, build-tools 36.0.0) via

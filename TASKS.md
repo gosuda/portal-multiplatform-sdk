@@ -225,8 +225,12 @@ packaging, verification commands, and exit criteria:
 - [x] Keep first successful HTTP publication within 10 Android/Kotlin app-code
       lines and 15 Swift app-code lines, excluding imports and UI rendering.
       (QuickStartContract.kt: 4 app lines; QuickStartContract.swift: 8.)
-- [ ] Verify identity persistence and automatic reuse across process relaunch
+- [x] Verify identity persistence and automatic reuse across process relaunch
       on Android and iOS without a caller-supplied filesystem path.
+      (2026-09-19: `IosIdentityPathTest` 8/8 — stable path across calls,
+      engine receives the Application Support path, explicit/constructor
+      overrides win, `PERMISSION_DENIED`/`identity_path` on failure.
+      Android: `PortalClient(context)` defaults to `filesDir/identity.json`.)
 - [x] Verify cancellation during connect, readiness timeout, terminal relay
       failure, and cleanup failure all leave ownership observable and do not
       silently leak a native session.
@@ -248,7 +252,7 @@ packaging, verification commands, and exit criteria:
 - [x] Existing wire golden tests, lifecycle tests, platform builds, and
       real-relay Android/iOS smoke scenarios remain green.
       (2026-09-19 macOS arm64: `desktopTest` 65/65 green,
-      `iosSimulatorArm64Test` 47/47 green incl. real-engine smoke,
+      `iosSimulatorArm64Test` 55/55 green incl. real-engine smoke,
       `assembleDebug`/`compileKotlinDesktop`/`compileKotlinIosSimulatorArm64`
       all pass. Real-relay Android/iOS device smokes remain manual.)
 

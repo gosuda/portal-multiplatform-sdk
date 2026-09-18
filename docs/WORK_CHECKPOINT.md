@@ -81,6 +81,12 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   native desktop matrix before publication, exercises both samples against
   staged artifacts, and refuses Maven Central publication with an incomplete
   desktop runtime.
+- 2026-09-18 follow-up 5: fixed false failures in
+  `verify-desktop-engine.sh`: Windows exports are read from GNU `objdump`'s
+  `[Ordinal/Name Pointer] Table`; universal macOS `otool -L` headings and
+  `LC_ID_DYLIB` rows are excluded; versioned system `libresolv` is allowed.
+  Embedded parser fixtures now run on every desktop-native CI target before
+  the engine build.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with
@@ -121,6 +127,14 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   publication was rejected because the macOS runtime was absent, proving the
   Central task forces the complete native matrix (credentials were also
   intentionally absent).
+- `./scripts/verify-desktop-engine.sh --self-test` — representative GNU
+  `objdump` and universal `otool -L` fixtures passed.
+- `./scripts/verify-desktop-engine.sh
+  native/desktop/windows-x64/portaltunnel.dll` — all 11 exports, header, and
+  dependencies passed with the corrected Windows parser.
+- `./scripts/verify-desktop-engine.sh
+  native/desktop/linux-x64/libportaltunnel.so` — existing Linux verification
+  remained green.
 
 ## Environment notes (this host)
 - Linux x86_64, JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10.

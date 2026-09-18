@@ -84,7 +84,9 @@ jobs:
         if: matrix.target == 'windows-x64'
         run: choco install mingw --yes --no-progress
       - name: Build ${{ matrix.target }} engine
-        run: ./scripts/build-desktop-engine.sh ${{ matrix.target }}
+        run: |
+          ./scripts/verify-desktop-engine.sh --self-test
+          ./scripts/build-desktop-engine.sh ${{ matrix.target }}
         shell: bash
       - name: Verify ${{ matrix.target }} engine
         run: |

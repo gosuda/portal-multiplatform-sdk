@@ -1,5 +1,26 @@
 # Troubleshooting Log
 
+### [2026-09-18] Desktop release verifier rejected valid Windows and macOS engines
+
+- **Context / Symptom:** The release matrix reported all 11 Windows
+  `Portal*` exports missing even though cgo generated the matching header.
+  On macOS it reported `libportaltunnel.dylib`, the universal-binary
+  architecture headings, and `/usr/lib/libresolv.9.dylib` as unexpected
+  dependencies.
+- **Root Cause:** The Windows parser stopped at the blank line between GNU
+  `objdump`'s Export Address Table and `[Ordinal/Name Pointer] Table`, where
+  exported names actually appear. The macOS parser treated every `otool -L`
+  line after the first as a dependency, but universal output contains a
+  heading per architecture and each dylib slice lists its `LC_ID_DYLIB`.
+  The allowlist also omitted macOS's system resolver library.
+- **Solution:** Parse indexed `Portal*` rows from the full Windows output.
+  For macOS, accept only tab-indented load-command rows, exclude the dylib's
+  own install ID, and allow versioned `/usr/lib/libresolv.*.dylib`. Added
+  representative parser self-tests and run them in both release workflows.
+- **Prevention / Reference:** ABI verification parsers must use the real
+  multi-section/multi-architecture tool formats rather than blank-line or
+  global-line-number assumptions.
+
 ### [2026-09-18] Sample ignored isolated Maven repository and queried Central
 
 - **Context / Symptom:** After publishing `portal-sdk:0.1.0` into

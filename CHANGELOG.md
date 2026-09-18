@@ -2,6 +2,10 @@
 
 ## 2026-09-18
 
+- fix(ci): corrected desktop engine verification for GNU `objdump` Windows
+  export tables and universal-macOS `otool -L` output, including the dylib
+  install ID and the system `libresolv` dependency
+
 - fix(publishing): changed Android and desktop samples to consume
   `io.github.gosuda` Maven coordinates instead of same-build project
   dependencies, added isolated staging-repository publication tasks and CI

@@ -39,6 +39,7 @@ jobs:
       - name: Build and verify desktop engine
         shell: bash
         run: |
+          ./scripts/verify-desktop-engine.sh --self-test
           ./scripts/build-desktop-engine.sh "${{ matrix.target }}"
           case "${{ matrix.target }}" in
             linux-x64) bin=native/desktop/linux-x64/libportaltunnel.so ;;

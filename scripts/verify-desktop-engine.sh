@@ -22,6 +22,57 @@ REQUIRED=(
     PortalGetStatus PortalAddRelay PortalRemoveRelay PortalUpdateMetadata
 )
 
+parse_windows_exports() {
+    # GNU objdump prints the export names in the "[Ordinal/Name Pointer]
+    # Table", after a blank line that terminates the Export Address Table.
+    # Match only indexed Portal* name rows; column positions vary by version.
+    awk '/^[[:space:]]*\[[[:space:]]*[0-9]+\][[:space:]]+Portal[A-Za-z0-9_]*[[:space:]]*$/ {print $NF}'
+}
+
+parse_macos_dependencies() {
+    local self_name="$1"
+    # Universal binaries produce one non-indented heading per architecture.
+    # Only indented load-command rows are dependencies. otool also prints the
+    # dylib's LC_ID_DYLIB as the first row; that is not a loaded dependency.
+    awk -v self_name="$self_name" '
+        /^\t/ {
+            dep = $1
+            if (dep != self_name) print dep
+        }
+    '
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+    windows_fixture='The Export Tables (interpreted .edata section contents)
+
+Export Address Table -- Ordinal Base 1
+	[   0] +base[   1] 1370 Export RVA
+
+[Ordinal/Name Pointer] Table
+	[   0] PortalAddRelay
+	[  10] PortalUpdateMetadata'
+    windows_expected=$'PortalAddRelay\nPortalUpdateMetadata'
+    [[ "$(parse_windows_exports <<<"$windows_fixture")" == "$windows_expected" ]] ||
+        { echo "Windows export parser self-test failed" >&2; exit 1; }
+
+    macos_fixture='native/desktop/macos-universal/libportaltunnel.dylib (architecture x86_64):
+native/desktop/macos-universal/libportaltunnel.dylib:
+	libportaltunnel.dylib (compatibility version 0.0.0, current version 0.0.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1336.61.1)
+	/usr/lib/libresolv.9.dylib (compatibility version 1.0.0, current version 1.0.0)
+native/desktop/macos-universal/libportaltunnel.dylib (architecture arm64):
+	libportaltunnel.dylib (compatibility version 0.0.0, current version 0.0.0)
+native/desktop/macos-universal/libportaltunnel.dylib:
+	/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61439.120.27)'
+    macos_expected=$'/usr/lib/libSystem.B.dylib\n/usr/lib/libresolv.9.dylib\n/System/Library/Frameworks/Security.framework/Versions/A/Security'
+    [[ "$(parse_macos_dependencies libportaltunnel.dylib <<<"$macos_fixture")" == "$macos_expected" ]] ||
+        { echo "macOS dependency parser self-test failed" >&2; exit 1; }
+
+    echo "desktop verifier parser self-tests passed"
+    exit 0
+fi
+
+
 fail=0
 note() { echo "  $*"; }
 err() { echo "  ERROR: $*" >&2; fail=1; }
@@ -38,7 +89,7 @@ case "$BIN" in
         exports=$(nm -gU "$BIN" 2>/dev/null | awk '{print $NF}' | sed 's/^_//' || true)
         ;;
     *.dll)
-        exports=$(objdump -p "$BIN" 2>/dev/null | sed -n '/Export Address Table/,/^$/p' | awk '{print $NF}' || true)
+        exports=$(objdump -p "$BIN" 2>/dev/null | parse_windows_exports || true)
         ;;
     *)
         echo "unrecognized binary type: $BIN" >&2; exit 1 ;;
@@ -79,8 +130,9 @@ case "$BIN" in
         allow='^(linux-vdso\.so\.1|libpthread\.so\.0|libc\.so\.6|libdl\.so\.2|librt\.so\.1|libm\.so\.6|ld-linux-x86-64\.so\.2|libresolv\.so\.2)$'
         ;;
     *.dylib)
-        deps=$(otool -L "$BIN" 2>/dev/null | awk 'NR>1 {gsub(/^\t/,""); print $1}' || true)
-        allow='^(/usr/lib/libSystem\.B\.dylib|/System/Library/Frameworks/.*|@rpath/.*|/usr/lib/libc\+\+.*)$'
+        deps=$(otool -L "$BIN" 2>/dev/null |
+            parse_macos_dependencies "$(basename "$BIN")" || true)
+        allow='^(/usr/lib/libSystem\.B\.dylib|/usr/lib/libresolv\.[0-9]+\.dylib|/System/Library/Frameworks/.*|@rpath/.*|/usr/lib/libc\+\+.*)$'
         ;;
     *.dll)
         deps=$(objdump -p "$BIN" 2>/dev/null | awk '/DLL Name/ {print $3}' || true)

@@ -134,6 +134,64 @@ packaging, verification commands, and exit criteria:
       (Compile-only quick-start fixtures were added, but the real sample UI
       flows still construct raw `PortalConfig` and call `open`.)
 
+### P6 — Remove remaining consumer friction
+
+#### Installation and first success
+
+- [ ] Publish one canonical install path per consumer: one Gradle coordinate
+      for Android/Desktop/KMP and one copy-paste SwiftPM package URL for iOS.
+      Remove repository-build instructions from the primary onboarding path.
+- [ ] Add clean, standalone Android, Desktop, KMP-iOS, and Swift consumers that
+      are not included builds and resolve only released artifacts in CI.
+- [ ] Make each clean consumer publish a loopback HTTP server and assert a real
+      request through the returned public URL; compilation alone is
+      insufficient.
+- [ ] Add a release compatibility table covering SDK version, Kotlin version,
+      Android API/NDK requirements, iOS deployment target, JVM version, and
+      supported native architectures.
+
+#### Easy-path API
+
+- [ ] Add a ready-result convenience surface so the common `publish` path can
+      read its primary public URL directly without navigating
+      `tunnel.state.value.primaryPublicUrl`; preserve live state for advanced
+      consumers.
+- [ ] Provide one managed-lifetime pattern per platform: Android lifecycle/
+      foreground ownership, Swift cancellation and owner teardown, and JVM
+      close/use semantics. Each pattern must stop only sessions owned by that
+      client.
+- [ ] Define stable, typed publish failures with operation, retryability,
+      terminal reason, and cleanup outcome available without parsing exception
+      messages; map the same fields into Swift-friendly errors.
+- [ ] Add an opt-in diagnostics snapshot that reports SDK/engine versions,
+      current phase, selected relay, and last structured failure without
+      exposing identity secrets.
+- [ ] Review generated Swift names from the real XCFramework and add facade
+      methods only where Kotlin-exported names, optionals, or callbacks remain
+      awkward; compile every documented Swift call site.
+
+#### Outcome-oriented guidance
+
+- [ ] Add a minimal troubleshooting decision tree for “no public URL,” relay
+      connection failure, local upstream refusal, permission/background limits,
+      and shutdown failure, keyed by structured error fields.
+- [ ] Publish generated Kotlin API reference and a reviewed Swift symbol/API
+      reference, and link both directly from the install and quick-start
+      sections.
+
+#### Usability acceptance gates
+
+- [ ] Keep first successful HTTP publication within 10 Android/Kotlin app-code
+      lines and 15 Swift app-code lines, excluding imports and UI rendering.
+- [ ] Verify identity persistence and automatic reuse across process relaunch
+      on Android and iOS without a caller-supplied filesystem path.
+- [ ] Verify cancellation during connect, readiness timeout, terminal relay
+      failure, and cleanup failure all leave ownership observable and do not
+      silently leak a native session.
+- [ ] Run onboarding from a clean machine/workspace with no repository checkout,
+      record time-to-first-public-URL, and remove every undocumented prerequisite
+      found during the exercise.
+
 ### Exit criteria
 
 - [ ] A clean Android consumer resolves one released dependency and obtains a

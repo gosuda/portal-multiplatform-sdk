@@ -113,6 +113,13 @@ artifacts on macOS and publish Maven Central.
   builds all archives automatically. The release workflow stages all three
   iOS Maven variants, asserts their klibs contain the archive, builds a
   self-contained XCFramework/Swift package, and uploads that distribution.
+- 2026-09-18 follow-up 11: expanded `TASKS.md` with the remaining SDK
+  usability work: canonical released installs, clean external consumers,
+  real-relay first-success checks, compatibility documentation, direct ready
+  URL access, managed lifetimes, typed failures, safe diagnostics, Swift
+  export review, troubleshooting/API references, and measurable onboarding
+  acceptance gates. The immediate next action remains the macOS release
+  verification recorded under P4.
 - CI: `build-desktop-runtime` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), and macos-universal (macos+clang/lipo). The
   final publish job reconstructs target directories, stages Android/desktop/

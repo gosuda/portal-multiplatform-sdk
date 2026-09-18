@@ -2,6 +2,11 @@
 
 ## 2026-09-18
 
+- fix(desktop): created the generated native resource directory before
+  writing `index.json`, allowing clean macOS release runners to stage the
+  desktop Maven runtime; native checksums now stream instead of loading entire
+  binaries into memory
+
 - fix(release): replaced externally sourced Android `.so` files with
   reproducible arm64-v8a and x86_64 JNI builds from the MIT-licensed
   `native/bridge`, pinned Go 1.27.1 and Android NDK r29 in CI, generalized

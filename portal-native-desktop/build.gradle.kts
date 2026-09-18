@@ -1,4 +1,6 @@
+import java.io.OutputStream
 import java.security.MessageDigest
+import java.security.DigestInputStream
 
 plugins {
     `java-library`
@@ -42,6 +44,7 @@ abstract class GenerateNativeIndex : DefaultTask() {
     fun generate() {
         val out = outputDir.get().asFile
         out.deleteRecursively()
+        out.mkdirs()
         val index = StringBuilder("{\n  \"abi_version\": 1,\n  \"libraries\": {\n")
         var first = true
         val missing = mutableListOf<String>()
@@ -51,9 +54,11 @@ abstract class GenerateNativeIndex : DefaultTask() {
                 missing += bin.path
                 continue
             }
-            val sha = MessageDigest.getInstance("SHA-256")
-                .digest(bin.readBytes())
-                .joinToString("") { "%02x".format(it) }
+            val digest = MessageDigest.getInstance("SHA-256")
+            DigestInputStream(bin.inputStream().buffered(), digest).use { input ->
+                input.copyTo(OutputStream.nullOutputStream())
+            }
+            val sha = digest.digest().joinToString("") { "%02x".format(it) }
             val resDir = File(out, target)
             resDir.mkdirs()
             bin.copyTo(File(resDir, fileName), overwrite = true)

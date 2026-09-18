@@ -103,6 +103,9 @@ and publish the Maven artifacts.
   plus NDK r29 into `portal-native-android/build/generated/jniLibs`. Gradle
   runs the build before AAR merge/publication; release CI installs both pinned
   toolchains. No Android native binary is downloaded or committed.
+- 2026-09-18 follow-up 9: `GenerateNativeIndex` now recreates its output
+  directory after cleanup before writing `index.json`; native hashes stream
+  through `DigestInputStream` instead of allocating each full binary.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with
@@ -159,6 +162,9 @@ and publish the Maven artifacts.
 - `PATH=/tmp/go/bin:$PATH ANDROID_NDK_HOME=/tmp/android-ndk-r29
   ./gradlew :portal-native-android:buildAndroidEngine` — Gradle producer task
   rebuilt both ABI outputs successfully.
+- Clean-output `:portal-native-desktop:generateNativeIndex` and
+  `publishDesktopSdkToSampleRepository` both passed after deleting their
+  generated/staging directories.
 
 ## Environment notes (this host)
 - Linux x86_64, JDK 17, Gradle 9.6.1 wrapper, Kotlin 2.4.10.

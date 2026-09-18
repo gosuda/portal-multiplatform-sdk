@@ -1,5 +1,20 @@
 # Troubleshooting Log
 
+### [2026-09-18] Clean release runner could not write native `index.json`
+
+- **Context / Symptom:** `publishDesktopSdkToSampleRepository` failed on the
+  macOS runner with `FileNotFoundException:
+  portal-native-desktop/build/generated/portal-native/index.json`.
+- **Root Cause:** `GenerateNativeIndex` deleted its output directory, then
+  only recreated target subdirectories while copying binaries. On a clean
+  runner no directory existed when it wrote the top-level index.
+- **Solution:** Recreate the declared output directory immediately after
+  cleanup. Also stream binaries through `DigestInputStream` so hashing the
+  complete release matrix does not allocate one byte array per native binary.
+- **Prevention / Reference:** A task owning an `@OutputDirectory` must create
+  that directory before writing root-level outputs; never rely on stale build
+  directories from earlier tasks.
+
 ### [2026-09-18] AGP rejected a Provider-backed JNI source directory
 
 - **Context / Symptom:** `:portal-native-android:buildAndroidEngine` failed

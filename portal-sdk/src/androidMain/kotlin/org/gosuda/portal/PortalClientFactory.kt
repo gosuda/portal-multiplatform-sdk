@@ -18,5 +18,5 @@ public fun PortalClient(
 ): PortalClient = PortalClient(
     engine = org.gosuda.portal.internal.platformNativeEngine(),
     allowRemoteTargets = allowRemoteTargets,
-    defaultIdentityPath = File(context.filesDir, "identity.json").absolutePath
+    defaultIdentityPath = { File(context.filesDir, "identity.json").absolutePath }
 )

@@ -49,11 +49,17 @@ public object PortalDesktop {
         nativeLibraryPath: Path? = null,
         allowRemoteTargets: Boolean = false
     ): PortalClient {
-        val identityPath = DesktopIdentityPath.resolve(applicationId, storageDirectory)
+        // Validate eagerly: a bad applicationId is a programmer error, not a
+        // filesystem condition, so it must fail at client() not inside open().
+        DesktopIdentityPath.validate(applicationId)
         return PortalClient(
             engine = DesktopPortalEngine(nativeLibraryPath),
             allowRemoteTargets = allowRemoteTargets,
-            defaultIdentityPath = identityPath.toString()
+            // Lazy: the identity directory is created inside open/publish so a
+            // filesystem failure surfaces through the operation, matching iOS.
+            defaultIdentityPath = {
+                DesktopIdentityPath.resolve(applicationId, storageDirectory).toString()
+            }
         )
     }
 
@@ -96,15 +102,26 @@ internal object DesktopIdentityPath {
     internal var os: () -> DesktopOs = { detectOs() }
 
     /**
-     * Returns the default identity path for [applicationId], creating the
-     * parent directory. Throws [PortalException] PERMISSION_DENIED when the
-     * directory cannot be created — there is no temporary-path fallback.
+     * Returns the identity path for [applicationId] without touching the
+     * filesystem. Pure path computation — used by tests and by [resolve].
      */
-    fun resolve(applicationId: String, storageDirectory: Path?): Path {
+    fun pathFor(applicationId: String, storageDirectory: Path?): Path {
         validateApplicationId(applicationId)
         val os = os()
         val base = storageDirectory ?: baseDirectory(os, applicationId)
-        val dir = base.resolve(applicationId).resolve(portalDirName(os))
+        return base.resolve(applicationId).resolve(portalDirName(os)).resolve(IDENTITY_FILE)
+    }
+
+    /**
+     * Returns the default identity path for [applicationId], creating the
+     * parent directory. Throws [PortalException] PERMISSION_DENIED when the
+     * directory cannot be created — there is no temporary-path fallback.
+     * Called lazily inside `open`/`publish` so the failure surfaces through
+     * the operation, matching iOS.
+     */
+    fun resolve(applicationId: String, storageDirectory: Path?): Path {
+        val path = pathFor(applicationId, storageDirectory)
+        val dir = path.parent
         try {
             Files.createDirectories(dir)
         } catch (e: Exception) {
@@ -114,8 +131,11 @@ internal object DesktopIdentityPath {
                 operation = "identity_path"
             )
         }
-        return dir.resolve(IDENTITY_FILE)
+        return path
     }
+
+    /** Validates [applicationId] without touching the filesystem. */
+    fun validate(applicationId: String) = validateApplicationId(applicationId)
 
     private fun validateApplicationId(applicationId: String) {
         if (applicationId.isBlank() ||

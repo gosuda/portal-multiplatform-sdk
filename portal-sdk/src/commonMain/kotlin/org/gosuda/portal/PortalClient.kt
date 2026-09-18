@@ -66,7 +66,7 @@ public data class PortalDiagnostics(
 public class PortalClient internal constructor(
     internal val engine: PortalNativeEngine,
     private val allowRemoteTargets: Boolean = false,
-    private val defaultIdentityPath: String? = null
+    private val defaultIdentityPath: (() -> String?)? = null
 ) {
     /**
      * Creates a client backed by the platform `libportaltunnel` engine.
@@ -115,7 +115,7 @@ public class PortalClient internal constructor(
     public suspend fun open(config: PortalConfig): PortalTunnel {
         ensureOpen()
         val resolved = config.copy(
-            identityPath = config.identityPath ?: defaultIdentityPath,
+            identityPath = config.identityPath ?: defaultIdentityPath?.invoke(),
             relays = config.relays?.map { ConfigValidation.normalizeRelayUrl(it) }
         )
         ConfigValidation.validate(resolved, allowRemoteTargets, capabilities())
@@ -386,7 +386,7 @@ public class PortalClientBuilder internal constructor() {
         apply { defaultIdentityPath = path }
 
     public fun build(): PortalClient =
-        PortalClient(platformNativeEngine(), allowRemoteTargets, defaultIdentityPath)
+        PortalClient(platformNativeEngine(), allowRemoteTargets, defaultIdentityPath?.let { p -> { p } })
 }
 
 

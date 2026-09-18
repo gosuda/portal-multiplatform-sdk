@@ -43,6 +43,11 @@
   `icon.ico`/`icon.icns`/`icon.png` under `packaging/` for native
   distributions
 
+- fix(desktop): made `GenerateNativeIndex.nativeDesktopDir` `@Optional` so
+  a fresh clone without `native/desktop/` (gitignored, engine binaries are
+  CI-built) no longer fails Gradle input validation — the task emits a
+  partial-matrix warning instead of an `Input file does not exist` error
+
 - fix(client): made post-start session registration atomic with `close()` so a
   concurrent close cannot stop/unregister a tunnel and then have `open`
   re-add its process-global event route

@@ -1,5 +1,24 @@
 # Troubleshooting Log
 
+### [2026-09-18] `generateNativeIndex` fails on a fresh clone — `Input file does not exist`
+
+- **Context / Symptom:** On a Windows checkout without `native/desktop/`,
+  `:portal-native-desktop:generateNativeIndex` failed during Gradle input
+  validation: `property 'nativeDesktopDir' specifies directory
+  'D:\…\native\desktop' which doesn't exist`.
+- **Root Cause:** `nativeDesktopDir` was a plain `@InputDirectory`, so
+  Gradle validated the directory exists before the task ran. The task's
+  own graceful path (missing binaries → partial-matrix warning) never
+  executed. `native/desktop/` is gitignored — engine binaries are built
+  by `scripts/build-desktop-engine.sh` or the CI matrix, not committed.
+- **Solution:** Added `@get:Optional` to `nativeDesktopDir`. The task now
+  runs on a fresh clone and emits the partial-matrix warning; a release
+  build still fails via `requireComplete=true` when binaries are absent.
+- **Prevention / Reference:** A `@InputDirectory` that may legitimately
+  be absent needs `@Optional`; Gradle validates input existence before
+  the task's own missing-input handling can run.
+
+
 ### [2026-09-18] Ollama download 404 — wrong asset names and format
 
 - **Context / Symptom:** `OllamaSetup.install()` failed with

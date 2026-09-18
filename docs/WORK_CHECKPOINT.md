@@ -64,6 +64,13 @@ sample was rebuilt to mirror the Android app (2026-09-18).
   Linux is `.tar.zst` (decompressed via `zstd-jni`, no `zstd` binary
   needed), macOS is `Ollama-darwin.zip` (capital O), Windows extracts the
   full install tree so `ollama.exe` finds its bundled libs.
+- 2026-09-18 follow-up 3: `GenerateNativeIndex.nativeDesktopDir` is now
+  `@Optional` — a fresh clone without `native/desktop/` (gitignored,
+  engine binaries are CI-built) no longer fails Gradle input validation;
+  the task emits a partial-matrix warning instead. The Windows engine
+  (`native/desktop/windows-x64/portaltunnel.dll`) was copied to the
+  Windows checkout at `D:\my\portal-multiplatform-sdk` so
+  `packageMsi`/`createDistributable` can package a working runtime.
 - CI: `desktop-native` matrix builds/verifies linux-x64 (ubuntu+zig),
   windows-x64 (windows+mingw), macos-universal (macos+clang/lipo);
   `desktop-package` downloads all three and packages with

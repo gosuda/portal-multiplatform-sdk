@@ -21,6 +21,7 @@ java {
 abstract class GenerateNativeIndex : DefaultTask() {
 
     @get:InputDirectory
+    @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val nativeDesktopDir: DirectoryProperty
 

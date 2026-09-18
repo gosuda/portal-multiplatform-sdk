@@ -27,15 +27,15 @@ abstract class GenerateNativeIndex : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
+    /** When true, every matrix binary must exist (release/CI gate). */
+    @get:Input
+    abstract val requireComplete: Property<Boolean>
+
     private val requiredTargets = listOf(
         "linux-x64" to "libportaltunnel.so",
         "windows-x64" to "portaltunnel.dll",
         "macos-universal" to "libportaltunnel.dylib"
     )
-
-    /** When true, every matrix binary must exist (release/CI gate). */
-    @get:Input
-    abstract val requireComplete: Property<Boolean>
 
     @TaskAction
     fun generate() {
@@ -86,8 +86,9 @@ val generateNativeIndex = tasks.register<GenerateNativeIndex>("generateNativeInd
 
 tasks.named("processResources", ProcessResources::class.java) {
     dependsOn(generateNativeIndex)
-    into("META-INF/portal-native")
-    from(layout.buildDirectory.dir("generated/portal-native"))
+    from(layout.buildDirectory.dir("generated/portal-native")) {
+        into("META-INF/portal-native")
+    }
 }
 
 // Reproducible JAR: stable ordering and timestamps.

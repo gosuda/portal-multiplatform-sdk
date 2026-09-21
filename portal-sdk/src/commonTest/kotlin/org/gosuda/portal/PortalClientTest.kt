@@ -7,12 +7,15 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 
 class PortalClientTest {
@@ -90,27 +93,78 @@ class PortalClientTest {
         assertEquals(TunnelPhase.STOPPED, tunnel.state.value.phase)
         client.close()
     }
+    @Test
+    fun cancelledOpenKeepsFailedRollbackOwnedAndRetryable() = runTest {
+        val engine = FakeEngine().apply {
+            statusFailure = CancellationException("cancelled during native status")
+            stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop failed")
+        }
+        val client = clientWith(engine)
+
+        assertFailsWith<CancellationException> { client.open(siteConfig()) }
+        val tunnel = client.sessions.value.single()
+        assertEquals(TunnelPhase.STOPPING, tunnel.state.value.phase)
+        assertEquals(PortalFailure.Codes.INTERNAL_ERROR, tunnel.state.value.lastFailure?.code)
+
+        engine.stopFailure = null
+        client.close()
+        assertEquals(TunnelPhase.STOPPED, tunnel.state.value.phase)
+        assertTrue(client.sessions.value.isEmpty())
+    }
+
+    @Test
+    fun closeRetriesSessionsWhoseNativeStopFailed() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        val tunnel = client.open(siteConfig())
+        engine.stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop failed")
+
+        assertFailsWith<PortalException> { client.close() }
+        assertTrue(client.isClosed)
+        assertEquals(listOf(tunnel), client.sessions.value)
+
+        engine.stopFailure = null
+        client.close()
+        assertEquals(TunnelPhase.STOPPED, tunnel.state.value.phase)
+        assertTrue(client.sessions.value.isEmpty())
+    }
+
+    @Test
+    fun cancellingManagedLifetimeStillClosesOwnedSessions() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        val opened = CompletableDeferred<PortalTunnel>()
+        val job = launch {
+            client.use {
+                opened.complete(it.open(siteConfig()))
+                awaitCancellation()
+            }
+        }
+        val tunnel = opened.await()
+
+        job.cancelAndJoin()
+
+        assertEquals(TunnelPhase.STOPPED, tunnel.state.value.phase)
+        assertTrue(client.sessions.value.isEmpty())
+    }
+
 
     @Test
     fun cancelDuringOpenRollsBackNativeHandle() = runTest {
         val engine = FakeEngine()
         engine.emitEventsInsideStart = false
         engine.startGate = CompletableDeferred()
+        engine.startEntered = CompletableDeferred()
         val client = clientWith(engine)
 
         val openJob = async { client.open(siteConfig()) }
-        yield()
+        engine.startEntered!!.await()
         openJob.cancel()
         engine.startGate!!.complete(Unit)
 
         assertFailsWith<kotlinx.coroutines.CancellationException> { openJob.await() }
-        // The cleanup job runs on the owner scope; poll until it lands.
-        var spins = 0
-        while (engine.stoppedIds.isEmpty() && spins < 10_000) {
-            yield()
-            spins++
-        }
-        assertTrue(engine.stoppedIds.isNotEmpty(), "orphan native handle was not stopped")
+        assertEquals(engine.startedIds.toList(), engine.stoppedIds.toList())
+        assertTrue(client.sessions.value.isEmpty())
         client.close()
     }
 
@@ -165,10 +219,13 @@ class PortalClientTest {
         val engine = FakeEngine()
         val client = clientWith(engine)
         val tunnel = client.open(siteConfig())
+        val sessionDrops = tunnel.state.value.droppedEventCount
+        val clientDrops = client.diagnostics().droppedAggregateEvents
 
         engine.emit(tunnel.tunnelId, "ERROR", """{"error":"x"}""")
 
-        assertTrue(tunnel.state.value.droppedEventCount > 0)
+        assertEquals(sessionDrops + 1, tunnel.state.value.droppedEventCount)
+        assertEquals(clientDrops + 1, client.diagnostics().droppedAggregateEvents)
         client.close()
     }
 
@@ -335,6 +392,23 @@ class PortalClientTest {
     }
 
     @Test
+    fun outerReadinessTimeoutRemainsCancellation() = runTest {
+        val client = clientWith(FakeEngine().apply { statusActive = false })
+        val tunnel = client.open(siteConfig())
+        try {
+            assertFailsWith<kotlinx.coroutines.TimeoutCancellationException> {
+                withTimeout(1) { tunnel.awaitActive(timeoutMillis = 30_000) }
+            }
+            assertFailsWith<kotlinx.coroutines.TimeoutCancellationException> {
+                withTimeout(1) { tunnel.awaitReady(Capability.STATIC_SITE, timeoutMillis = 30_000) }
+            }
+            assertFalse(tunnel.state.value.isTerminal)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun isClosedReflectsClose() = runTest {
         val engine = FakeEngine()
         val client = clientWith(engine)
@@ -353,6 +427,20 @@ class PortalClientTest {
         assertEquals(listOf("https://relay.example", "https://r2.example"), sent.relays)
         client.close()
     }
+    @Test
+    fun explicitIdentitySkipsDefaultPathResolution() = runTest {
+        val client = PortalClient(
+            engine = FakeEngine(),
+            defaultIdentityPath = { error("default identity directory is unavailable") }
+        )
+        try {
+            val tunnel = client.open(siteConfig().copy(identityJson = """{"address":"0xexplicit"}"""))
+            assertEquals(TunnelPhase.ACTIVE, tunnel.state.value.phase)
+        } finally {
+            client.close()
+        }
+    }
+
 
     @Test
     fun builderCreatesWorkingClient() = runTest {

@@ -60,6 +60,79 @@ or the iOS completion's `PortalFailure`) unless noted.
 - `code == "ABI_MISMATCH"` → engine older/newer than ABI v1; rebuild from
   `native/bridge` at the pinned portal-tunnel version.
 
+### [2026-09-21] Linux Maven staging invoked the Apple toolchain
+
+- **Context / Symptom:** Staging Android/Desktop artifacts failed in
+  `:portal-sdk:buildIosEngine` with `xcrun: command not found`.
+- **Root Cause:** Disabled iOS cinterop tasks still contributed their producer
+  dependencies to the shared KMP metadata publication graph.
+- **Solution:** Made the Apple engine producer macOS-only. The same staging
+  command then completed with Apple production/cinterop skipped on Linux.
+- **Prevention / Reference:** Run Android/Desktop staging on non-Apple hosts;
+  do not treat disabled consumer tasks as an implicit producer host guard.
+
+### [2026-09-21] SDK cancellation, identity, and secret-handling regressions
+
+- **Context / Symptom:** Four targeted tests failed against the original
+  common sources: explicit identity bypass, failed cancellation rollback,
+  outer readiness timeout cancellation, and configuration string redaction.
+- **Root Cause:** Default identity resolution ran despite inline credentials;
+  failed rollback discarded ownership; an outer timeout was caught as a
+  local readiness failure; generated data-class strings exposed secrets.
+- **Solution:** Adopted handles before cancellation boundaries, retained
+  STOPPING sessions on failed rollback, resolved defaults only when needed,
+  used a local timeout boundary, and redacted only string representations.
+  The corrected SDK passed Desktop, Android host, and Linux native suites.
+- **Prevention / Reference:** Keep the added common regressions. Close retries
+  failed stops; caller cancellation still propagates.
+
+### [2026-09-21] JNI corrupted supplementary Unicode
+
+- **Context / Symptom:** A host JNI consumer could not round-trip a Korean
+  token secret containing a supplementary Unicode character through identity
+  parsing. The original adapter failed; the corrected adapter passed.
+- **Root Cause:** JNI modified UTF-8 was passed directly to the Go C ABI,
+  which expects standard UTF-8.
+- **Solution:** Converted UTF-16/standard UTF-8 explicitly at the boundary,
+  contained callback errors, and rejected embedded NUL instead of truncating.
+  The same real-engine smoke observed STOPPED after immediate proxy failure
+  and confirmed that the native handle was no longer registered.
+
+### [2026-09-21] Foreground-service stop retries lost their handles
+
+- **Context / Symptom:** A throwaway Android host consumer failed against the
+  original service: after one failed stop, a second service stop left the
+  tunnel STOPPING instead of STOPPED.
+- **Root Cause:** The service cleared its duplicate tunnel list even when
+  native stop failed.
+- **Solution:** Used `client.sessions` as the authoritative retry set. The
+  identical host scenario passed with the corrected service.
+
+### [2026-09-21] Desktop distributions omitted required JDK modules
+
+- **Context / Symptom:** Full-JDK builds did not establish that the stripped
+  runtime contained `HttpClient`, preferences, HTTP-server, and EC-provider
+  modules used by sample content and HTTPS.
+- **Root Cause:** Compose/jlink did not infer those application requirements.
+- **Solution:** Declared the modules explicitly. A throwaway copy of the real
+  packaged launcher ran the on-device HTTP smoke and a real-relay HTTP 200
+  marker round-trip with `JAVA_HOME` pointing to a nonexistent directory.
+- **Prevention / Reference:** Test the bundled runtime, not only Gradle's
+  full-JDK `JavaExec` tasks. No GUI visual verification was performed here.
+
+### [2026-09-21] Release workflow and Swift package were incomplete
+
+- **Context / Symptom:** Actionlint rejected the original Dokka upload because
+  required `path` was missing. The generated Swift manifest referenced a
+  wrapper target whose sources were not distributed.
+- **Root Cause:** Release-asset creation had not been checked as an actual
+  consumer install path; a loose manifest is not a remote SwiftPM package.
+- **Solution:** Added complete upload paths and a deterministic local-package
+  ZIP containing the manifest, wrapper, and XCFramework. Publication now
+  depends on the full platform matrix, including clean Swift package links.
+- **Prevention / Reference:** Workflow validation passed locally; actual
+  Apple linking still requires the macOS release verification job.
+
 
 ### [2026-09-19] `@Optional` input directory still failed validation on fresh clones
 

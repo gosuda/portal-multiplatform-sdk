@@ -34,7 +34,6 @@ import org.gosuda.portal.PortalSnapshot
 import org.gosuda.portal.PortalTunnel
 import java.io.File
 import org.gosuda.portal.lifecycle.PortalClientHolder
-import org.gosuda.portal.sample.content.PublishableContent
 import org.gosuda.portal.sample.content.SampleContents
 
 import org.gosuda.portal.sample.content.ondevice.OnDeviceModelContent
@@ -61,8 +60,6 @@ class MainActivity : ComponentActivity() {
     val identity = MutableStateFlow<PortalIdentity?>(null)
     val eventLog = MutableStateFlow<List<String>>(emptyList())
     val diagnostics = MutableStateFlow<PortalDiagnostics?>(null)
-    /** Content whose local payload is live for the current tunnel. */
-    private var activeContent: PublishableContent? = null
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -141,8 +138,8 @@ class MainActivity : ComponentActivity() {
                 if (app.keepAlive.value) {
                     startForegroundService(Intent(this@MainActivity, KeepAliveService::class.java))
                 }
-                content.start(this@MainActivity)
-                val base = content.baseConfig(this@MainActivity)
+                content.start(app)
+                val base = content.baseConfig(app)
                 val resolved = base.copy(
                     name = config.name,
                     description = config.description,
@@ -157,8 +154,9 @@ class MainActivity : ComponentActivity() {
                     tcp = config.tcp || base.tcp,
                     identityPath = resolveIdentityFile(config)
                 )
-                tunnel.value = client.publish(resolved)
-                activeContent = content
+                val published = client.publish(resolved)
+                app.activeContent = content
+                tunnel.value = published
             } catch (e: CancellationException) {
                 content.stop()
                 throw e
@@ -291,17 +289,6 @@ class MainActivity : ComponentActivity() {
             tunnel.flatMapLatest { it?.events ?: flowOf(null) }
                 .collect { event ->
                     if (event != null) appendLog(describe(event))
-                }
-        }
-        // Stop the content's local payload when the session ends for any
-        // reason (user stop, native failure, process teardown).
-        ownerScope.launch {
-            tunnel.flatMapLatest { it?.state ?: flowOf(null) }
-                .collect { snap ->
-                    if (snap?.isTerminal == true) {
-                        activeContent?.stop()
-                        activeContent = null
-                    }
                 }
         }
     }

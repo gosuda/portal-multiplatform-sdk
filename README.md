@@ -100,7 +100,10 @@ flowchart LR
 
 ## Install
 
-Application builds consume the SDK from Maven Central:
+The SDK's intended Maven coordinates are shown below. As of 2026-09-21,
+`0.1.0` is not available from Maven Central and no GitHub release exists.
+Until publication, use the isolated staging commands below; do not expect a
+clean application to resolve an unpublished version.
 
 ```kotlin
 dependencies {
@@ -114,8 +117,9 @@ Android apps that use the optional process/lifecycle helpers also add:
 implementation("io.github.gosuda:portal-android-lifecycle:0.1.0")
 ```
 
-API references: [Kotlin (Dokka)](https://github.com/gosuda/portal-multiplatform-sdk/releases/latest/download/dokka-html.zip)
-· [Swift](docs/SWIFT_API.md) — generated from the shipped artifacts.
+API references: [Swift](docs/SWIFT_API.md). Generate Kotlin reference locally
+with `./gradlew :portal-sdk:dokkaGenerate`; release CI attaches
+`dokka-html.zip` after successful publication.
 
 The samples consume the intended Maven coordinates rather than `project()`
 dependencies. Android JNI libraries are built directly from this repository's
@@ -125,6 +129,9 @@ or republished. To verify an unpublished checkout through an isolated Maven
 repository:
 
 ```bash
+# Requires Go 1.27.1, Python 3.11+, and the host C toolchain.
+# Linux additionally needs Zig 0.16.0; Windows needs MinGW; macOS needs Xcode.
+./scripts/build-desktop-engine.sh
 ./gradlew publishDesktopSdkToSampleRepository
 ./gradlew :samples:desktop:build \
   -Pportal.samples.repository="$PWD/build/sample-maven"
@@ -136,10 +143,14 @@ repository:
 ```
 
 iOS KMP variants embed the matching Go engine archive and propagate required
-Security framework linkage. Swift consumers use the self-contained
-`PortalSDK.xcframework`/Swift package produced by
-`scripts/package-ios-xcframework.sh`; neither consumer path requires building
-or manually linking `libportaltunnel.a`.
+Security framework linkage. On macOS, build
+`:portal-sdk:assemblePortalSDKReleaseXCFramework`, then run
+`scripts/package-ios-xcframework.sh`. For SwiftPM, extract
+`dist/PortalSDK-swift-package.zip` and add its `PortalSDK` directory using
+Xcode's **Add Local Package** action. The ZIP includes the manifest, wrapper
+source, and XCFramework; no manual engine or Security linkage is needed.
+The repository URL and a standalone release-asset `Package.swift` are not
+currently supported remote SwiftPM install paths.
 
 Desktop (JVM) resolves the `portal-sdk-desktop` variant plus the
 `portal-native-desktop` runtime JAR transitively — no extra dependency or
@@ -522,9 +533,10 @@ for symptom → field → fix mappings.
 | 0.1.0 | 2.4.x | minSdk 26, NDK r29 (build-time only) | iOS 16+ | 17+ | android: arm64-v8a, x86_64 · ios: arm64, sim arm64/x86_64 · desktop: linux-x64, windows-x64, macos-universal |
 
 The bundled `libportaltunnel` engine is built from `native/bridge` over
-portal-tunnel v2.4.3 (C ABI v1). Kotlin/Native consumers get the engine
+portal-tunnel v2.4.3 (C ABI v1). iOS Kotlin/Native consumers get the engine
 archive embedded in each published klib; JVM consumers get it inside
-`portal-native-desktop`.
+`portal-native-desktop`. Experimental `linuxX64` consumers still link the
+real shared library explicitly.
 
 
 ## Design rules (the short version)
@@ -545,24 +557,29 @@ Known gaps & release gates: [TASKS.md](TASKS.md),
 
 ## Updating the native engine
 
-The bundled `libportaltunnel.so` comes from
-[gosuda/portal-tunnel](https://github.com/gosuda/portal-tunnel) releases.
-To sync to a new release:
+Every native engine is built from `native/bridge`; no prebuilt JNI artifact
+is downloaded. Update the pinned Portal Tunnel dependency in
+`native/bridge/go.mod` with Go tooling, review `go.sum` and
+`native/source-lock.json`, then rebuild and verify the supported native
+matrix. The obsolete prebuilt synchronization script was removed.
 
-```bash
-./scripts/sync-portal-tunnel.sh          # latest
-./scripts/sync-portal-tunnel.sh v1.2.3   # specific tag
-```
+Each build writes a `.provenance.json` sidecar with source/toolchain hashes.
+Release CI collects these into `native-source-lock.json` and rejects mixed
+or modified artifacts. Only matching `release-v<SDK version>` tags on
+`release(scope):` commits may publish; manual dispatch defaults to
+verification-only.
 
-The script downloads the Android ABI artifacts, swaps them into
-`portal-native-android/src/main/jniLibs/`, and updates `portal-tunnel.version`.
-Rebuild and run the ABI smoke test after syncing.
+Binary publication is currently blocked on bundled-dependency redistribution
+review: the native dependency graph includes LGPL-3.0-or-later
+`go-ethereum v1.17.1`. Portal Tunnel's MIT license does not cover that
+dependency. Resolve the notices/source/static-link obligations recorded in
+`native/source-lock.json` before publishing; local builds remain available.
 
 ## Repository layout
 
 ```
 portal-sdk/               KMP library (commonMain / androidMain / nativeMain / iosMain / desktopMain)
-portal-native-android/    JNI bridge + prebuilt libportaltunnel.so
+portal-native-android/    JNI bridge + source-built libportaltunnel.so
 portal-native-desktop/    Verified desktop libportaltunnel runtime JAR (linux/windows/macos)
 portal-android-lifecycle/ Process-scoped client + foreground-service base
 native/                   portaltunnel.h, C test stub, source provenance

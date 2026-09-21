@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "io.github.gosuda"
-version = "0.1.0"
+version = libs.versions.portal.sdk.get()
 
 val generatedJniLibs = layout.buildDirectory.dir("generated/jniLibs")
 val buildAndroidEngine = tasks.register<Exec>("buildAndroidEngine") {
@@ -14,6 +14,12 @@ val buildAndroidEngine = tasks.register<Exec>("buildAndroidEngine") {
     description = "Builds Android JNI libraries from the repository's Go bridge."
     inputs.dir(rootProject.file("native/bridge"))
     inputs.file(rootProject.file("scripts/build-android-engine.sh"))
+    inputs.file(rootProject.file("native/source-lock.json"))
+    inputs.file(rootProject.file("native/include/portaltunnel.h"))
+    inputs.files(
+        rootProject.file("scripts/verify-android-engine.py"),
+        rootProject.file("scripts/native-provenance.py"),
+    )
     outputs.dir(generatedJniLibs)
     workingDir(rootProject.projectDir)
     commandLine("bash", rootProject.file("scripts/build-android-engine.sh").absolutePath)
@@ -22,6 +28,7 @@ val buildAndroidEngine = tasks.register<Exec>("buildAndroidEngine") {
 android {
     namespace = "org.gosuda.portal.android"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
+    ndkVersion = "29.0.14206865"
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
@@ -36,13 +43,20 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    sourceSets.getByName("main").jniLibs.srcDir(generatedJniLibs.get().asFile)
+    sourceSets.getByName("main").jniLibs.setSrcDirs(listOf(generatedJniLibs.get().asFile))
 }
 
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+val androidSdkDirectory = providers.provider {
+    androidComponents.sdkComponents.sdkDirectory.get().asFile.absolutePath
+}
+buildAndroidEngine.configure {
+    environment("ANDROID_HOME", androidSdkDirectory)
 }
 
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }

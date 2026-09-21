@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -84,10 +83,9 @@ public class PortalClient internal constructor(
 
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    // Fire-and-forget cleanup must survive client close: a scope whose job is
-    // NonCancellable is never cancelled, so orphan stops always run.
+    // Native start and rollback must survive cancellation of both the caller
+    // and the client scope until every created handle has an owner.
     private val cleanupScope = CoroutineScope(Dispatchers.Default + NonCancellable)
-
     private val closed = AtomicBoolean(false)
     private val closeMutex = Mutex()
     private val registry = SessionRegistry()
@@ -121,7 +119,9 @@ public class PortalClient internal constructor(
     public suspend fun open(config: PortalConfig): PortalTunnel {
         ensureOpen()
         val resolved = config.copy(
-            identityPath = config.identityPath ?: defaultIdentityPath?.invoke(),
+            identityPath = config.identityPath?.takeIf { it.isNotEmpty() } ?: if (config.identityJson.isNullOrEmpty()) {
+                defaultIdentityPath?.invoke()
+            } else null,
             relays = config.relays?.map { ConfigValidation.normalizeRelayUrl(it) }
         )
         ConfigValidation.validate(resolved, allowRemoteTargets, capabilities())
@@ -129,18 +129,29 @@ public class PortalClient internal constructor(
 
         val configJson = PortalJson.encodeToString(resolved)
 
-        // The native start runs on the owner scope so a caller cancellation
-        // cannot orphan a created handle: if the await is cancelled after the
-        // native side started, the cleanup job stops it (design doc L.4).
-        val startJob = cleanupScope.async(Dispatchers.Default) { engine.start(configJson) }
-        val tunnelId = try {
+        // Starting and adopting the handle share an uncancelled owner job.
+        // Even cancellation while awaiting registration must retain ownership
+        // until stop succeeds, so failed rollback remains retryable.
+        val startJob = cleanupScope.async(Dispatchers.Default) {
+            val tunnel = PortalTunnel(
+                tunnelId = engine.start(configJson),
+                config = resolved,
+                owner = this@PortalClient,
+                generation = generationCounter.addAndFetch(1).toInt()
+            )
+            closeMutex.withLock {
+                // Adopt even after close: the late handle must remain visible
+                // if its cleanup fails. open immediately rolls it back below.
+                registry.register(tunnel)
+                PortalEventHub.register(tunnel)
+            }
+            tunnel
+        }
+        val tunnel = try {
             startJob.await()
         } catch (e: CancellationException) {
-            cleanupScope.launch {
-                val orphanId = runCatching { startJob.await() }.getOrNull()
-                if (orphanId != null) {
-                    runCatching { engine.stop(orphanId) }
-                }
+            withContext(NonCancellable) {
+                runCatching { startJob.await() }.getOrNull()?.let { rollbackStart(it) }
             }
             throw e
         } catch (e: PortalException) {
@@ -155,38 +166,7 @@ public class PortalClient internal constructor(
         // The client may have been closed while the native start was in
         // flight; a session registered on a dead owner would be orphaned.
         if (closed.load()) {
-            withContext(NonCancellable) {
-                runCatching { withContext(Dispatchers.Default) { engine.stop(tunnelId) } }
-            }
-            throw PortalException(PortalFailure.Codes.CLIENT_CLOSED, "client is closed")
-        }
-
-        val tunnel = PortalTunnel(
-            tunnelId = tunnelId,
-            config = resolved,
-            owner = this,
-            generation = (generationCounter.addAndFetch(1)).toInt()
-        )
-        // Registration must be atomic with respect to close(): otherwise
-        // close can stop/unregister this tunnel between registry.register and
-        // hub.register, after which open would re-add a route owned by a dead
-        // client. Native start intentionally stays outside this mutex.
-        val registered = closeMutex.withLock {
-            if (closed.load()) {
-                false
-            } else {
-                // Register with the session registry first: draining buffered
-                // orphan events may already mark the tunnel terminal, and
-                // markTerminal must unregister a session that exists.
-                registry.register(tunnel)
-                PortalEventHub.register(tunnel)
-                true
-            }
-        }
-        if (!registered) {
-            withContext(NonCancellable) {
-                runCatching { withContext(Dispatchers.Default) { engine.stop(tunnelId) } }
-            }
+            rollbackStart(tunnel)
             throw PortalException(PortalFailure.Codes.CLIENT_CLOSED, "client is closed")
         }
 
@@ -274,21 +254,22 @@ public class PortalClient internal constructor(
         }
 
     public suspend fun close() {
-        closeMutex.withLock {
-            if (!closed.compareAndSet(false, true)) return
-            try {
-                val owned = registry.all()
-                var firstFailure: PortalException? = null
-                for (tunnel in owned) {
-                    try {
-                        tunnel.stop()
-                    } catch (e: PortalException) {
-                        if (firstFailure == null) firstFailure = e
+        withContext(NonCancellable) {
+            closeMutex.withLock {
+                closed.store(true)
+                try {
+                    var firstFailure: PortalException? = null
+                    for (tunnel in registry.all()) {
+                        try {
+                            tunnel.stop()
+                        } catch (e: PortalException) {
+                            if (firstFailure == null) firstFailure = e
+                        }
                     }
+                    firstFailure?.let { throw it }
+                } finally {
+                    scope.cancel()
                 }
-                firstFailure?.let { throw it }
-            } finally {
-                scope.cancel()
             }
         }
     }
@@ -324,7 +305,7 @@ public class PortalClient internal constructor(
 
     /** Called by the hub after a tunnel reduced a raw event. */
     internal fun onTunnelEvent(event: PortalEvent) {
-        if (!_events.tryEmit(event)) {
+        if (_events.subscriptionCount.value == 0 || !_events.tryEmit(event)) {
             droppedAggregateEvents.addAndFetch(1)
         }
     }
@@ -343,11 +324,10 @@ public class PortalClient internal constructor(
     private suspend fun rollbackStart(tunnel: PortalTunnel) {
         withContext(NonCancellable) {
             try {
-                withContext(Dispatchers.Default) { engine.stop(tunnel.tunnelId) }
-            } catch (_: Throwable) {
-                // Best effort: the caller never received the handle.
+                tunnel.stop()
+            } catch (_: PortalException) {
+                // stop retains a failed cleanup in STOPPING for owner retry.
             }
-            tunnel.markTerminal(TunnelPhase.STOPPED, null)
         }
     }
 

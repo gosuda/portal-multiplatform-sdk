@@ -1,10 +1,82 @@
 # Work Checkpoint
 
 ## Active task
-SDK usability roadmap (P5/P6) implemented on this macOS host; release
-verification partially proven locally. Remaining work is release-gated:
-run the publish workflow, then cut samples to released artifacts.
+SDK defect/repair sweep implemented and locally verified on Linux x86_64.
+Release publication remains deliberately blocked by unresolved bundled
+dependency redistribution review plus missing release credentials/hosts.
 
+## State (2026-09-21)
+- Common/native fixes: explicit identities bypass default-path resolution;
+  failed cancellation rollback retains STOPPING ownership; close is
+  retryable/non-cancellable; outer readiness timeouts stay cancellation;
+  event registration/drain races and drop counters fixed; config strings
+  redact identity/token secrets; C API out-pointers are initialized; JNI
+  uses standard UTF-8; Go exposure teardown precedes terminal events.
+- Lifecycle/sample fixes: failed foreground-service stops remain retryable;
+  Android payload cleanup moved to process scope; desktop jlink includes
+  `java.prefs`, `java.net.http`, `jdk.httpserver`, `jdk.crypto.ec`; iOS TCP
+  toggle honored and personal signing team removed; staged gosuda Maven
+  dependency resolution is exclusive.
+- Release fixes: reusable verification matrix precedes publication; manual
+  dispatch is verification-only unless `publish=true`; matching
+  `release-v<version>` tag + `release(scope):` subject + credentials are
+  enforced; Dokka upload path fixed; complete local Swift package ZIP
+  replaces the unusable loose manifest; Android ABI/16KiB checks added;
+  desktop publication cannot bypass the complete runtime matrix; per-binary
+  provenance sidecars are collected into `dist/native-source-lock.json`.
+- Build fixes: Apple engine producer is skipped on non-macOS metadata
+  staging; Windows desktop test stub uses GCC; SDK/native/lifecycle versions
+  resolve from `libs.versions.portal.sdk`; Dokka publication generation is
+  marked incompatible with configuration cache; Android SDK injection is
+  lazy.
+- `native/source-lock.json` now contains an intentional UNRESOLVED
+  `bundled_dependency_license_review`: `go list -deps` links
+  `go-ethereum v1.17.1` LGPL-3.0-or-later packages. Publication must remain
+  blocked until notices/source/static-link obligations are resolved.
+
+## Verification (2026-09-21 Linux)
+- Original common sources reproduced 4 targeted failures; corrected SDK:
+  `desktopTest` 80/80, `testAndroidHostTest` 49/49, `linuxX64Test` 51/51.
+- `go test ./...` in `native/bridge` passed (no test files).
+- Rebuilt and verified linux-x64 `.so` and windows-x64 `.dll`; all 11 ABI
+  exports, generated headers, dependencies, glibc <=2.17, SHA/size sidecars.
+- Host JNI smoke: original adapter corrupted Korean+supplementary Unicode;
+  corrected adapter round-tripped it, received STOPPED callback, and
+  `PortalGetStatus` rejected the cleaned-up tunnel.
+- Foreground-service smoke: original service left failed stop STOPPING;
+  corrected service retried to STOPPED.
+- `actionlint` passed both workflows; original workflow reproduced missing
+  upload `path`. All shell/Python scripts parse.
+- Release gate: manual verification allowed; branch/tag/subject/version and
+  unresolved redistribution review rejected; resolved fixture accepted.
+- Android staging produced verified AAR + debug/release APKs with both
+  shipped ABIs and 16KiB alignment. Desktop staging produced the sample app;
+  a hard-linked copy of the real packaged launcher passed on-device HTTP
+  smoke and real-relay HTTP 200 marker round-trip with invalid JAVA_HOME.
+- Incomplete desktop publication was rejected because macos-universal is
+  absent on this host.
+
+## Environment notes (this host)
+- Linux x86_64, JDK 17, Go `/home/mgkim/tools/go/bin/go` 1.27.1, Zig
+  `/home/mgkim/tools/zig/zig` 0.16.0, Android SDK `/tmp/sajudang-android-sdk`,
+  NDK `/tmp/android-ndk-r29` 29.0.14206865, MinGW GCC installed.
+- No macOS/Xcode/XcodeGen, Android device/emulator, or GUI display. iOS
+  compile/link and UI checks remain release-matrix/manual work.
+
+## Blockers
+- Bundled LGPL dependency redistribution review blocks public binary
+  publication (see `native/source-lock.json`).
+- macos-universal engine and all Apple sample/Swift consumer verification
+  require macOS/Xcode.
+- Maven Central/GitHub release require credentials/secrets and a matching
+  `release-v0.1.0` tag on a `release(scope):` commit.
+- Android runtime recreation/notification proof requires a device/emulator.
+
+## Next action
+Commit and push this repair set. Then resolve the bundled dependency
+redistribution review or replace the LGPL dependency before creating a
+release commit/tag. After legal/provenance resolution, run the release
+workflow; macOS verification must prove the iOS/Swift package path.
 ## State (2026-09-18)
 - Added a `desktop` (JVM 17+) target to `portal-sdk` with a JNA engine
   adapter (`PortalNativeLibrary`, `DesktopPortalEngine`, lazy native load)

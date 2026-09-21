@@ -4,7 +4,7 @@
 #   2. the cgo-generated header matches native/include/portaltunnel.h
 #      (function declarations — the cgo prologue differs by build mode);
 #   3. dynamic dependencies are limited to documented system libraries;
-#   4. records SHA-256 and size for source-lock provenance.
+#   4. verifies architecture/glibc baseline and prints SHA-256/size.
 #
 # Usage:
 #   ./scripts/verify-desktop-engine.sh native/desktop/linux-x64/libportaltunnel.so
@@ -91,13 +91,21 @@ echo "== verifying $BIN"
 # --- 1. exported symbols -----------------------------------------------------
 case "$BIN" in
     *.so)
-        exports=$(nm -D --defined-only "$BIN" 2>/dev/null | awk '{print $NF}' || true)
+        exports=$(nm -D --defined-only "$BIN" | awk '{print $NF}')
         ;;
     *.dylib)
-        exports=$(nm -gU "$BIN" 2>/dev/null | awk '{print $NF}' | sed 's/^_//' || true)
+        exports=$(nm -gU "$BIN" | awk '{print $NF}' | sed 's/^_//')
+        lipo -verify_arch x86_64 arm64 "$BIN"
+        for arch in x86_64 arm64; do
+            slice_exports=$(nm -arch "$arch" -gU "$BIN" | awk '{print $NF}' | sed 's/^_//')
+            for sym in "${REQUIRED[@]}"; do
+                grep -qx "$sym" <<<"$slice_exports" || err "missing $arch export: $sym"
+            done
+        done
         ;;
     *.dll)
-        exports=$(objdump -p "$BIN" 2>/dev/null | parse_windows_exports || true)
+        exports=$(objdump -p "$BIN" | parse_windows_exports)
+        objdump -f "$BIN" | grep 'architecture: i386:x86-64' >/dev/null || err "expected x86_64 PE binary"
         ;;
     *)
         echo "unrecognized binary type: $BIN" >&2; exit 1 ;;
@@ -126,7 +134,7 @@ if [[ -f "$gen_header" ]]; then
         diff <(echo "$decls_ref") <(echo "$decls_gen") >&2 || true
     fi
 else
-    note "no generated header beside binary; skipped header check"
+    err "generated header missing beside binary: $gen_header"
 fi
 
 # --- 3. dynamic dependencies -------------------------------------------------
@@ -134,16 +142,28 @@ deps=""
 allow='^$'
 case "$BIN" in
     *.so)
-        deps=$(readelf -d "$BIN" 2>/dev/null | awk '/NEEDED/ {gsub(/[][]/,"",$5); print $5}' || true)
+        deps=$(readelf -d "$BIN" | awk '/NEEDED/ {gsub(/[][]/,"",$5); print $5}')
+        python3 - "$BIN" <<'PY'
+import re, subprocess, sys
+binary = sys.argv[1]
+header = subprocess.check_output(["readelf", "-h", binary], text=True)
+if not re.search(r"Machine:\s+Advanced Micro Devices X86-64", header):
+    raise SystemExit(f"{binary}: expected x86_64 ELF")
+versions = subprocess.check_output(["readelf", "--version-info", binary], text=True)
+requirements = [tuple(map(int, value.split("."))) for value in re.findall(r"\bGLIBC_([0-9.]+)", versions)]
+if not requirements or max(requirements) > (2, 17):
+    raise SystemExit(f"{binary}: missing or unsupported glibc requirements: {sorted(set(requirements))}")
+print(f"  maximum glibc requirement: {max(requirements)}")
+PY
         allow='^(linux-vdso\.so\.1|libpthread\.so\.0|libc\.so\.6|libdl\.so\.2|librt\.so\.1|libm\.so\.6|ld-linux-x86-64\.so\.2|libresolv\.so\.2)$'
         ;;
     *.dylib)
-        deps=$(otool -L "$BIN" 2>/dev/null |
-            parse_macos_dependencies "$(basename "$BIN")" || true)
-        allow='^(/usr/lib/libSystem\.B\.dylib|/usr/lib/libresolv\.[0-9]+\.dylib|/System/Library/Frameworks/.*|@rpath/.*|/usr/lib/libc\+\+.*)$'
+        deps=$(otool -L "$BIN" |
+            parse_macos_dependencies "$(basename "$BIN")")
+        allow='^(/usr/lib/libSystem\.B\.dylib|/usr/lib/libresolv\.[0-9]+\.dylib|/System/Library/Frameworks/.*|/usr/lib/libc\+\+.*)$'
         ;;
     *.dll)
-        deps=$(objdump -p "$BIN" 2>/dev/null | awk '/DLL Name/ {print $3}' || true)
+        deps=$(objdump -p "$BIN" | awk '/DLL Name/ {print $3}')
         allow='^(KERNEL32\.dll|msvcrt\.dll|WS2_32\.dll|ADVAPI32\.dll|CRYPT32\.dll|bcrypt\.dll|ntdll\.dll|SECHOST\.dll|USER32\.dll|SHELL32\.dll|ole32\.dll|WINMM\.dll|IPHLPAPI\.DLL|api-ms-win-.*)$'
         ;;
 esac
@@ -157,8 +177,8 @@ while IFS= read -r dep; do
 done <<<"$deps"
 
 # --- 4. provenance -----------------------------------------------------------
-sha=$(sha256sum "$BIN" | awk '{print $1}')
-size=$(stat -c%s "$BIN" 2>/dev/null || stat -f%z "$BIN")
+sha=$(python3 -c 'import hashlib, sys; print(hashlib.file_digest(open(sys.argv[1], "rb"), "sha256").hexdigest())' "$BIN")
+size=$(python3 -c 'import os, sys; print(os.path.getsize(sys.argv[1]))' "$BIN")
 note "sha256: $sha"
 note "size:   $size bytes"
 

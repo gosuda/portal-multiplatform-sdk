@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "io.github.gosuda"
-version = "0.1.0"
+version = libs.versions.portal.sdk.get()
 
 android {
     namespace = "org.gosuda.portal.lifecycle"

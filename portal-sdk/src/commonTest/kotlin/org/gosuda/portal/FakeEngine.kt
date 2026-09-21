@@ -30,6 +30,9 @@ internal class FakeEngine : PortalNativeEngine {
     /** When set, `stop` throws this failure instead of succeeding. */
     var stopFailure: PortalException? = null
 
+    /** Failure delivered while reconciling a newly adopted native handle. */
+    var statusFailure: Throwable? = null
+
     /** When true, `start` emits STARTED + STATUS_CHANGED before returning. */
     var emitEventsInsideStart = true
 
@@ -84,8 +87,10 @@ internal class FakeEngine : PortalNativeEngine {
         stoppedIds.add("*")
     }
 
-    override fun getStatus(tunnelId: String): String =
-        statusJson(tunnelId, startedConfigs.lastOrNull())
+    override fun getStatus(tunnelId: String): String {
+        statusFailure?.let { throw it }
+        return statusJson(tunnelId, startedConfigs.lastOrNull())
+    }
 
     override fun addRelay(tunnelId: String, relayUrl: String) {}
     override fun removeRelay(tunnelId: String, relayUrl: String) {}

@@ -10,7 +10,7 @@
 # header at native/ios/<target>/portaltunnel.h (verified against
 # native/include/portaltunnel.h).
 #
-# Requires: macOS, Xcode, Go >= 1.24. Run from the repo root.
+# Requires: macOS, Xcode, and the Go version pinned in native/bridge/go.mod.
 set -euo pipefail
 
 BRIDGE_DIR="native/bridge"
@@ -60,7 +60,7 @@ for TARGET in "${TARGETS[@]}"; do
             CC="$CLANG" \
             CGO_CFLAGS="-isysroot $SDKROOT -target $CLANG_TARGET" \
             CGO_LDFLAGS="-isysroot $SDKROOT -target $CLANG_TARGET" \
-            go build -buildmode=c-archive -o "../../$OUT_DIR/libportaltunnel.a" .
+            go build -trimpath -buildmode=c-archive -o "../../$OUT_DIR/libportaltunnel.a" .
     )
 
     # The checked-in header is the ABI source of truth. Compare exported
@@ -72,5 +72,7 @@ for TARGET in "${TARGETS[@]}"; do
         diff <(echo "$decls_ref") <(echo "$decls_gen") >&2 || true
         exit 1
     fi
+    python3 scripts/native-provenance.py record "ios/$TARGET/libportaltunnel.a" \
+        "$OUT_DIR/libportaltunnel.a" --compiler "$CLANG"
     echo "  → $OUT_DIR/libportaltunnel.a"
 done

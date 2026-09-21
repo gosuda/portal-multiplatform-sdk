@@ -45,13 +45,18 @@ app (Kotlin / Swift)
   opened; there is no public process-global `stopAll`.
 - `open()` returns after ownership is registered; readiness is observed via
   `state`/`awaitReady`, not implied by a successful `open`.
-- Native start runs on the owner scope so caller cancellation cannot orphan a
-  handle; cancellation triggers a `NonCancellable` rollback `PortalStop`.
+- Native start runs on the owner scope and adopts the returned handle before
+  caller cancellation can interrupt ownership registration. Cancellation
+  waits for non-cancellable rollback; if native stop fails, the session stays
+  observable in `client.sessions` as STOPPING and can be retried.
 - Events arriving before registration are held in a bounded orphan buffer
   (32 sessions x 64 events) and drained on registration.
 - `stop()` failure keeps the handle registered in `STOPPING` and is
   retryable; terminal states (`STOPPED`, `FAILED`) never resurrect on late
   events.
+- `close()` rejects new sessions immediately, performs non-cancellable
+  cleanup, and may be called again to retry failed native stops. Managed
+  lifetime cleanup preserves caller cancellation.
 - `state` is authoritative and monotonically revised; `events` is a bounded
   auxiliary stream — undelivered events increment `droppedEventCount`.
 - `MITM_SUSPECTED` sets the sticky `hasSecurityWarning` on the snapshot.
@@ -80,9 +85,10 @@ app (Kotlin / Swift)
 
 - Every `char*` out-param from the C ABI is freed exactly once with
   `PortalFreeString`.
-- Event-callback arguments are NOT freed (iOS SDK contract; freeing static
-  buffers crashes — verified by the linuxX64 stub test). If the Go bridge is
-  recovered and shown to allocate per call, revisit.
+- Event-callback arguments are borrowed for the duration of the callback.
+  The Go bridge allocates/frees its buffers around the call; Kotlin copies
+  the strings without freeing them. Conversion and dispatch never throw
+  across a native callback.
 - The `staticCFunction` callback never throws and never blocks.
 - All engine calls are serialized per session (`opsMutex`) and dispatched off
   the caller's thread.
@@ -101,6 +107,10 @@ app (Kotlin / Swift)
   `UNSUPPORTED_CAPABILITY` rather than being silently ignored.
 - `PortalIdentity.document` is secret: redacted from `toString`, never
   logged; store via Keystore-wrapped file (Android) or Keychain (iOS).
+- `PortalConfig.toString()` and `PortalX402Config.toString()` redact inline
+  identity documents and facilitator tokens without changing wire values.
+- JNI strings cross the C ABI as standard UTF-8, including supplementary
+  Unicode characters; embedded NUL is rejected rather than truncated.
 - Platform identity defaults: when a config sets neither `identity_json` nor
   `identity_path`, Android resolves `filesDir/identity.json` via
   `PortalClient(context)` (the lifecycle holder/service pass the application
@@ -114,7 +124,7 @@ app (Kotlin / Swift)
 - Android: foreground-first. Long-running tunnels belong to an explicit
   service owner; the SDK never auto-starts services. Shipped ABIs:
   arm64-v8a, x86_64 (both 16KB-page aligned). minSdk 26.
-- iOS: foreground sessions; no promise of indefinite background execution.
+- iOS 16+: foreground sessions; no promise of indefinite background execution.
   `PortalIosClient`/`PortalIosSession` provide callback-based APIs on the
   main dispatcher; cancelling an observation never stops the tunnel. Each
   published iOS klib embeds its matching engine archive built from
@@ -124,6 +134,9 @@ app (Kotlin / Swift)
   factories plus `custom(...)`, the advanced escape hatch covering every
   `PortalConfig` field without the generated all-fields initializer or
   `KotlinBoolean`.
+  Completion callbacks run on Main even when the owner has already closed;
+  explicit operation cancellation suppresses completion. User callback
+  exceptions are never delivered again as operation failures.
 - linuxX64: experimental; exists to exercise the shared `nativeMain` adapter
   and cinterop path on CI/desktop.
 - Desktop (JVM 17+): `PortalDesktop.client(applicationId)` loads the verified
@@ -143,6 +156,10 @@ app (Kotlin / Swift)
 
 - `native/source-lock.json` tracks core/bridge commits, toolchains, and
   artifact SHA-256s. `UNRESOLVED`/`PENDING`/`MISSING` fields block releases.
+  Review every bundled dependency, not only Portal Tunnel's MIT license.
+  The current native graph includes LGPL-3.0-or-later `go-ethereum`; the
+  unresolved notices/source/static-link redistribution review blocks public
+  binary publication but does not block manual build verification.
 - The Go mobile bridge is reimplemented in `native/bridge` (upstream
   `portal-tunnel/mobile` was removed); iOS archives are built locally and
   gitignored. iOS engine support is verified: `iosSimulatorArm64Test` links
@@ -155,4 +172,11 @@ app (Kotlin / Swift)
   unless all three targets are present
   (`-Pportal.native.requireComplete=true`) — a published runtime JAR can
   never silently ship an incomplete matrix.
-- CI runs only for `release-*` tags and `workflow_dispatch` (AGENTS.md).
+- CI runs only for `release-*` tags and manual dispatch (AGENTS.md), with the
+  same verification workflow reusable by publication. Automatic runs require
+  a `release(scope):` commit. Manual dispatch verifies by default; explicit
+  publication additionally requires `release-v<catalog version>`, resolved
+  provenance/licensing, credentials, and the full platform/consumer matrix.
+- Swift releases contain a complete downloadable local package ZIP, including
+  wrapper sources and the XCFramework. A loose `Package.swift` release asset
+  is not a remotely resolvable SwiftPM package.

@@ -333,6 +333,12 @@ func PortalStart(cConfigJSON *C.char, outTunnelID **C.char, outError **C.char) C
 		_ = exposure.Close()
 		return fail(outError, serveErr)
 	}
+	tunnelsMu.Lock()
+	tunnels[t.id] = t
+	tunnelsMu.Unlock()
+	emitEvent(t.id, "STARTED", map[string]any{"name": t.name})
+	emitStatus(t)
+
 	go func() {
 		var err error
 		if handler != nil {
@@ -371,18 +377,16 @@ func PortalStart(cConfigJSON *C.char, outTunnelID **C.char, outError **C.char) C
 	// the two never race for the buffered result.
 	go func() {
 		err := <-t.serveErr
+		// Proxy validation can fail before the SDK owns cleanup. Always release
+		// the exposure before announcing a terminal session.
+		t.cancel()
+		err = errors.Join(err, t.exposure.Close())
 		if err != nil {
 			emitEvent(t.id, "ERROR", map[string]any{"error": err.Error()})
 		}
 		markStopped(t)
 	}()
 
-	tunnelsMu.Lock()
-	tunnels[t.id] = t
-	tunnelsMu.Unlock()
-
-	emitEvent(t.id, "STARTED", map[string]any{"name": t.name})
-	emitStatus(t)
 
 	*outTunnelID = C.CString(t.id)
 	return 0

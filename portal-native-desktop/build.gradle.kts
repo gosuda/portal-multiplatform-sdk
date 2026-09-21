@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "io.github.gosuda"
-version = "0.1.0"
+version = libs.versions.portal.sdk.get()
 
 java {
     toolchain {
@@ -57,7 +57,7 @@ abstract class GenerateNativeIndex : DefaultTask() {
         val missing = mutableListOf<String>()
         for ((target, fileName) in REQUIRED_TARGETS) {
             val bin = nativeDesktopDir.get().dir(target).file(fileName).asFile
-            if (!bin.isFile) {
+            if (!bin.isFile || bin.length() == 0L) {
                 missing += bin.path
                 continue
             }
@@ -105,16 +105,40 @@ val generateNativeIndex = tasks.register<GenerateNativeIndex>("generateNativeInd
         }
     )
     outputDir.set(layout.buildDirectory.dir("generated/portal-native"))
-    val publishingToCentral = gradle.startParameter.taskNames.any { taskName ->
-        taskName.contains("publishToMavenCentral", ignoreCase = true) ||
-            taskName.contains("MavenCentralRepository", ignoreCase = true)
-    }
     requireComplete.set(
         providers.gradleProperty("portal.native.requireComplete")
-            .map(String::toBoolean)
-            .orElse(publishingToCentral)
+            .map(String::toBooleanStrict)
+            .orElse(false)
     )
 }
+
+// Publication is a separate, unconditional gate: a command-line development
+// override or an aggregate `publish` task must not upload a partial runtime.
+val verifyPublishedNativeMatrix = tasks.register("verifyPublishedNativeMatrix") {
+    val nativeRoot = rootProject.layout.projectDirectory.dir("native/desktop")
+    inputs.files(
+        GenerateNativeIndex.REQUIRED_TARGETS.map { (target, fileName) ->
+            nativeRoot.dir(target).file(fileName)
+        }
+    )
+    doLast {
+        val missing = GenerateNativeIndex.REQUIRED_TARGETS.filter { (target, fileName) ->
+            val binary = nativeRoot.dir(target).file(fileName).asFile
+            !binary.isFile || binary.length() == 0L
+        }
+        check(missing.isEmpty()) {
+            "Cannot publish incomplete desktop runtime: $missing. Run the native build matrix."
+        }
+    }
+}
+
+tasks.withType<org.gradle.api.publish.maven.tasks.AbstractPublishToMaven>().configureEach {
+    // The isolated sample repository deliberately supports host-only development.
+    if (!name.endsWith("ToSampleRepository")) dependsOn(verifyPublishedNativeMatrix)
+}
+
+tasks.matching { it.name.contains("MavenCentral") && it.name.startsWith("publish") }
+    .configureEach { dependsOn(verifyPublishedNativeMatrix) }
 
 tasks.named("processResources", ProcessResources::class.java) {
     dependsOn(generateNativeIndex)

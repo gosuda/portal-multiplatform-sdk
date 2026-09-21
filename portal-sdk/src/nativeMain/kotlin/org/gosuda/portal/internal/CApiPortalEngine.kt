@@ -32,9 +32,8 @@ import portaltunnel.PortalUpdateMetadata
  * Kotlin/Native engine over the `libportaltunnel` C ABI, shared by the iOS
  * and Linux targets through cinterop commonization.
  *
- * Memory contract (mirrors the Flutter SDK binding): every `char*` the
- * runtime hands over — out-params and callback arguments — is caller-freed
- * via `PortalFreeString`.
+ * Every returned out-param is caller-freed via `PortalFreeString`. Callback
+ * arguments are borrowed: the bridge frees them after the callback returns.
  */
 internal class CApiPortalEngine : PortalNativeEngine {
 
@@ -84,6 +83,8 @@ internal class CApiPortalEngine : PortalNativeEngine {
     ): String = memScoped {
         val out = alloc<CPointerVar<ByteVar>>()
         val err = alloc<CPointerVar<ByteVar>>()
+        out.value = null
+        err.value = null
         val code = native(out.ptr, err.ptr)
         val outPtr = out.value
         val errPtr = err.value
@@ -109,6 +110,7 @@ internal class CApiPortalEngine : PortalNativeEngine {
     ) {
         memScoped {
             val err = alloc<CPointerVar<ByteVar>>()
+            err.value = null
             val code = native(err.ptr)
             val errPtr = err.value
             try {
@@ -133,23 +135,19 @@ internal class CApiPortalEngine : PortalNativeEngine {
 
         /**
          * Capture-free C callback. Runs on Go-created threads; must not throw
-         * or block. Arguments are copied to Kotlin strings before being freed.
+         * or block. Arguments are copied while the bridge still owns them.
          */
         private val nativeEventCallback: PortalEventCallback =
             staticCFunction { tunnelId, eventType, payloadJson ->
-                // Callback arguments are NOT freed: the iOS SDK treats them as
-                // runtime-owned (freeing a static buffer would crash). The
-                // Flutter SDK frees them; the Go bridge source is unavailable
-                // to settle this — see docs/DESIGN_RULES.md.
-                val id = tunnelId?.toKString().orEmpty()
-                val type = eventType?.toKString().orEmpty()
-                val payload = payloadJson?.toKString().orEmpty()
-                if (id.isNotEmpty()) {
-                    try {
+                try {
+                    val id = tunnelId?.toKString().orEmpty()
+                    val type = eventType?.toKString().orEmpty()
+                    val payload = payloadJson?.toKString().orEmpty()
+                    if (id.isNotEmpty()) {
                         eventListener.load()?.invoke(id, type, payload)
-                    } catch (_: Throwable) {
-                        // Never let exceptions cross the native boundary.
                     }
+                } catch (_: Throwable) {
+                    // Never let exceptions cross the native boundary.
                 }
             }
     }

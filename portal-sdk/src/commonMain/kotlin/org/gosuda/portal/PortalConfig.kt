@@ -28,7 +28,11 @@ public data class PortalX402Config(
     @SerialName("asset") val asset: String? = null,
     @SerialName("endpoints") val endpoints: List<String>? = null,
     @SerialName("facilitator_token") val facilitatorToken: String? = null
-)
+) {
+    override fun toString(): String =
+        "PortalX402Config(payTo=$payTo, testnet=$testnet, network=$network, asset=$asset, " +
+            "endpoints=$endpoints, facilitatorToken=${if (facilitatorToken == null) null else "<redacted>"})"
+}
 
 /**
  * Tunnel configuration. Serialized to JSON and handed to the native
@@ -62,6 +66,14 @@ public data class PortalConfig(
     @SerialName("http_routes") val httpRoutes: List<PortalHTTPRoute>? = null,
     @SerialName("x402") val x402: PortalX402Config? = null
 ) {
+    override fun toString(): String =
+        "PortalConfig(name=$name, identityJson=${if (identityJson == null) null else "<redacted>"}, " +
+            "identityPath=$identityPath, relays=$relays, discovery=$discovery, " +
+            "maxActiveRelays=$maxActiveRelays, banMitm=$banMitm, ech=$ech, overlay=$overlay, " +
+            "udp=$udp, tcp=$tcp, description=$description, tags=$tags, owner=$owner, " +
+            "thumbnail=$thumbnail, hide=$hide, staticDir=$staticDir, staticIndex=$staticIndex, " +
+            "targetAddr=$targetAddr, udpAddr=$udpAddr, httpRoutes=$httpRoutes, x402=$x402)"
+
     /**
      * Fluent builder mirroring `PortalConfig.Builder` in the Android SDK,
      * for Java callers and parity with existing Portal codebases.

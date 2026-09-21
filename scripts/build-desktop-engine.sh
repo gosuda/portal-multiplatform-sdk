@@ -94,8 +94,10 @@ build_one() {
             lipo -create \
                 "$OUT_ROOT/macos-arm64/libportaltunnel.dylib" \
                 "$OUT_ROOT/macos-x64/libportaltunnel.dylib" \
-                -output "$out_dir/libportaltunnel.dylib"
-            cp "$OUT_ROOT/macos-arm64/libportaltunnel.h" "$out_dir/libportaltunnel.h" 2>/dev/null || true
+                -output "$out_dir/libportaltunnel.dylib" || return 1
+            cp "$OUT_ROOT/macos-arm64/libportaltunnel.h" "$out_dir/libportaltunnel.h" || return 1
+            python3 scripts/native-provenance.py record "desktop/$target/libportaltunnel.dylib" \
+                "$out_dir/libportaltunnel.dylib" --compiler "${CC:-clang}" --go "$GO" || return 1
             echo "  → $out_dir/libportaltunnel.dylib (universal)"
             return 0
             ;;
@@ -112,7 +114,7 @@ build_one() {
         cd "$BRIDGE_DIR"
         env CGO_ENABLED=1 GOOS="$goos" GOARCH="$goarch" CC="$cc_bin" \
             ${extra_env[@]+"${extra_env[@]}"} \
-            "$GO" build -ldflags="$ldflags" -buildmode=c-shared -o "../../$out_dir/$out_file" .
+            "$GO" build -trimpath -ldflags="$ldflags" -buildmode=c-shared -o "../../$out_dir/$out_file" .
     ); then
         echo "  ERROR: go build failed for $target" >&2
         return 1
@@ -122,6 +124,8 @@ build_one() {
     if [[ -f "$gen_header" && "$gen_header" != "$out_dir/libportaltunnel.h" ]]; then
         mv "$gen_header" "$out_dir/libportaltunnel.h"
     fi
+    python3 scripts/native-provenance.py record "desktop/$target/$out_file" \
+        "$out_dir/$out_file" --compiler "$cc_bin" --go "$GO" || return 1
     echo "  → $out_dir/$out_file"
 }
 

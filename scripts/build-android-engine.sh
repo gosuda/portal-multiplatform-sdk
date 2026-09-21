@@ -6,13 +6,21 @@ set -euo pipefail
 
 BRIDGE_DIR="native/bridge"
 OUT_ROOT="portal-native-android/build/generated/jniLibs"
-ANDROID_API="${ANDROID_API:-26}"
+ANDROID_API=26
+NDK_REVISION=29.0.14206865
 NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
 
-if [[ -z "$NDK" && -n "${ANDROID_HOME:-}" ]]; then
-    NDK=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1 || true)
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [[ -z "$NDK" && -n "$SDK" ]]; then
+    NDK="$SDK/ndk/$NDK_REVISION"
 fi
-[[ -n "$NDK" && -d "$NDK" ]] || { echo "Android NDK not found; set ANDROID_NDK_HOME" >&2; exit 1; }
+[[ -n "$NDK" && -d "$NDK" ]] || {
+    echo "Android NDK $NDK_REVISION not found; set ANDROID_NDK_HOME or install ndk;$NDK_REVISION" >&2
+    exit 1
+}
+grep -Eq "^Pkg.Revision[[:space:]]*=[[:space:]]*$NDK_REVISION[[:space:]]*$" "$NDK/source.properties" || {
+    echo "Android NDK must be $NDK_REVISION: $NDK" >&2; exit 1;
+}
 
 case "$(uname -s)" in
     Linux) host=linux-x86_64 ;;
@@ -42,6 +50,9 @@ for target in "${TARGETS[@]}"; do
             go build -trimpath -ldflags="-s -w -extldflags=-Wl,-z,max-page-size=16384" \
             -buildmode=c-shared -o "../../$out_dir/libportaltunnel.so" .
     )
+    python3 scripts/verify-android-engine.py "$target" "$out_dir/libportaltunnel.so" "$TOOLCHAIN"
+    python3 scripts/native-provenance.py record "android/$target/libportaltunnel.so" \
+        "$out_dir/libportaltunnel.so" --compiler "$cc"
     rm -f "$out_dir/libportaltunnel.h"
     echo "  → $out_dir/libportaltunnel.so"
 done

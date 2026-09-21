@@ -51,15 +51,15 @@ internal class DesktopPortalEngine private constructor(
     // Strong reference: JNA must not GC the callback while native code holds it.
     @Suppress("unused")
     private val nativeEventCallback = PortalNativeLibrary.PortalEventCallback { tunnelId, eventType, payloadJson ->
-        val id = tunnelId?.getString(0, UTF8).orEmpty()
-        val type = eventType?.getString(0, UTF8).orEmpty()
-        val payload = payloadJson?.getString(0, UTF8).orEmpty()
-        if (id.isNotEmpty()) {
-            try {
+        try {
+            val id = tunnelId?.getString(0, UTF8).orEmpty()
+            val type = eventType?.getString(0, UTF8).orEmpty()
+            val payload = payloadJson?.getString(0, UTF8).orEmpty()
+            if (id.isNotEmpty()) {
                 eventListener.get()?.invoke(id, type, payload)
-            } catch (_: Throwable) {
-                // Never let exceptions cross the native boundary.
             }
+        } catch (_: Throwable) {
+            // Never let exceptions cross the native boundary.
         }
     }
 

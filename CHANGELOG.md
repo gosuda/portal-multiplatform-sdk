@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-21
+
+- fix(sdk): preserved explicit identities, retained failed cancellation
+  rollback ownership, made close retryable and non-cancellable, preserved
+  caller readiness timeouts, and serialized stop/event-registration races
+- fix(native): initialized C out-pointers, contained callback conversion
+  failures, preserved standard UTF-8 across JNI, and closed failed Go
+  exposures before terminal notification
+- fix(security): redacted identity documents and payment facilitator tokens
+  from configuration string representations without changing wire values
+- fix(ios): kept completion delivery on Main for closed clients, prevented
+  callback exceptions from causing double delivery, and aligned framework
+  deployment targets with the iOS 16 engine baseline
+- fix(samples): included required desktop runtime modules, isolated staged
+  Maven dependency resolution, retained Android payload cleanup across
+  Activity recreation, honored the iOS TCP option, and removed a personal
+  signing team
+- fix(lifecycle): retained failed foreground-service stops for later retry
+  through the client's authoritative session list
+- fix(build): skipped Apple engine production on non-macOS metadata builds,
+  unified SDK artifact versions, and selected MinGW GCC for Windows test stubs
+- fix(release): gated publication on the full platform/consumer matrix,
+  separated manual verification from publication, verified Android
+  architectures and 16 KB alignment, enforced complete desktop runtimes,
+  and recorded per-artifact source/toolchain provenance
+- fix(distribution): produced a complete deterministic local Swift package
+  archive, repaired the missing Dokka upload path, and removed obsolete
+  external-JNI synchronization
+- docs(release): recorded unpublished artifact status and blocked binary
+  publication pending bundled LGPL dependency redistribution review
+
 
 ## 2026-09-19
 

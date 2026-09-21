@@ -25,6 +25,9 @@ compose.desktop {
         mainClass = "org.gosuda.portal.sample.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            // jlink does not infer modules used by the app or its dependencies.
+            // Preferences backs settings; HttpClient powers Ollama/downloads.
+            modules("java.prefs", "java.net.http", "jdk.httpserver", "jdk.crypto.ec")
             packageName = "PortalDesktopSample"
             packageVersion = "1.0.0"
             linux {

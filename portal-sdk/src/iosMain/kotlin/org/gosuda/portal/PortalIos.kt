@@ -1,8 +1,14 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package org.gosuda.portal
 
+import kotlin.concurrent.atomics.AtomicBoolean
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.gosuda.portal.internal.IosIdentityPath
 import org.gosuda.portal.internal.PortalNativeEngine
 import org.gosuda.portal.internal.platformNativeEngine
@@ -152,34 +158,46 @@ public class PortalIosSession internal constructor(
     }
 
     /**
-     * Runs [block] on the main dispatcher and delivers its result to
-     * [completion]. If the client scope is already cancelled, the job never
-     * runs — report CLIENT_CLOSED so the completion still fires exactly once.
+     * Runs [block] and delivers its result on the main dispatcher. Atomic
+     * startup guarantees even an already-closed owner delivers a completion.
      */
     private fun enqueue(completion: (PortalFailure?) -> Unit, block: suspend () -> PortalFailure?) {
-        val job = client.scope.launch(Dispatchers.Main) { completion(block()) }
-        if (job.isCancelled) completion(CLIENT_CLOSED_FAILURE)
+        client.scope.launch(Dispatchers.Main, start = CoroutineStart.ATOMIC) {
+            val failure = if (client.isClosed) CLIENT_CLOSED_FAILURE else try {
+                block()
+            } catch (_: CancellationException) {
+                CLIENT_CLOSED_FAILURE
+            }
+            completion(failure)
+        }
     }
 
     private fun enqueueSnapshot(
         completion: (PortalSnapshot?, PortalFailure?) -> Unit,
         block: suspend () -> PortalSnapshot
     ) {
-        val job = client.scope.launch(Dispatchers.Main) {
-            try {
-                completion(block(), null)
-            } catch (e: CancellationException) {
-                throw e
+        client.scope.launch(Dispatchers.Main, start = CoroutineStart.ATOMIC) {
+            if (client.isClosed) {
+                completion(null, CLIENT_CLOSED_FAILURE)
+                return@launch
+            }
+            val snapshot = try {
+                block()
+            } catch (_: CancellationException) {
+                completion(null, CLIENT_CLOSED_FAILURE)
+                return@launch
             } catch (e: PortalException) {
                 completion(null, e.failure)
+                return@launch
             } catch (t: Throwable) {
                 completion(
                     null,
                     PortalFailure(PortalFailure.Codes.INTERNAL_ERROR, t.message ?: "operation failed")
                 )
+                return@launch
             }
+            completion(snapshot, null)
         }
-        if (job.isCancelled) completion(null, CLIENT_CLOSED_FAILURE)
     }
 
     private suspend fun runSessionOp(name: String, block: suspend () -> Any?): PortalFailure? =
@@ -267,15 +285,15 @@ public class PortalIosClient private constructor(
 
     /**
      * Stops all sessions owned by this client. Completion receives null on
-     * success; after the client is closed it reports CLIENT_CLOSED.
+     * success; repeated calls retry any sessions whose cleanup failed.
      */
     public fun close(completion: (PortalFailure?) -> Unit) {
-        val job = scope.launch(Dispatchers.Main) {
+        scope.launch(Dispatchers.Main, start = CoroutineStart.ATOMIC) {
             val failure = try {
                 client.close()
                 null
-            } catch (e: CancellationException) {
-                throw e
+            } catch (_: CancellationException) {
+                CLIENT_CLOSED_FAILURE
             } catch (e: PortalException) {
                 e.failure
             } catch (t: Throwable) {
@@ -283,7 +301,6 @@ public class PortalIosClient private constructor(
             }
             completion(failure)
         }
-        if (job.isCancelled) completion(CLIENT_CLOSED_FAILURE)
     }
 
     /**
@@ -306,26 +323,42 @@ public class PortalIosClient private constructor(
         operation: String,
         block: suspend () -> PortalTunnel
     ): PortalOperation {
-        val job = scope.launch(Dispatchers.Main) {
-            try {
-                completion(PortalIosSession(block(), this@PortalIosClient), null)
-            } catch (e: CancellationException) {
-                throw e
+        val cancelled = AtomicBoolean(false)
+        val job = scope.launch(Dispatchers.Main, start = CoroutineStart.ATOMIC) {
+            if (cancelled.load()) return@launch
+            if (client.isClosed) {
+                completion(null, CLIENT_CLOSED_FAILURE)
+                return@launch
+            }
+            val tunnel = try {
+                block()
+            } catch (_: CancellationException) {
+                if (!cancelled.load()) completion(null, CLIENT_CLOSED_FAILURE)
+                return@launch
             } catch (e: PortalException) {
-                completion(null, e.failure)
+                if (!cancelled.load()) completion(null, e.failure)
+                return@launch
             } catch (t: Throwable) {
-                completion(
-                    null,
-                    PortalFailure(
-                        PortalFailure.Codes.INTERNAL_ERROR,
-                        t.message ?: "$operation failed"
+                if (!cancelled.load()) {
+                    completion(
+                        null,
+                        PortalFailure(
+                            PortalFailure.Codes.INTERNAL_ERROR,
+                            t.message ?: "$operation failed"
+                        )
                     )
-                )
+                }
+                return@launch
+            }
+            if (cancelled.load()) {
+                withContext(NonCancellable) { runCatching { tunnel.stop() } }
+            } else {
+                completion(PortalIosSession(tunnel, this@PortalIosClient), null)
             }
         }
-        if (job.isCancelled) completion(null, CLIENT_CLOSED_FAILURE)
         return object : PortalOperation {
             override fun cancel() {
+                cancelled.store(true)
                 job.cancel()
             }
         }

@@ -14,6 +14,23 @@ import org.gosuda.portal.internal.PortalJson
 class PortalConfigTest {
 
     @Test
+    fun configStringsDoNotExposeIdentityOrPaymentCredentials() {
+        val identity = """{"private_key":"identity-secret"}"""
+        val token = "facilitator-secret"
+        val payment = PortalX402Config(payTo = "0xabc", facilitatorToken = token)
+        val config = PortalConfig(identityJson = identity, x402 = payment)
+
+        assertFalse(payment.toString().contains(token))
+        assertFalse(config.toString().contains("identity-secret"))
+        assertFalse(config.toString().contains(token))
+
+        // Redaction must not alter the secrets actually passed to the engine.
+        val wire = PortalJson.parseToJsonElement(PortalJson.encodeToString(config)).jsonObject
+        assertEquals(identity, wire["identity_json"]?.jsonPrimitive?.content)
+        assertEquals(token, wire["x402"]?.jsonObject?.get("facilitator_token")?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun defaultsEncodeAsAbsentKeys() {
         val json = PortalJson.encodeToString(PortalConfig(name = "n"))
         val obj = PortalJson.parseToJsonElement(json).jsonObject

@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "io.github.gosuda"
-version = "0.1.0"
+version = libs.versions.portal.sdk.get()
 
 abstract class GenerateIosInteropDefs : DefaultTask() {
     @get:Input
@@ -47,10 +47,19 @@ val iosEngineTargets = listOf("iosArm64", "iosSimulatorArm64", "iosX64")
 val buildIosEngine = tasks.register<Exec>("buildIosEngine") {
     group = "build"
     description = "Builds all iOS engine archives from native/bridge."
+    onlyIf("Apple engine archives require a macOS toolchain") {
+        System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+    }
     inputs.dir(rootProject.file("native/bridge"))
+    inputs.dir(rootProject.file("native/include"))
+    inputs.file(rootProject.file("native/source-lock.json"))
     inputs.file(rootProject.file("scripts/build-ios-engine.sh"))
-    outputs.files(iosEngineTargets.map {
-        rootProject.file("native/ios/$it/libportaltunnel.a")
+    inputs.file(rootProject.file("scripts/native-provenance.py"))
+    outputs.files(iosEngineTargets.flatMap {
+        listOf(
+            rootProject.file("native/ios/$it/libportaltunnel.a"),
+            rootProject.file("native/ios/$it/libportaltunnel.a.provenance.json"),
+        )
     })
     workingDir(rootProject.projectDir)
     commandLine("bash", rootProject.file("scripts/build-ios-engine.sh").absolutePath)
@@ -85,6 +94,9 @@ kotlin {
     val xcf = XCFramework("PortalSDK")
     val appleTargets = listOf(iosArm64(), iosSimulatorArm64(), iosX64())
     appleTargets.forEach { target ->
+        target.binaries.all {
+            freeCompilerArgs += "-Xoverride-konan-properties=minVersion.ios=16.0"
+        }
         target.binaries.framework {
             baseName = "PortalSDK"
             isStatic = true
@@ -173,7 +185,8 @@ val buildDesktopStub = tasks.register("buildDesktopStub", Exec::class.java) {
     outputs.dir(outDir)
     doFirst { outDir.mkdirs() }
     commandLine(
-        "cc", "-fPIC", "-shared", "-O2",
+        if (desktopStubLibName.endsWith(".dll")) "gcc" else "cc",
+        "-fPIC", "-shared", "-O2",
         "-I", rootProject.file("native/include").absolutePath,
         rootProject.file("native/stub/portaltunnel_stub.c").absolutePath,
         "-o", File(outDir, desktopStubLibName).absolutePath
@@ -205,6 +218,17 @@ tasks.matching {
 // they never build or link libportaltunnel.a themselves.
 tasks.matching { it.name.startsWith("cinteropPortaltunnelIos") }.configureEach {
     dependsOn(buildIosEngine, prepareIosInteropDefs)
+}
+
+// Kotlin/Native cinterop commonization and Dokka 2.1.0 reach back through
+// task.project while generating metadata/docs, which Gradle's configuration
+// cache rejects. Keep the tasks available but do not serialize them.
+tasks.matching {
+    it.name == "commonizeCInterop" ||
+        it.name == "compileNativeMainKotlinMetadata" ||
+        it.name.startsWith("dokkaGenerate")
+}.configureEach {
+    notCompatibleWithConfigurationCache("K/N cinterop or Dokka accesses task.project")
 }
 
 mavenPublishing {

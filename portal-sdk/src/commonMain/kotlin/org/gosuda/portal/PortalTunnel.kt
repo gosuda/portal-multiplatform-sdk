@@ -1,11 +1,9 @@
 package org.gosuda.portal
 
-import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -17,7 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -88,7 +86,6 @@ public class PortalTunnel internal constructor(
     private val opsMutex = Mutex()
     private val revisionCounter = AtomicLong(0)
     private val droppedEvents = AtomicLong(0)
-    private val stopRequested = AtomicBoolean(false)
 
     /**
      * Suspends until [capability] is ready or [timeoutMillis] elapses.
@@ -103,8 +100,7 @@ public class PortalTunnel internal constructor(
                 "capability $capability was not requested by this tunnel's config"
             )
         }
-        try {
-            return withTimeout(timeoutMillis) {
+        return withTimeoutOrNull(timeoutMillis) {
                 state.first { snapshot ->
                     if (snapshot.isTerminal) {
                         throw PortalException(
@@ -117,22 +113,18 @@ public class PortalTunnel internal constructor(
                     }
                     capability in snapshot.readyCapabilities
                 }
-            }
-        } catch (e: TimeoutCancellationException) {
-            throw PortalException(
-                PortalFailure.Codes.STOP_TIMEOUT,
-                "capability $capability not ready within ${timeoutMillis}ms",
-                retryable = true
-            )
-        }
+        } ?: throw PortalException(
+            PortalFailure.Codes.STOP_TIMEOUT,
+            "capability $capability not ready within ${timeoutMillis}ms",
+            retryable = true
+        )
     }
     /**
      * Suspends until the session reports ACTIVE or [timeoutMillis] elapses.
      * Equivalent to awaiting every requested capability.
      */
     public suspend fun awaitActive(timeoutMillis: Long = 30_000): PortalSnapshot {
-        try {
-            return withTimeout(timeoutMillis) {
+        return withTimeoutOrNull(timeoutMillis) {
                 state.first { snapshot ->
                     if (snapshot.isTerminal) {
                         throw PortalException(
@@ -145,14 +137,11 @@ public class PortalTunnel internal constructor(
                     }
                     snapshot.phase == TunnelPhase.ACTIVE
                 }
-            }
-        } catch (e: TimeoutCancellationException) {
-            throw PortalException(
-                PortalFailure.Codes.STOP_TIMEOUT,
-                "tunnel not active within ${timeoutMillis}ms",
-                retryable = true
-            )
-        }
+        } ?: throw PortalException(
+            PortalFailure.Codes.STOP_TIMEOUT,
+            "tunnel not active within ${timeoutMillis}ms",
+            retryable = true
+        )
     }
 
     /** Fetches the authoritative native status and merges it into [state]. */
@@ -206,30 +195,25 @@ public class PortalTunnel internal constructor(
      * alive. Concurrent calls converge on the same outcome.
      */
     public suspend fun stop() {
-        while (true) {
+        opsMutex.withLock {
             if (state.value.isTerminal) return
-            if (stopRequested.compareAndSet(false, true)) break
-            // Another stop is in flight; wait for its outcome, then re-check.
-            opsMutex.withLock { }
-        }
-        _state.update { it.copy(phase = TunnelPhase.STOPPING, revision = nextRevision()) }
-        try {
-            opsMutex.withLock {
-                nativeCall("stop") { engine.stop(tunnelId) }
-            }
-        } catch (e: CancellationException) {
-            stopRequested.store(false)
-            throw e
-        } catch (e: PortalException) {
-            // The native side may still be alive: keep the handle registered,
-            // stay in STOPPING, and allow the caller to retry.
-            stopRequested.store(false)
             _state.update {
-                it.copy(lastFailure = e.failure, revision = nextRevision())
+                if (it.isTerminal) it
+                else it.copy(phase = TunnelPhase.STOPPING, revision = nextRevision())
             }
-            throw e
+            if (state.value.isTerminal) return
+            try {
+                nativeCall("stop") { engine.stop(tunnelId) }
+            } catch (e: PortalException) {
+                // Keep ownership until native stop succeeds; the next call can
+                // retry even when this call failed or was cancelled.
+                _state.update {
+                    it.copy(lastFailure = e.failure, revision = nextRevision())
+                }
+                throw e
+            }
+            markTerminal(TunnelPhase.STOPPED, null)
         }
-        markTerminal(TunnelPhase.STOPPED, null)
     }
 
     // ---- event ingress (called by the event hub) ----------------------------
@@ -370,6 +354,8 @@ public class PortalTunnel internal constructor(
         withContext(Dispatchers.Default) {
             try {
                 block()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: PortalException) {
                 throw e
             } catch (t: Throwable) {

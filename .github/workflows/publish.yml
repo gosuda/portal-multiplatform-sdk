@@ -1,192 +1,137 @@
-# Release publication runs only when a release-* tag points to a commit whose
-# subject starts with "release(scope):" — see AGENTS.md. workflow_dispatch
-# stays available for manual verification and reruns.
 name: Publish Multiplatform SDK
 
 on:
   push:
     tags: ["release-*"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish verified artifacts (select a matching release-v<version> tag)'
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release-gate:
-    name: Validate multiplatform release gates
     runs-on: ubuntu-latest
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-      - name: Enforce release commit gate
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate verification eligibility
+        run: python3 scripts/verify-release-gate.py
+      - name: Validate publication tag, version, provenance, and credentials
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          GPG_KEY_CONTENTS: ${{ secrets.GPG_KEY_CONTENTS }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "manual dispatch: skipping tag/subject gate"
-          else
-            subject="$(git log -1 --format=%s "${{ github.sha }}")"
-            case "$subject" in
-              release\(*\):*) echo "release commit: $subject" ;;
-              *)
-                echo "::error::tag ${{ github.ref_name }} points to a non-release commit: $subject"
-                exit 1
-                ;;
-            esac
-          fi
-      - name: Validate native provenance and licensing
-        run: |
-          unresolved="$(grep -nE 'UNRESOLVED|PENDING|MISSING|TO_BE_FILLED' native/source-lock.json || true)"
-          if [ -n "$unresolved" ]; then
-            echo "::group::Unresolved native release gates"
-            echo "$unresolved"
-            echo "::endgroup::"
-            echo "::error file=native/source-lock.json::Release blocked by unresolved native provenance or licensing. Resolve the fields printed above; do not bypass this gate."
-            exit 1
-          fi
+          python3 scripts/verify-release-gate.py --publish
+          for name in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD SIGNING_KEY_ID SIGNING_PASSWORD GPG_KEY_CONTENTS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required publication secret: $name"
+              exit 1
+            fi
+          done
 
-  build-desktop-runtime:
-    name: Build desktop runtime (${{ matrix.target }})
+  verify:
     needs: release-gate
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, target: linux-x64 }
-          - { os: windows-latest, target: windows-x64 }
-          - { os: macos-latest, target: macos-universal }
+    uses: ./.github/workflows/gradle.yml
+
+  publish:
+    name: Publish only after the complete native and consumer matrix passes
+    if: github.event_name == 'push' || inputs.publish
+    needs: [release-gate, verify]
+    runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.1'
-      - name: Set up zig
-        if: matrix.target == 'linux-x64'
-        run: |
-          curl -sSL -o zig.tar.xz https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
-          echo "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00  zig.tar.xz" | sha256sum -c -
-          mkdir -p "$HOME/tools/zig" && tar -xJf zig.tar.xz -C "$HOME/tools/zig" --strip-components=1
-          echo "ZIG=$HOME/tools/zig/zig" >> "$GITHUB_ENV"
-      - name: Set up mingw
-        if: matrix.target == 'windows-x64'
-        run: choco install mingw --yes --no-progress
-      - name: Build and verify desktop engine
-        shell: bash
-        run: |
-          ./scripts/verify-desktop-engine.sh --self-test
-          ./scripts/build-desktop-engine.sh "${{ matrix.target }}"
-          case "${{ matrix.target }}" in
-            linux-x64) bin=native/desktop/linux-x64/libportaltunnel.so ;;
-            windows-x64) bin=native/desktop/windows-x64/portaltunnel.dll ;;
-            macos-universal) bin=native/desktop/macos-universal/libportaltunnel.dylib ;;
-          esac
-          ./scripts/verify-desktop-engine.sh "$bin"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-engine-${{ matrix.target }}
-          path: native/desktop/${{ matrix.target }}/
-          retention-days: 7
-
-  publish:
-    name: Verify and publish Android, KMP, and desktop artifacts
-    runs-on: macOS-latest
-    needs: [release-gate, build-desktop-runtime]
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: 21
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.27.1'
-      - name: Install Android SDK and NDK
+          cache-dependency-path: native/bridge/go.sum
+      - name: Install pinned Android SDK and NDK
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
-
-
-      - name: Download linux-x64 desktop engine
-        uses: actions/download-artifact@v4
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
         with:
           name: desktop-engine-linux-x64
           path: native/desktop/linux-x64
-      - name: Download windows-x64 desktop engine
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: desktop-engine-windows-x64
           path: native/desktop/windows-x64
-      - name: Download macos-universal desktop engine
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: desktop-engine-macos-universal
           path: native/desktop/macos-universal
-
-      - name: Verify Maven artifacts with samples
-        run: |
-          ./gradlew publishDesktopSdkToSampleRepository publishAndroidSdkToSampleRepository \
-            publishIosSdkToSampleRepository \
-            -Pportal.native.requireComplete=true --no-configuration-cache
-          ./gradlew :samples:desktop:build :samples:desktop:minecraftSmoke :samples:desktop:ondeviceSmoke \
-            :samples:android:assembleDebug \
-            -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven" --no-configuration-cache
-          klib_count=0
-          for klib in build/sample-maven/io/github/gosuda/portal-sdk-ios*/*/*.klib; do
-            unzip -l "$klib" | grep -q 'libportaltunnel.a' || {
-              echo "::error::$klib does not embed libportaltunnel.a"
-              exit 1
-            }
-            klib_count=$((klib_count + 1))
-          done
-          test "$klib_count" -eq 3 || {
-            echo "::error::expected 3 published iOS klibs, found $klib_count"
-            exit 1
-          }
-          ./scripts/verify-ios-maven-consumer.sh "$GITHUB_WORKSPACE/build/sample-maven"
-      - name: Package self-contained iOS XCFramework
-        run: |
-          ./gradlew :portal-sdk:assemblePortalSDKReleaseXCFramework --no-configuration-cache
-          ./scripts/package-ios-xcframework.sh
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            python3 -c 'import os, pathlib; p = pathlib.Path("dist/Package.swift"); p.write_text(p.read_text().replace("RELEASE_TAG", os.environ["GITHUB_REF_NAME"]))'
-          fi
-      - name: Upload iOS SDK distribution
-        uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-engine-provenance
+          path: native/ios
+      - uses: actions/download-artifact@v4
         with:
           name: PortalSDK-ios
-          path: |
-            dist/PortalSDK.xcframework.zip
-            dist/Package.swift
-      - name: Generate Kotlin API reference
+          path: dist
+      - name: Stage final Maven graph and generate API reference
         run: |
-          ./gradlew :portal-sdk:dokkaGenerate --no-configuration-cache
-          cd portal-sdk/build/dokka && zip -qr "$GITHUB_WORKSPACE/dist/dokka-html.zip" html
-      - name: Upload API reference
+          ./gradlew publishDesktopSdkToSampleRepository publishAndroidSdkToSampleRepository \
+            publishIosSdkToSampleRepository :portal-sdk:dokkaGenerate \
+            -Pportal.native.requireComplete=true --no-configuration-cache
+          python3 scripts/native-provenance.py collect dist/native-source-lock.json
+          xcodebuild -version > dist/apple-toolchain.txt
+          cd portal-sdk/build/dokka
+          zip -qr "$GITHUB_WORKSPACE/dist/dokka-html.zip" html
+      - name: Upload API reference and release provenance
         uses: actions/upload-artifact@v4
         with:
-          name: portal-sdk-dokka
-      - name: Publish to MavenCentral
-        run: ./gradlew publishToMavenCentral -Pportal.native.requireComplete=true --no-configuration-cache
+          name: portal-sdk-dokka-and-provenance
+          path: |
+            dist/dokka-html.zip
+            dist/native-source-lock.json
+            dist/apple-toolchain.txt
+          if-no-files-found: error
+      - name: Recheck publication gates and publish signed Maven artifacts
+        run: |
+          python3 scripts/verify-release-gate.py --publish
+          ./gradlew publishAndReleaseToMavenCentral -Pportal.native.requireComplete=true --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
-
-      - name: Attach release assets
-        if: github.ref_type == 'tag'
+      - name: Publish complete Swift package and reference assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            dist/PortalSDK.xcframework.zip \
-            dist/Package.swift \
-            dist/dokka-html.zip \
-            --clobber || gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" --notes "Portal Multiplatform SDK $GITHUB_REF_NAME" \
-            dist/PortalSDK.xcframework.zip dist/Package.swift dist/dokka-html.zip
+          assets=(dist/PortalSDK.xcframework.zip dist/PortalSDK.xcframework.zip.sha256
+                  dist/PortalSDK-swift-package.zip dist/PortalSDK-swift-package.zip.sha256
+                  dist/dokka-html.zip dist/native-source-lock.json dist/apple-toolchain.txt)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag \
+              --title "$GITHUB_REF_NAME" --notes "Portal Multiplatform SDK $GITHUB_REF_NAME" "${assets[@]}"
+          fi

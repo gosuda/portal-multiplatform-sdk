@@ -8,18 +8,26 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
-        // Samples consume released Maven coordinates, never Gradle project()
-        // dependencies. CI/local release verification can point them at an
-        // isolated staging repository with:
-        // -Pportal.samples.repository=/absolute/path/or/file-uri
-        providers.gradleProperty("portal.samples.repository").orNull?.let { repository ->
-            maven {
-                name = "portalSamples"
-                url = uri(repository)
+        // Keep staged Portal artifacts isolated from Central/Maven Local:
+        // a missing publication must fail rather than mix release graphs.
+        val sampleRepository = providers.gradleProperty("portal.samples.repository").orNull
+        val useMavenLocal = providers.gradleProperty("portal.samples.useMavenLocal").orNull.toBoolean()
+        if (sampleRepository != null || useMavenLocal) {
+            exclusiveContent {
+                forRepository {
+                    if (sampleRepository != null) {
+                        maven {
+                            name = "portalSamples"
+                            url = uri(sampleRepository)
+                        }
+                    } else {
+                        mavenLocal()
+                    }
+                }
+                filter {
+                    includeGroup("io.github.gosuda")
+                }
             }
-        }
-        if (providers.gradleProperty("portal.samples.useMavenLocal").orNull.toBoolean()) {
-            mavenLocal()
         }
         google()
         mavenCentral()

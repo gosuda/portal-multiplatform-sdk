@@ -5,11 +5,12 @@
   "core_commit": "119d143bc1ad4d38e8cf6a427fa89deb9b8fff25 (tag v2.4.3)",
   "mobile_bridge_source": "native/bridge (clean-room bridge over portal-tunnel/v2 sdk.Exposure; builds Android JNI c-shared, iOS c-archive, and desktop c-shared artifacts)",
   "go_toolchain": "go1.27.1 (pinned by release workflows)",
-  "android_ndk_revision": "r29 (clang-r563880c; pinned by release workflows)",
+  "android_ndk_revision": "29.0.14206865 (r29; checked against source.properties by build-android-engine.sh)",
   "desktop_toolchain": "go1.27.1 linux/amd64 + zig 0.16.0 (zig cc -target x86_64-linux-gnu.2.17); zig tarball sha256 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
-  "desktop_glibc_baseline": "glibc 2.17 target via zig cc; built artifact requires only GLIBC_2.14 (verified 2026-09-18)",
-  "xcode_version": "27.0",
+  "desktop_glibc_baseline": "glibc 2.17; verified for every release binary by verify-desktop-engine.sh",
+  "xcode_version": "Recorded by the release workflow; compiler version recorded per artifact",
   "core_license": "MIT (portal-tunnel repository LICENSE, verified 2026-09-18)",
+  "bundled_dependency_license_review": "UNRESOLVED: go list -deps for native/bridge includes github.com/ethereum/go-ethereum v1.17.1 (including common, crypto, core/types and ethclient); common/types.go is LGPL-3.0-or-later. Complete bundled dependency notices/source and static-link redistribution compliance review before binary publication. Portal Tunnel's MIT license alone does not resolve these obligations.",
   "android_binary_build": "VERIFIED: portal-native-android JNI libraries are built from native/bridge during Gradle assembly/publication with Go 1.27.1 and Android NDK r29; no external binary is fetched",
   "artifacts": {
     "android/arm64-v8a/libportaltunnel.so": {
@@ -46,26 +47,26 @@
     },
     "desktop/linux-x64/libportaltunnel.so": {
       "source": "native/bridge @ portal-tunnel v2.4.3",
-      "sha256": "e21da67fd2aabc84bfea5a372ae05b1178edfd479e7defc281033f5fb5017d01",
-      "size_bytes": 42258616,
+      "built_by": "CI desktop-native linux-x64 job",
       "glibc_target": "x86_64-linux-gnu.2.17",
-      "glibc_required_max": "GLIBC_2.14",
+      "glibc_required_max": "checked against GLIBC_2.17 by verify-desktop-engine.sh",
       "toolchain": "go1.27.1 + zig 0.16.0 cc",
-      "note": "development build; release binaries are rebuilt and re-hashed on the release matrix"
+      "note": "release sha256 and size are measured in dist/native-source-lock.json, not copied from development binaries"
     },
     "desktop/windows-x64/portaltunnel.dll": {
       "source": "native/bridge @ portal-tunnel v2.4.3",
       "toolchain": "go1.27.1 + x86_64-w64-mingw32-gcc",
-      "built_by": "CI build-desktop-runtime job (windows-latest) on release-* tags",
+      "built_by": "CI desktop-native job (windows-latest) on release-* tags",
       "note": "produced and verified on the release matrix; sha256 recorded in packaged index.json"
     },
     "desktop/macos-universal/libportaltunnel.dylib": {
       "source": "native/bridge @ portal-tunnel v2.4.3",
       "toolchain": "go1.27.1 + Xcode clang, lipo universal (min macOS 13.0)",
-      "built_by": "CI build-desktop-runtime job (macos-latest) on release-* tags",
+      "built_by": "CI desktop-native job (macos-latest) on release-* tags",
       "note": "produced and verified on the release matrix; sha256 recorded in packaged index.json"
     }
   },
-  "desktop_release_gate": "portal-native-desktop packages every matrix target; GenerateNativeIndex fails unless all three binaries are present (-Pportal.native.requireComplete=true). The CI build-desktop-runtime matrix and final publish job enforce this.",
-  "release_gate": "Publication requires every provenance and licensing field to be resolved and every generated native artifact to pass its platform verifier."
+  "desktop_release_gate": "Every external publication independently verifies all three runtime targets; a development requireComplete=false override cannot bypass publication validation.",
+  "release_provenance": "scripts/native-provenance.py records each build's source commit, bridge tree, go.mod/go.sum, compiler, Go toolchain, SHA-256, and size; collect rejects mixed-source or modified binaries and emits dist/native-source-lock.json.",
+  "release_gate": "Publication requires resolved provenance/licensing, verified platform binaries, successful full verification workflow, a matching release-v<SDK version> tag on a release(scope): commit, and signing credentials."
 }

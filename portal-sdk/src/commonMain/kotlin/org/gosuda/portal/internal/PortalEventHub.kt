@@ -3,6 +3,10 @@ package org.gosuda.portal.internal
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.gosuda.portal.PortalClient
 import org.gosuda.portal.PortalTunnel
 
@@ -25,7 +29,8 @@ internal object PortalEventHub {
     private const val MAX_ORPHAN_SESSIONS = 32
     private const val MAX_ORPHAN_EVENTS_PER_SESSION = 64
 
-    private val engines = AtomicReference<Set<PortalNativeEngine>>(emptySet())
+    private val installMutex = Mutex()
+    private val engines = mutableSetOf<PortalNativeEngine>()
     private val routes = AtomicReference<Map<String, PortalTunnel>>(emptyMap())
     private val orphans = AtomicReference<Map<String, List<RawNativeEvent>>>(emptyMap())
     private val droppedOrphans = AtomicLong(0)
@@ -39,17 +44,15 @@ internal object PortalEventHub {
      * on several of them is idempotent; test engines each get the listener so
      * every fake can deliver events.
      */
-    fun install(engine: PortalNativeEngine) {
-        while (true) {
-            val current = engines.load()
-            if (engine in current) return
-            if (engines.compareAndSet(current, current + engine)) break
-        }
-        try {
-            engine.setEventListener(::dispatch)
-        } catch (t: Throwable) {
-            engines.update { it - engine }
-            throw t
+    suspend fun install(engine: PortalNativeEngine) {
+        installMutex.withLock {
+            if (engine in engines) return
+            withContext(Dispatchers.Default) {
+                // Publish installation only after the listener exists. A
+                // concurrent open must not start while installation is pending.
+                engine.setEventListener(::dispatch)
+                engines.add(engine)
+            }
         }
     }
 
@@ -93,17 +96,25 @@ internal object PortalEventHub {
                 return
             }
             val next = current + (tunnelId to events + RawNativeEvent(eventType, payloadJson))
-            if (orphans.compareAndSet(current, next)) return
+            if (orphans.compareAndSet(current, next)) {
+                // Registration may have drained between dispatch's route
+                // lookup and this insertion. Do not leave that event stranded.
+                drainOrphans(tunnelId)
+                return
+            }
         }
     }
 
     private fun drainOrphans(tunnelId: String) {
-        val pending = orphans.load()[tunnelId] ?: return
-        orphans.update { it - tunnelId }
-        val tunnel = routes.load()[tunnelId]
-        if (tunnel == null) {
-            droppedOrphans.addAndFetch(pending.size.toLong())
-            return
+        val tunnel = routes.load()[tunnelId] ?: return
+        val pending: List<RawNativeEvent>
+        while (true) {
+            val current = orphans.load()
+            val buffered = current[tunnelId] ?: return
+            if (orphans.compareAndSet(current, current - tunnelId)) {
+                pending = buffered
+                break
+            }
         }
         for (raw in pending) {
             try {

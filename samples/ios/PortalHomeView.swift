@@ -92,7 +92,7 @@ final class PortalHomeModel: ObservableObject {
             discovery: discovery,
             maxActiveRelays: 3,
             banMitm: banMitm, ech: ech,
-            udp: udp, tcp: content.tcp,
+            udp: udp, tcp: tcp || content.tcp,
             description: configDescription.isEmpty ? nil : configDescription,
             tags: commaValues(configTags),
             owner: nil, thumbnail: nil, hide: hide,

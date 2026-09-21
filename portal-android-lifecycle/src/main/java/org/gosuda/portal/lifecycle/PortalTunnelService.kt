@@ -38,8 +38,6 @@ public abstract class PortalTunnelService : Service() {
     /** The service-owned client; created lazily on first tunnel. */
     public val client: PortalClient by lazy { PortalClient(applicationContext) }
 
-    private val tunnels = mutableListOf<PortalTunnel>()
-
     private val binder = LocalBinder()
 
     public inner class LocalBinder : Binder() {
@@ -60,7 +58,7 @@ public abstract class PortalTunnelService : Service() {
     public fun startTunnel(config: PortalConfig, onResult: (Result<PortalTunnel>) -> Unit = {}) {
         serviceScope.launch {
             onResult(runCatching {
-                client.open(config).also { tunnels += it }
+                client.open(config)
             })
         }
     }
@@ -68,14 +66,12 @@ public abstract class PortalTunnelService : Service() {
     /** Stops every tunnel owned by this service. */
     public fun stopAllTunnels() {
         serviceScope.launch {
-            tunnels.toList().forEach { runCatching { it.stop() } }
-            tunnels.clear()
+            client.sessions.value.forEach { runCatching { it.stop() } }
         }
     }
 
     override fun onDestroy() {
         serviceScope.launch {
-            tunnels.toList().forEach { runCatching { it.stop() } }
             client.close()
             serviceScope.cancel()
         }

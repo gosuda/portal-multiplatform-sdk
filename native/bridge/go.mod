@@ -1,6 +1,6 @@
 module github.com/gosuda/portal-multiplatform-sdk/native/bridge
 
-go 1.27.0
+go 1.27.3
 
 require github.com/gosuda/portal-tunnel/v2 v2.4.3
 

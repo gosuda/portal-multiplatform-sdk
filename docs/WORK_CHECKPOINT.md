@@ -3,10 +3,16 @@
 ## Active task — 2026-11-01
 
 The requested SDK cleanup, easy publishing APIs, five-mode workbenches and
-shared four-game arcade are implemented and verified, including the packaged
-macOS launcher. Delivery remains active: commit/push the verified source,
-then update and launch the user's connected Galaxy S10 5G (SM-G977N, Android
-12 / API 31). Record actual device results here and commit/push them.
+shared four-game arcade are implemented and verified. Feature commit
+`04d3144` was pushed to `origin/main`; its APK was installed with `-r` on the
+connected Galaxy S10 5G (SM-G977N, Android 12 / API 31). Activity launch
+returned `Status: ok`, and the sample process remained alive. The phone
+is securely locked, so no interactive phone-screen result is claimed.
+
+Delivery remains active: four retained JOSE/QUIC dependency alerts were
+discovered during push and patched. Rebuilt native outputs, actual consumer
+builds and all five public round trips passed with the patched versions.
+Commit/push this patch, then reinstall the final APK and record its result.
 Do not infer deployment completion from a feature commit or a clean tree.
 
 Baseline: `main`, initially clean at `ea6dad8`. No release/tag/public binary
@@ -108,6 +114,16 @@ publication was requested. Ordinary commits must not use `release(scope):`.
   restart passed. A 390px touch viewport filled and dragged the cup without
   horizontal overflow. No JavaScript errors. The arcade also loaded and ran
   through an actual Android SDK public HTTPS tunnel.
+- Security patch: go-jose v4.1.6 and quic-go v0.59.1 were verified in both
+  the rebuilt Android ELF and the actual final APK's embedded arm64 library,
+  not just `go.mod`. macOS universal ABI/dependency verification, Android
+  two-ABI builds, three iOS archives, KMP staging, XCFramework packaging and
+  real Swift-package simulator/device consumer builds passed again.
+- With refreshed consumer dependencies, final debug/R8 APKs and desktop
+  distribution built; local listener smoke passed twice and all five public
+  modes passed again on the explicit relay. UDP exercised a real QUIC backhaul.
+- Final debug APK SHA-256:
+  `8982942618f8b2e76c9eebad83b74fee79ab9cdd0afd4b17e170dd2a8a7357d5`.
 
 ## Commands / environment
 
@@ -129,22 +145,20 @@ publication was requested. Ordinary commits must not use `release(scope):`.
 - iOS packaging/consumer: `:portal-sdk:assemblePortalSDKReleaseXCFramework`,
   `scripts/package-ios-xcframework.sh`, `scripts/verify-ios-swift-package.sh`,
   XcodeGen plus `xcodebuild` for `samples/ios/PortalSample.xcodeproj`.
-- Temporary UIKit/browser/listener harnesses were used for runtime evidence;
-  they must be removed after verification, not retained as compile-only fixtures.
+- Temporary UIKit/browser/listener harnesses and the baseline copy were removed
+  after verification. Only generated build outputs/result bundles were retained.
 
 ## Exact next actions
 
-1. Commit the verified source and this checkpoint; push `main` normally to
-   `git@github.com:gosuda/portal-multiplatform-sdk.git` (no release tag).
-2. Install `samples/android/build/outputs/apk/debug/android-debug.apk` with
-   `adb -s "$PHONE" install -r ...` on the authorized SM-G977N. The new APK
-   signer matches its installed app, so uninstall/data deletion is unnecessary.
-   The phone is currently screen-off and securely locked; the user was asked
-   to unlock it for interactive verification. Do not bypass the keyguard.
-   Observe launch; if unlocked, publish/request the arcade and stop it,
-   leaving no public session running on the user's phone.
-3. Update this checkpoint with actual phone/push results, commit/push that
-   verification record, and remove only owned temporary harnesses/devices/services.
+1. Commit/push the verified dependency patch normally (no release tag).
+2. Reinstall the rebuilt final APK with `adb install -r`; confirm its installed
+   checksum and actual launch/process on the authorized phone without bypassing
+   the keyguard. If unlocked, publish/request the arcade and stop it; otherwise
+   explicitly record the interactive limit. Leave no owned public session.
+3. Record actual final phone/push and current dependency-alert results, then
+   commit/push this checkpoint. Owned iOS/Android simulators and temporary
+   harnesses/download archives are already removed; installed JDK and
+   verification result bundles remain.
 
 ## Remaining release gates (outside this request)
 

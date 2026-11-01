@@ -60,6 +60,22 @@ or the iOS completion's `PortalFailure`) unless noted.
 - `code == "ABI_MISMATCH"` → engine older/newer than ABI v1; rebuild from
   `native/bridge` at the pinned portal-tunnel version.
 
+### [2026-11-01] Engine migration retained vulnerable indirect JOSE and QUIC versions
+
+- **Context / Symptom:** The first feature push printed an outdated total
+  alert count; the authenticated Dependabot API showed four open alerts in
+  `native/bridge/go.mod`: three for go-jose and one for quic-go.
+- **Root Cause:** portal-tunnel v2.7.1 still selected go-jose v4.1.4 and
+  quic-go v0.59.0. Pruning obsolete dependencies did not patch retained ones.
+- **Solution:** Ran `go get github.com/go-jose/go-jose/v4@v4.1.6
+  github.com/quic-go/quic-go@v0.59.1` and `go mod tidy`. These explicit
+  indirect selections satisfy the advisories' patched version ranges.
+  Native outputs and consumer apps must be rebuilt before device delivery;
+  editing the manifest alone does not patch an already installed APK.
+- **Prevention / Reference:** Inspect current authenticated alert details,
+  not only the push banner. Keep the patched selections when upgrading the
+  engine; the four alert records were #1, #12, #23 and #24.
+
 ### [2026-11-01] Obsolete desktop resource entries survived an incremental cutover
 
 - **Context / Symptom:** The desktop JAR still listed `site/` and

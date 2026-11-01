@@ -13,6 +13,13 @@
   Build-generated `.provenance.json` sidecars contain measured hashes;
   release collection emits the complete `dist/native-source-lock.json`.
 
+## Dependency updates
+
+`bridge/go.mod` pins go-jose v4.1.6 and quic-go v0.59.1 above the versions
+selected by portal-tunnel v2.7.1. Keep those patched indirect selections
+when updating the engine. Rebuild the native binaries and consuming apps;
+a module-file change alone does not update an installed app.
+
 ## Android JNI engine
 
 `scripts/build-android-engine.sh` compiles `native/bridge` plus
@@ -66,9 +73,10 @@ path requires a consumer-managed archive or linker search path.
 
 - Public binary publication is blocked on the bundled-dependency
   notices/source/static-link redistribution review recorded in
-  `source-lock.json`: the native graph includes LGPL-3.0-or-later
-  `go-ethereum v1.17.1`. The core repository's MIT license is not a substitute
-  for reviewing bundled dependency obligations.
+  `source-lock.json`. The engine migration pruned the old go-ethereum/LGPL
+  dependency, but that does not complete the remaining native-graph review.
+  The core repository's MIT license is not a substitute for reviewing
+  bundled dependency obligations.
 
 - ABI v2 (create/attach/start split, observer quiescence, native revisions)
   is not implemented — the SDK wraps v1 and documents the gaps in

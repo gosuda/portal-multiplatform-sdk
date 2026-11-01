@@ -2,6 +2,8 @@
 
 ## 2026-11-01
 
+- fix(security): upgraded indirect go-jose to v4.1.6 and quic-go to v0.59.1
+  to remove the four remaining dependency advisories after the engine migration
 - feat(samples): added shared Snake, memory-pair, reaction-time and physical
   water-fill games with keyboard/touch controls, target scoring, real overflow
   and hidden-page pause; packaged one static arcade across all three hosts

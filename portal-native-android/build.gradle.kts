@@ -56,7 +56,9 @@ val androidSdkDirectory = providers.provider {
     androidComponents.sdkComponents.sdkDirectory.get().asFile.absolutePath
 }
 buildAndroidEngine.configure {
-    environment("ANDROID_HOME", androidSdkDirectory)
+    doFirst {
+        environment("ANDROID_HOME", androidSdkDirectory.get())
+    }
 }
 
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }

@@ -68,13 +68,14 @@ public class PortalIosSession internal constructor(
      * cancelled when the observer goes away.
      */
     public fun observeState(callback: (PortalSnapshot) -> Unit): PortalSubscription {
-        val job = client.scope.launch(Dispatchers.Main) {
-            tunnel.state.collect { callback(it) }
-        }
-        if (job.isCancelled) {
-            // The client is closed and the scope is dead; still deliver the
-            // current (terminal) snapshot once so observers settle.
-            callback(tunnel.state.value)
+        val job = client.scope.launch(Dispatchers.Main, start = CoroutineStart.ATOMIC) {
+            if (client.isClosed) {
+                // Deliver the final snapshot on Main even when the owner job
+                // was already cancelled before observation began.
+                callback(tunnel.state.value)
+            } else {
+                tunnel.state.collect { callback(it) }
+            }
         }
         return object : PortalSubscription {
             override fun cancel() {
@@ -100,7 +101,7 @@ public class PortalIosSession internal constructor(
 
     /** Stops the session; completion receives null on success. */
     public fun stop(completion: (PortalFailure?) -> Unit) {
-        enqueue(completion) {
+        enqueue(completion, allowClosed = true) {
             try {
                 tunnel.stop()
                 null
@@ -161,10 +162,14 @@ public class PortalIosSession internal constructor(
      * Runs [block] and delivers its result on the main dispatcher. Atomic
      * startup guarantees even an already-closed owner delivers a completion.
      */
-    private fun enqueue(completion: (PortalFailure?) -> Unit, block: suspend () -> PortalFailure?) {
+    private fun enqueue(
+        completion: (PortalFailure?) -> Unit,
+        allowClosed: Boolean = false,
+        block: suspend () -> PortalFailure?
+    ) {
         client.scope.launch(Dispatchers.Main, start = CoroutineStart.ATOMIC) {
-            val failure = if (client.isClosed) CLIENT_CLOSED_FAILURE else try {
-                block()
+            val failure = if (client.isClosed && !allowClosed) CLIENT_CLOSED_FAILURE else try {
+                if (allowClosed) withContext(NonCancellable) { block() } else block()
             } catch (_: CancellationException) {
                 CLIENT_CLOSED_FAILURE
             }
@@ -226,7 +231,10 @@ public class PortalIosClient private constructor(
     private val client: PortalClient,
     private val explicitIdentityPath: String?
 ) {
-    /** Creates a client backed by the platform `libportaltunnel` engine. */
+    /** Creates a client with SDK-owned identity and loopback-only targets. */
+    public constructor() : this(allowRemoteTargets = false, defaultIdentityPath = null)
+
+    /** Creates a platform client with explicit target and identity policy. */
     public constructor(
         allowRemoteTargets: Boolean = false,
         defaultIdentityPath: String? = null
@@ -250,6 +258,14 @@ public class PortalIosClient private constructor(
     /** True after [close] has been called. */
     public val isClosed: Boolean get() = client.isClosed
 
+    /**
+     * Current sessions owned by this client, in open order. Includes STOPPING
+     * sessions retained after failed publish or cancellation cleanup, so Swift
+     * callers can recover their handles and retry [PortalIosSession.stop].
+     */
+    public val sessions: List<PortalIosSession>
+        get() = client.sessions.value.map { PortalIosSession(it, this) }
+
     public fun capabilities(): Set<Capability> = client.capabilities()
 
     /** Read-only diagnostic snapshot; never contains secrets. */
@@ -268,6 +284,12 @@ public class PortalIosClient private constructor(
         client.open(resolveConfig(config))
     }
 
+    /** Publishes with a 30-second readiness timeout and SDK-owned rollback. */
+    public fun publish(
+        config: PortalConfig,
+        completion: (PortalIosSession?, PortalFailure?) -> Unit
+    ): PortalOperation = publish(config, 30_000, completion)
+
     /**
      * Starts a tunnel and completes only after it reports ACTIVE — the v1
      * readiness signal for every requested capability. If readiness fails or
@@ -277,7 +299,7 @@ public class PortalIosClient private constructor(
      */
     public fun publish(
         config: PortalConfig,
-        timeoutMillis: Long = 30_000,
+        timeoutMillis: Long,
         completion: (PortalIosSession?, PortalFailure?) -> Unit
     ): PortalOperation = enqueueSession(completion, "publish") {
         client.publish(resolveConfig(config), timeoutMillis)

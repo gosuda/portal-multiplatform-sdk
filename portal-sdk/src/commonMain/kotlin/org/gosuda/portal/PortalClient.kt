@@ -2,7 +2,6 @@ package org.gosuda.portal
 
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicLong
-import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +20,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.gosuda.portal.internal.ConfigValidation
 import org.gosuda.portal.internal.PortalEventHub
 import org.gosuda.portal.internal.PortalJson
@@ -283,8 +286,15 @@ public class PortalClient internal constructor(
                 phase = s.phase,
                 revision = s.revision,
                 droppedEvents = s.droppedEventCount,
-                activeRelay = s.relays.firstOrNull { r -> r.isActive }?.relayUrl,
-                lastFailure = s.lastFailure
+                activeRelay = s.relays.firstOrNull { r -> r.isActive }?.relayUrl?.let { relay ->
+                    // Diagnostic exports need the serving relay's origin, not
+                    // URL paths, query tokens, fragments or credentials.
+                    runCatching { ConfigValidation.normalizeRelayUrl(relay) }.getOrNull()?.let { normalized ->
+                        val pathStart = normalized.indexOf('/', normalized.indexOf("://") + 3)
+                        if (pathStart < 0) normalized else normalized.substring(0, pathStart)
+                    }
+                },
+                lastFailure = s.lastFailure?.forDiagnostics(it.config)
             )
         }
         return PortalDiagnostics(
@@ -299,9 +309,37 @@ public class PortalClient internal constructor(
         )
     }
 
-    // ---- internal plumbing -------------------------------------------------
+    private fun PortalFailure.forDiagnostics(config: PortalConfig): PortalFailure {
+        fun redact(text: String): String {
+            var result = text
+            fun removeSecret(secret: String?) {
+                if (!secret.isNullOrEmpty()) result = result.replace(secret, "<redacted>")
+            }
+            removeSecret(config.identityJson)
+            // Native parser errors can quote only a private field rather than
+            // the complete document. Preserve public identity name/address.
+            fun removeIdentityMaterial(element: JsonElement) {
+                when (element) {
+                    is JsonObject -> element.forEach { (key, value) ->
+                        if (key != "name" && key != "address") removeIdentityMaterial(value)
+                    }
+                    is JsonArray -> element.forEach(::removeIdentityMaterial)
+                    is JsonPrimitive -> if (element.isString) removeSecret(element.content)
+                }
+            }
+            config.identityJson?.let { document ->
+                runCatching { PortalJson.parseToJsonElement(document) }.getOrNull()
+                    ?.let(::removeIdentityMaterial)
+            }
+            return result
+        }
+        return copy(
+            message = redact(message),
+            readinessFailure = readinessFailure?.forDiagnostics(config)
+        )
+    }
 
-    internal val nativeEngine: PortalNativeEngine get() = engine
+    // ---- internal plumbing -------------------------------------------------
 
     /** Called by the hub after a tunnel reduced a raw event. */
     internal fun onTunnelEvent(event: PortalEvent) {
@@ -337,7 +375,7 @@ public class PortalClient internal constructor(
         const val SDK_VERSION = "0.1.0"
 
         /** portal-tunnel core version the bundled `native/bridge` builds on. */
-        const val ENGINE_VERSION = "2.4.3"
+        const val ENGINE_VERSION = "2.7.1"
         const val ABI_VERSION = 1
         const val WIRE_SCHEMA_VERSION = 1
 
@@ -346,10 +384,8 @@ public class PortalClient internal constructor(
             Capability.STATIC_SITE,
             Capability.TCP,
             Capability.UDP,
-            Capability.ECH,
-            Capability.DISCOVERY,
-            Capability.X402
-            // OVERLAY is engine-version dependent and excluded from the v1 contract.
+            Capability.DISCOVERY
+            // ECH, X402 and OVERLAY are not supported by the bundled bridge.
         )
     }
 }

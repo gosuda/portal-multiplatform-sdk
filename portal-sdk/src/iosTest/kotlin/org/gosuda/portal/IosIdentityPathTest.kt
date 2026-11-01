@@ -82,7 +82,7 @@ class IosIdentityPathTest {
         val engine = FakeEngine()
         val client = PortalIosClient(engine, allowRemoteTargets = false, defaultIdentityPath = null)
         var completed = false
-        client.open(PortalConfig.tcp(name = "identity-test")) { _, _ -> completed = true }
+        client.open(PortalConfig.tcp("127.0.0.1:8080", name = "identity-test")) { _, _ -> completed = true }
         pumpUntil { engine.startedConfigs.isNotEmpty() || completed }
         assertEquals(1, engine.startedConfigs.size)
         assertEquals("$baseDir/Portal/identity.json", engine.startedConfigs[0].identityPath)
@@ -94,7 +94,7 @@ class IosIdentityPathTest {
         val client = PortalIosClient(engine, allowRemoteTargets = false, defaultIdentityPath = null)
         var completed = false
         client.open(
-            PortalConfig.tcp(name = "identity-test").copy(identityPath = "/explicit/id.json")
+            PortalConfig.tcp("127.0.0.1:8080", name = "identity-test").copy(identityPath = "/explicit/id.json")
         ) { _, _ -> completed = true }
         pumpUntil { engine.startedConfigs.isNotEmpty() || completed }
         assertEquals("/explicit/id.json", engine.startedConfigs[0].identityPath)
@@ -107,7 +107,7 @@ class IosIdentityPathTest {
             engine, allowRemoteTargets = false, defaultIdentityPath = "/ctor/id.json"
         )
         var completed = false
-        client.open(PortalConfig.tcp(name = "identity-test")) { _, _ -> completed = true }
+        client.open(PortalConfig.tcp("127.0.0.1:8080", name = "identity-test")) { _, _ -> completed = true }
         pumpUntil { engine.startedConfigs.isNotEmpty() || completed }
         assertEquals("/ctor/id.json", engine.startedConfigs[0].identityPath)
     }
@@ -120,7 +120,7 @@ class IosIdentityPathTest {
         var calls = 0
         var session: PortalIosSession? = null
         var failure: PortalFailure? = null
-        client.open(PortalConfig.tcp(name = "identity-test")) { s, f ->
+        client.open(PortalConfig.tcp("127.0.0.1:8080", name = "identity-test")) { s, f ->
             calls += 1; session = s; failure = f
         }
         pumpUntil { calls > 0 }

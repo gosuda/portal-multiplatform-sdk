@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-11-01
+
+- feat(samples): added shared Snake, memory-pair, reaction-time and physical
+  water-fill games with keyboard/touch controls, target scoring, real overflow
+  and hidden-page pause; packaged one static arcade across all three hosts
+- feat(api): replaced the name-only Kotlin TCP factory with target-first
+  configuration (a source-breaking change), and added Swift default client
+  construction, one-argument config factories, route helpers and default-timeout publishing
+- fix(samples): selected raw-protocol exercise commands from ready relays only
+- fix(build): selected the full JDK 17 compiler toolchain for desktop packaging
+  and used the current Android shared-asset directory API
+- refactor(verification): compiled the real iOS workbench through the local
+  Swift package instead of duplicate fixture files, and exposed explicit
+  relay/discovery controls for repeatable public transport probes
+- fix(build): tracked embedded iOS engine archives as cinterop task inputs so
+  native upgrades invalidated cached klibs instead of retaining an old protocol
+- fix(samples): dispatched desktop window teardown through the existing AWT
+  event queue after owned cleanup, without requiring a Main-dispatcher module
+- fix(native): upgraded the engine to portal-tunnel v2.7.1/protocol 10 after
+  live relays rejected protocol 9, migrated current identity/routing APIs and
+  rejected removed ECH, x402 and method-constrained route features explicitly
+- refactor(dependencies): removed the unused native version file and pruned
+  the Go module graph, including the previously linked go-ethereum dependency
+- fix(readiness): required advertised per-transport relay endpoints before
+  marking TCP/UDP ready, kept partial sessions CONNECTING and revoked readiness
+  when an endpoint disappeared
+- refactor(samples): replaced game, Minecraft, model-download and runtime
+  installer implementations with focused Android, iOS and desktop SDK
+  workbenches; removed obsolete assets, dependencies, smoke tasks and duplicate
+  compile-only snippets
+- feat(samples): added runnable HTTP API/webhook receivers, prefix routing,
+  TCP/UDP echo listeners and static-page publishing, with custom upstream
+  inputs, bounded activity inspection and protocol-specific exercise commands
+- fix(samples): preserved platform identities across display-name edits,
+  retained failed-cleanup sessions and listeners for stop retry, and bound
+  built-in listeners to loopback on automatically assigned ports
+- fix(validation): accepted bracketed IPv6, enforced remote-target opt-in for
+  route upstreams and wildcard targets, aligned routed static-path restrictions,
+  normalized live relay edits and counted metadata limits in UTF-8 bytes
+- fix(ios): exposed owned sessions for failed-cleanup recovery, permitted stop
+  retries after failed client close and dispatched closed-owner state callbacks
+  on Main
+- fix(diagnostics): redacted configured inline identity credentials from
+  diagnostic failures, exported relay origins without URL secrets and removed
+  parser payload excerpts from malformed-status errors
+- refactor(sdk): removed unused internal global-stop plumbing and redundant
+  forwarding code while preserving the native ABI and wire defaults
+- fix(build): streamed provenance hashes on Python 3.9, recorded the effective
+  module-selected Go toolchain and corrected macOS universal-architecture
+  verification invocation
+- docs(sdk): documented runnable demonstrations, SDK responsibilities and
+  limitations, ownership recovery and supported toolchain prerequisites
+
 ## 2026-09-21
 
 - fix(sdk): preserved explicit identities, retained failed cancellation

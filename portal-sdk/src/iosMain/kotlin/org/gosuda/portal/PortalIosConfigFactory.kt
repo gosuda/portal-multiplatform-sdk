@@ -5,26 +5,54 @@ package org.gosuda.portal
  *
  * The common factories live on `PortalConfig`'s companion object, whose
  * generated Swift spelling is awkward (`PortalConfig.companion.http(...)`).
- * This facade delegates to them so Swift callers get a short, stable name —
- * it adds no field mapping of its own.
+ * This facade exposes short, stable config and route constructors without
+ * requiring Swift callers to supply Kotlin's optional/default fields.
  */
 public object PortalIosConfigFactory {
+
+    /** Exposes a loopback HTTP server with the SDK defaults. */
+    public fun http(targetAddress: String): PortalConfig =
+        PortalConfig.http(targetAddress)
 
     /** Exposes a loopback HTTP server (`target_addr`). */
     public fun http(targetAddress: String, name: String?): PortalConfig =
         PortalConfig.http(targetAddress, name)
 
+    /** Exposes prefix routes with the SDK defaults. */
+    public fun routes(routes: List<PortalHTTPRoute>): PortalConfig =
+        PortalConfig.routes(routes)
+
     /** Exposes prefix-routed HTTP upstreams and/or static roots. */
     public fun routes(routes: List<PortalHTTPRoute>, name: String?): PortalConfig =
         PortalConfig.routes(routes, name)
 
-    /** Exposes the app's raw TCP listener. */
-    public fun tcp(name: String?): PortalConfig =
-        PortalConfig.tcp(name)
+    /** Routes a path prefix to a loopback HTTP upstream. */
+    public fun httpRoute(prefix: String, upstream: String): PortalHTTPRoute =
+        PortalHTTPRoute(prefix = prefix, upstream = upstream)
+
+    /** Routes a path prefix to static files with the native default index. */
+    public fun staticRoute(prefix: String, directory: String): PortalHTTPRoute =
+        PortalHTTPRoute(prefix = prefix, staticRoot = directory)
+
+    /** Exposes a loopback TCP listener with the SDK defaults. */
+    public fun tcp(targetAddress: String): PortalConfig =
+        PortalConfig.tcp(targetAddress)
+
+    /** Exposes a loopback TCP listener (`tcp` + `target_addr`). */
+    public fun tcp(targetAddress: String, name: String?): PortalConfig =
+        PortalConfig.tcp(targetAddress, name)
+
+    /** Exposes a loopback UDP listener with the SDK defaults. */
+    public fun udp(targetAddress: String): PortalConfig =
+        PortalConfig.udp(targetAddress)
 
     /** Exposes a loopback UDP listener (`udp` + `udp_addr`). */
     public fun udp(targetAddress: String, name: String?): PortalConfig =
         PortalConfig.udp(targetAddress, name)
+
+    /** Serves a directory with the default `index.html`. */
+    public fun staticSite(directory: String): PortalConfig =
+        PortalConfig.staticSite(directory)
 
     /** Serves a directory without an embedded HTTP server. */
     public fun staticSite(directory: String, index: String, name: String?): PortalConfig =

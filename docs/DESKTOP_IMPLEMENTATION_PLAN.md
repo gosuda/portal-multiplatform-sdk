@@ -1,7 +1,9 @@
 # KMP Desktop Expansion Implementation Plan
 
 Date: 2026-09-18
-Status: proposed; implementation not started
+Status: historical architecture plan; desktop implementation and workbench
+cutover are complete. Current behavior is defined by DESIGN_RULES.md and
+WORK_CHECKPOINT.md; public release and full-matrix gates remain open.
 
 ## 1. Decision
 

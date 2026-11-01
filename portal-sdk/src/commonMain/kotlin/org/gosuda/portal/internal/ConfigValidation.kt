@@ -56,7 +56,7 @@ internal object ConfigValidation {
         config.targetAddr?.let { validateTarget(it, "target_addr", allowRemoteTargets) }
         config.udpAddr?.let { validateTarget(it, "udp_addr", allowRemoteTargets) }
 
-        config.httpRoutes.orEmpty().forEach { validateRoute(it) }
+        config.httpRoutes.orEmpty().forEach { validateRoute(it, allowRemoteTargets) }
 
         if ((config.description?.length ?: 0) > MAX_DESCRIPTION_LEN) {
             fail("description exceeds $MAX_DESCRIPTION_LEN characters")
@@ -92,7 +92,7 @@ internal object ConfigValidation {
         if (config.udp) add(Capability.UDP)
         if (config.ech) add(Capability.ECH)
         if (config.discovery != false) add(Capability.DISCOVERY)
-        if (config.x402 != null) add(Capability.X402)
+        if (config.x402 != null || config.httpRoutes.orEmpty().any { it.amount != null }) add(Capability.X402)
         if (config.overlay) add(Capability.OVERLAY)
     }
 
@@ -140,25 +140,29 @@ internal object ConfigValidation {
         val scheme = match.groupValues[1].lowercase()
         val authority = match.groupValues[2]
         val path = match.groupValues[3]
-        if (authority.contains('@')) fail("relay url must not include credentials: $original")
+        if (authority.contains('@')) fail("relay url must not include credentials")
         val host: String
         val port: String?
         if (authority.startsWith('[')) {
             val close = authority.indexOf(']')
-            if (close < 0) fail("relay url has an invalid host: $original")
+            if (close < 0) fail("relay url has an invalid host")
             host = authority.substring(1, close)
             val rest = authority.substring(close + 1)
             if (rest.isNotEmpty() && !rest.startsWith(':')) {
-                fail("relay url has an invalid host: $original")
+                fail("relay url has an invalid host")
             }
+            if (parseIpv6Groups(host.lowercase()) == null) fail("relay url has an invalid IPv6 host")
             port = rest.removePrefix(":").ifEmpty { null }
         } else {
             host = authority.substringBeforeLast(':')
             port = authority.substringAfterLast(':', "").ifEmpty { null }
         }
-        if (host.isEmpty() || host.contains(':')) fail("relay url has an invalid host: $original")
+        if (host.isEmpty() || (!authority.startsWith('[') && !isValidHost(host))) {
+            fail("relay url has an invalid host")
+        }
         if (authority.endsWith(':')) fail("relay url has an invalid port: $original")
         if (port != null) {
+            if (!port.all { it in '0'..'9' }) fail("relay url has an invalid port")
             val n = port.toIntOrNull() ?: fail("relay url port must be between 1 and 65535: $original")
             if (n !in 1..65535) fail("relay url port must be between 1 and 65535: $original")
         }
@@ -192,7 +196,7 @@ internal object ConfigValidation {
     private fun isIpv4(host: String): Boolean {
         val parts = host.split('.')
         return parts.size == 4 && parts.all { part ->
-            part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() } &&
+            part.isNotEmpty() && part.length <= 3 && part.all { it in '0'..'9' } &&
                 part.toInt() in 0..255
         }
     }
@@ -213,10 +217,12 @@ internal object ConfigValidation {
         }
         val halves = input.split("::", limit = 2)
         if (halves.size == 2 && input.indexOf("::") != input.lastIndexOf("::")) return null
-        val head = halves[0].split(':').filter { it.isNotEmpty() }
-        val tail = if (halves.size == 2) halves[1].split(':').filter { it.isNotEmpty() } else emptyList()
+        val head = halves[0].takeIf { it.isNotEmpty() }?.split(':').orEmpty()
+        val tail = if (halves.size == 2) {
+            halves[1].takeIf { it.isNotEmpty() }?.split(':').orEmpty()
+        } else emptyList()
         if (halves.size == 1 && head.size != 8) return null
-        if (head.size + tail.size > 8) return null
+        if (head.size + tail.size > 8 || (halves.size == 2 && head.size + tail.size >= 8)) return null
         val groups = IntArray(8)
         fun parseGroup(s: String): Int? =
             if (s.length in 1..4 && s.all { it in '0'..'9' || it in 'a'..'f' }) s.toInt(16) else null
@@ -228,6 +234,9 @@ internal object ConfigValidation {
         }
         return groups
     }
+    private fun isValidHost(host: String): Boolean =
+        host.isNotEmpty() && host.all { it.isLetterOrDigit() || it == '.' || it == '-' }
+
 
     private fun validateTarget(addr: String, field: String, allowRemote: Boolean) {
         val host: String
@@ -238,23 +247,33 @@ internal object ConfigValidation {
             host = addr.substring(1, close)
             val rest = addr.substring(close + 1)
             if (!rest.startsWith(':')) fail("$field must include a port: $addr")
+            if (parseIpv6Groups(host.lowercase()) == null) fail("$field has an invalid IPv6 host")
             port = rest.removePrefix(":")
         } else {
             host = addr.substringBeforeLast(':')
             port = addr.substringAfterLast(':', "")
         }
-        if (host.isEmpty() || host.contains(':')) fail("$field has an invalid host: $addr")
+        if (host.isEmpty() || (!addr.startsWith('[') && !isValidHost(host))) {
+            fail("$field has an invalid host")
+        }
+        if (port.isEmpty() || !port.all { it in '0'..'9' }) fail("$field has an invalid port")
         val n = port.toIntOrNull() ?: fail("$field must include a port between 1 and 65535: $addr")
         if (n !in 1..65535) fail("$field port must be between 1 and 65535: $addr")
         if (allowRemote) return
-        val loopback = isLocalRelayHost(host) || host == "0.0.0.0" || host == "::"
+        val loopback = isLocalRelayHost(host)
         if (!loopback) {
             fail("$field must be a loopback address unless allowRemoteTargets is set: $addr")
         }
     }
 
 
-    private fun validateRoute(route: PortalHTTPRoute) {
+    private fun validateRoute(route: PortalHTTPRoute, allowRemote: Boolean) {
+        if (!route.methods.isNullOrEmpty()) {
+            throw PortalException(
+                PortalFailure.Codes.UNSUPPORTED_CAPABILITY,
+                "method-constrained HTTP routes are unsupported by this engine"
+            )
+        }
         if (!route.prefix.startsWith('/')) {
             fail("http route prefix must start with '/': ${route.prefix}")
         }
@@ -264,13 +283,52 @@ internal object ConfigValidation {
         if (route.upstream == null && route.staticRoot == null) {
             fail("http route '${route.prefix}' needs upstream or static_root")
         }
+        route.upstream?.let { upstream ->
+            val match = urlPattern.matchEntire(upstream) ?: fail("http route upstream must be an HTTP URL")
+            val scheme = match.groupValues[1].lowercase()
+            if (scheme != "http" && scheme != "https") fail("http route upstream must use http or https")
+            val authority = match.groupValues[2]
+            if (authority.contains('@')) fail("http route upstream must not include credentials")
+            val hasPort = if (authority.startsWith('[')) {
+                authority.substringAfter(']', "").startsWith(':')
+            } else authority.contains(':')
+            validateTarget(
+                if (hasPort) authority else "$authority:${if (scheme == "https") 443 else 80}",
+                "http route upstream",
+                allowRemote
+            )
+        }
+        route.staticRoot?.let { root ->
+            if (root.isBlank() || root.split('/', '\\').any { it == ".." }) {
+                fail("http route static_root must be nonblank without '..' path segments")
+            }
+        }
+        route.staticIndex?.let { index ->
+            if (index.isBlank() || index.contains('/') || index.contains('\\') || index == "..") {
+                fail("http route static_index must be a plain file name")
+            }
+        }
         route.amount?.let {
             if (!amountPattern.matches(it)) fail("route amount must be a decimal string: $it")
         }
     }
 
     fun validateMetadataJson(json: String) {
-        if (json.length > MAX_METADATA_JSON_BYTES) {
+        var bytes = 0
+        var index = 0
+        while (index < json.length) {
+            val char = json[index++]
+            bytes += when {
+                char.code < 0x80 -> 1
+                char.code < 0x800 -> 2
+                char.isHighSurrogate() && index < json.length && json[index].isLowSurrogate() -> {
+                    index++
+                    4
+                }
+                else -> 3
+            }
+        }
+        if (bytes > MAX_METADATA_JSON_BYTES) {
             fail("metadata exceeds $MAX_METADATA_JSON_BYTES bytes")
         }
     }

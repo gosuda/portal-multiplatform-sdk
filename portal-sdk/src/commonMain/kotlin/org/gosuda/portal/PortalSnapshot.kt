@@ -26,9 +26,9 @@ public enum class TunnelPhase {
 /**
  * Feature a tunnel can provide. [PortalSnapshot.requestedCapabilities] is
  * derived from [PortalConfig]; [PortalSnapshot.readyCapabilities] is the
- * subset confirmed by an active native status. The v1 native ABI does not
- * report per-feature readiness, so readiness means "requested AND the tunnel
- * reported active with at least one ready relay".
+ * subset confirmed by ready native relay endpoints. HTTP/static require a
+ * public URL; TCP and UDP each require their own advertised raw endpoint.
+ * ACTIVE means every requested capability is ready, not just an HTTP lease.
  */
 public enum class Capability {
     HTTP_TLS, STATIC_SITE, TCP, UDP, ECH, DISCOVERY, X402, OVERLAY

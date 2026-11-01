@@ -18,16 +18,19 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.zstd.jni)
 }
 compose.desktop {
     application {
         mainClass = "org.gosuda.portal.sample.MainKt"
+        javaHome = javaToolchains.compilerFor {
+            languageVersion.set(JavaLanguageVersion.of(17))
+        }.get().metadata.installationPath.asFile.absolutePath
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             // jlink does not infer modules used by the app or its dependencies.
-            // Preferences backs settings; HttpClient powers Ollama/downloads.
+            // Preferences stores form settings; HttpClient and HttpServer run headless demos.
             modules("java.prefs", "java.net.http", "jdk.httpserver", "jdk.crypto.ec")
+            appResourcesRootDir.set(rootProject.layout.projectDirectory.dir("samples/shared"))
             packageName = "PortalDesktopSample"
             packageVersion = "1.0.0"
             linux {
@@ -47,26 +50,22 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Headless publish smoke: opens a real tunnel to a loopback server and
-// fetches the public URL through the relay. `./gradlew :samples:desktop:smoke`.
+// Optional real relay round-trip (HTTP by default; -Pportal.smoke.mode=STATIC/ROUTES/TCP/UDP).
 tasks.register<JavaExec>("smoke") {
     dependsOn("classes")
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("org.gosuda.portal.sample.SmokeKt")
+    args("--relay", "--mode=" + providers.gradleProperty("portal.smoke.mode").getOrElse("HTTP"))
+    if (!providers.gradleProperty("portal.smoke.discovery").getOrElse("true").toBooleanStrict()) {
+        args("--no-discovery")
+    }
+    systemProperty("compose.application.resources.dir", rootProject.file("samples/shared/common").absolutePath)
 }
 
-// Headless on-device content check: starts the Ollama/Markov loopback server
-// and exercises its endpoints. `./gradlew :samples:desktop:ondeviceSmoke`.
-tasks.register<JavaExec>("ondeviceSmoke") {
+// Deterministic configuration + real loopback services; no relay/native engine needed.
+tasks.register<JavaExec>("workbenchSmoke") {
     dependsOn("classes")
     classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("org.gosuda.portal.sample.OnDeviceSmokeKt")
-}
-
-// Headless Minecraft join smoke: drives a fake 1.21.1 client through the
-// full login → configuration → play path. `./gradlew :samples:desktop:minecraftSmoke`.
-tasks.register<JavaExec>("minecraftSmoke") {
-    dependsOn("classes")
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("org.gosuda.portal.sample.MinecraftSmokeKt")
+    mainClass.set("org.gosuda.portal.sample.SmokeKt")
+    systemProperty("compose.application.resources.dir", rootProject.file("samples/shared/common").absolutePath)
 }

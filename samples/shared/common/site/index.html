@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111724">
+  <title>Portal SDK Arcade</title>
+  <link rel="stylesheet" href="./arcade.css">
+  <script type="module" src="./arcade.js"></script>
+</head>
+<body>
+  <main class="arcade">
+    <header class="hero">
+      <p class="eyebrow">PORTAL SDK / STATIC SITE DEMO</p>
+      <h1>Small games.<br><span>One public URL.</span></h1>
+      <p class="intro">A tiny arcade published from an app. No game server, accounts or external libraries. Pick a game and play with a keyboard or touch.</p>
+      <div class="badges"><span>4 playable games</span><span>Scores stay in this tab</span><span>Powered by staticSite</span></div>
+    </header>
+    <nav class="game-tabs" role="tablist" aria-label="Choose a game">
+      <button id="tab-snake" role="tab" aria-controls="game-snake" aria-selected="true" data-game="snake">01 <strong>Snake</strong><small>The classic</small></button>
+      <button id="tab-memory" role="tab" aria-controls="game-memory" aria-selected="false" tabindex="-1" data-game="memory">02 <strong>Memory</strong><small>Find the pairs</small></button>
+      <button id="tab-reaction" role="tab" aria-controls="game-reaction" aria-selected="false" tabindex="-1" data-game="reaction">03 <strong>Reaction</strong><small>Wait for green</small></button>
+      <button id="tab-water" role="tab" aria-controls="game-water" aria-selected="false" tabindex="-1" data-game="water">04 <strong>Water fill</strong><small>Pour. Tilt. Don't spill.</small></button>
+    </nav>
+    <section id="game-snake" class="game-panel" role="tabpanel" aria-labelledby="tab-snake"></section>
+    <section id="game-memory" class="game-panel" role="tabpanel" aria-labelledby="tab-memory" hidden></section>
+    <section id="game-reaction" class="game-panel" role="tabpanel" aria-labelledby="tab-reaction" hidden></section>
+    <section id="game-water" class="game-panel" role="tabpanel" aria-labelledby="tab-water" hidden></section>
+    <details class="sdk-note">
+      <summary>What is the SDK doing here?</summary>
+      <p>The sample app bundles this directory and publishes it with <code>staticSite</code>. Portal's native engine serves the HTML, CSS and JavaScript through a relay; the app does not run a separate HTTP or game server.</p>
+      <pre><code>val client = PortalClient(context)
+val tunnel = client.publish(PortalConfig.staticSite(directory))</code></pre>
+      <p>The SDK owns identity persistence, readiness waiting and failed-start rollback. The app owns its files and client lifetime. Keep the host app running; on Android, opt into the sample's foreground service for background hosting. iOS sessions are foreground-only.</p>
+      <p>Each visitor plays independently. This is not multiplayer, and scores are not uploaded or persisted. Anyone who knows the public URL can open it; hiding a listing is not access control.</p>
+    </details>
+    <footer>Stop publishing in the host app to close this Portal session. Already-loaded games run locally in your browser.</footer>
+  </main>
+</body>
+</html>

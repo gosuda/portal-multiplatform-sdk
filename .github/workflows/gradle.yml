@@ -193,5 +193,5 @@ jobs:
             -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven" --no-configuration-cache
       - name: Exercise SDK and Maven-consumer runtime
         run: |
-          ./gradlew :portal-sdk:desktopTest :samples:desktop:minecraftSmoke :samples:desktop:ondeviceSmoke \
+          ./gradlew :portal-sdk:desktopTest :samples:desktop:workbenchSmoke \
             -Pportal.samples.repository="$GITHUB_WORKSPACE/build/sample-maven" --no-configuration-cache

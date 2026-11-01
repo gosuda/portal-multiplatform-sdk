@@ -62,7 +62,7 @@ type portalConfig struct {
 	TargetAddr      string            `json:"target_addr"`
 	UDPAddr         string            `json:"udp_addr"`
 	HTTPRoutes      []portalHTTPRoute `json:"http_routes"`
-	X402            *portalX402       `json:"x402"`
+	X402            *json.RawMessage  `json:"x402"`
 }
 
 type portalHTTPRoute struct {
@@ -72,15 +72,6 @@ type portalHTTPRoute struct {
 	StaticIndex string   `json:"static_index"`
 	Methods     []string `json:"methods"`
 	Amount      string   `json:"amount"`
-}
-
-type portalX402 struct {
-	PayTo            string   `json:"pay_to"`
-	Testnet          bool     `json:"testnet"`
-	Network          string   `json:"network"`
-	Asset            string   `json:"asset"`
-	Endpoints        []string `json:"endpoints"`
-	FacilitatorToken string   `json:"facilitator_token"`
 }
 
 type portalMetadata struct {
@@ -268,8 +259,16 @@ func PortalStart(cConfigJSON *C.char, outTunnelID **C.char, outError **C.char) C
 	if cfg.IdentityJSON != "" && cfg.IdentityPath != "" {
 		return fail(outError, errors.New("identity_json and identity_path are mutually exclusive"))
 	}
+	if cfg.ECH || cfg.X402 != nil {
+		return fail(outError, errors.New("ECH and x402 are unsupported by the bundled engine"))
+	}
+	for _, route := range cfg.HTTPRoutes {
+		if len(route.Methods) != 0 || route.Amount != "" {
+			return fail(outError, errors.New("method-constrained and priced routes are unsupported by the bundled engine"))
+		}
+	}
 
-	listenerIdentity, err := identity.LoadOrCreate(cfg.Name, cfg.TargetAddr, cfg.IdentityPath, cfg.IdentityJSON)
+	listenerIdentity, err := identity.LoadOrCreate(cfg.Name, cfg.IdentityPath, cfg.IdentityJSON)
 	if err != nil {
 		return fail(outError, fmt.Errorf("resolve identity: %w", err))
 	}
@@ -297,9 +296,6 @@ func PortalStart(cConfigJSON *C.char, outTunnelID **C.char, outError **C.char) C
 	}
 	if cfg.TCP {
 		opts = append(opts, sdk.WithTCP())
-	}
-	if cfg.ECH {
-		opts = append(opts, sdk.WithECH())
 	}
 	if cfg.Overlay {
 		opts = append(opts, sdk.WithOverlay())
@@ -387,7 +383,6 @@ func PortalStart(cConfigJSON *C.char, outTunnelID **C.char, outError **C.char) C
 		markStopped(t)
 	}()
 
-
 	*outTunnelID = C.CString(t.id)
 	return 0
 }
@@ -400,8 +395,6 @@ func buildHandler(cfg portalConfig) (http.Handler, error) {
 			Upstream:    route.Upstream,
 			StaticRoot:  route.StaticRoot,
 			StaticIndex: route.StaticIndex,
-			Methods:     route.Methods,
-			Amount:      route.Amount,
 		})
 	}
 	if cfg.StaticDir != "" {
@@ -414,18 +407,7 @@ func buildHandler(cfg portalConfig) (http.Handler, error) {
 	if len(routes) == 0 {
 		return nil, nil
 	}
-	payment := types.X402Payment{}
-	if cfg.X402 != nil {
-		payment = types.X402Payment{
-			Testnet:          cfg.X402.Testnet,
-			Network:          cfg.X402.Network,
-			Asset:            cfg.X402.Asset,
-			PayTo:            cfg.X402.PayTo,
-			Endpoints:        append([]string(nil), cfg.X402.Endpoints...),
-			FacilitatorToken: cfg.X402.FacilitatorToken,
-		}
-	}
-	return sdk.NewHTTPRoutes(routes, payment)
+	return sdk.NewHTTPRoutes(routes)
 }
 
 //export PortalStop

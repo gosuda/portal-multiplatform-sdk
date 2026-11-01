@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Link device and simulator apps from the actual downloadable Swift package ZIP.
+# Link the real workbench from the downloadable Swift package ZIP on device and simulator.
 # No library search paths, project dependencies, or manual Security linker flags.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -8,17 +8,9 @@ WORK="$ROOT/build/ios-swift-package-consumer"
 rm -rf "$WORK"
 mkdir -p "$WORK/Sources"
 unzip -q "$PACKAGE" -d "$WORK"
-cp "$ROOT/samples/ios/QuickStartContract.swift" "$ROOT/samples/ios/AdvancedContract.swift" "$WORK/Sources/"
-cat > "$WORK/Sources/ConsumerApp.swift" <<'SWIFT'
-import SwiftUI
-import PortalSDK
-
-@main
-struct ConsumerApp: App {
-    private let client = PortalIosClient(allowRemoteTargets: false, defaultIdentityPath: nil)
-    var body: some Scene { WindowGroup { Text("Portal SDK consumer") } }
-}
-SWIFT
+cp "$ROOT"/samples/ios/*.swift "$WORK/Sources/"
+cp -R "$ROOT/samples/ios/Assets.xcassets" "$ROOT/samples/ios/LaunchScreen.storyboard" \
+    "$ROOT/samples/shared/common/site" "$WORK/Sources/"
 cat > "$WORK/project.yml" <<'YAML'
 name: PortalPackageConsumer
 options:
@@ -31,7 +23,12 @@ targets:
   PortalPackageConsumer:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources:
+      - path: Sources
+        excludes: [site]
+      - path: Sources/site
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: PortalSDK
         product: PortalSDK
@@ -40,6 +37,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.gosuda.portal.packageconsumer
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.0"
+        INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
 YAML
 xcodegen generate --spec "$WORK/project.yml" --project "$WORK"
 for destination in 'generic/platform=iOS Simulator' 'generic/platform=iOS'; do

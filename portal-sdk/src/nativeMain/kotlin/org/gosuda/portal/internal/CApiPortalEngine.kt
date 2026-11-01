@@ -25,7 +25,6 @@ import portaltunnel.PortalRemoveRelay
 import portaltunnel.PortalSetEventCallback
 import portaltunnel.PortalStart
 import portaltunnel.PortalStop
-import portaltunnel.PortalStopAll
 import portaltunnel.PortalUpdateMetadata
 
 /**
@@ -59,8 +58,6 @@ internal class CApiPortalEngine : PortalNativeEngine {
 
     override fun stop(tunnelId: String) =
         callUnit("stop") { err -> PortalStop(tunnelId.cstr, err) }
-
-    override fun stopAll() = PortalStopAll()
 
     override fun getStatus(tunnelId: String): String =
         callString("getStatus") { out, err -> PortalGetStatus(tunnelId.cstr, out, err) }

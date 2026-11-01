@@ -60,6 +60,204 @@ or the iOS completion's `PortalFailure`) unless noted.
 - `code == "ABI_MISMATCH"` → engine older/newer than ABI v1; rebuild from
   `native/bridge` at the pinned portal-tunnel version.
 
+### [2026-11-01] Obsolete desktop resource entries survived an incremental cutover
+
+- **Context / Symptom:** The desktop JAR still listed `site/` and
+  `site-explainer/` after those source resources were removed.
+- **Root Cause:** Existing incremental resource output remained in the local
+  build directory; source deletion alone did not give a clean artifact inventory.
+- **Solution:** Cleaned only `:samples:desktop` and rebuilt the distribution.
+  The new JAR contains the used icon/classes; arcade files are packaged once
+  through Compose application resources.
+- **Prevention / Reference:** Inspect packaged inventories during asset
+  cutovers. This is separate from the iOS cinterop input bug: that required
+  explicit archive tracking, not a blanket clean workaround.
+
+### [2026-11-01] Desktop packaging could not use Android Studio JBR or Homebrew JDK
+
+- **Context / Symptom:** `createDistributable` failed with `jpackage is missing`
+  for Android Studio's JBR; the available Homebrew JDK was then rejected by
+  Compose's packaging-vendor check.
+- **Root Cause:** The IDE runtime was stripped of packaging tools. Compose
+  separately guards a known Homebrew packaging issue; having `java`/`javac`
+  was not sufficient.
+- **Solution:** Selected the JDK 17 compiler toolchain for desktop packaging
+  and installed a checksum-verified full Temurin 17 distribution. Kept runtime
+  and vendor checks enabled rather than suppressing the failure.
+- **Prevention / Reference:** Use a full supported JDK for `jpackage`; see
+  https://github.com/JetBrains/compose-multiplatform/issues/3107.
+
+### [2026-11-01] One advertised public TCP relay port was unreachable
+
+- **Context / Symptom:** A TCP connect to a ready `gosunuts.xyz:40004` endpoint
+  timed out from this host. The same Android-owned listener returned an exact
+  byte echo through another ready relay, `s-h.day:50008`.
+- **Root Cause:** Readiness describes an allocated endpoint, not a successful
+  connection from every caller network. The specific remote routing/port
+  cause was not observable from this checkout.
+- **Solution:** Exercised the actual protocol through the reachable ready
+  relay. No relay blacklist, synthetic success or SDK retry policy was added.
+- **Prevention / Reference:** Check real TCP/UDP traffic, not HTTPS alone;
+  select another ready endpoint or configure explicit compatible relays.
+
+### [2026-11-01] Static-site smoke assumed an unsupported 404 contract
+
+- **Context / Symptom:** A new missing-file assertion failed although the
+  published HTML and JavaScript module were served correctly.
+- **Root Cause:** Upstream `sdk.HTTPRouteConfig.StaticIndex` and
+  `utils.NewStaticSiteHandler` explicitly serve the SPA/CSR entry for unknown
+  paths. The SDK never promised 404 for these paths.
+- **Solution:** Removed the invented assertion, without changing or repinning
+  native fallback behavior. Static smoke checks actual HTML and module MIME
+  types; browser play verifies the arcade.
+
+### [2026-11-01] iOS klibs retained an old engine after a native upgrade
+
+- **Context / Symptom:** The iOS workbench still logged
+  `relay sdk protocol version mismatch: relay="10" client="9"` after the Go
+  archives were rebuilt for v2.7.1. Kotlin framework compilation and ABI
+  symbol verification succeeded, but actual publishing timed out.
+- **Root Cause:** Cinterop embedded `libportaltunnel.a` in its klib, while its
+  task tracked the stable `.def` path rather than the archive contents.
+  Rebuilding the engine did not invalidate the existing embedded klib.
+- **Solution:** Declared each target's native archive as an explicit input
+  of its cinterop task. Ordinary incremental assembly now rebuilds the klib
+  when that archive changes; no clean or forced task rerun is required.
+- **Prevention / Reference:** Exercise a public request after incremental
+  engine upgrades. Source-version strings and exported ABI names do not
+  prove which native implementation a consumer actually linked.
+
+### [2026-11-01] Desktop window cleanup required a missing Main dispatcher
+
+- **Context / Symptom:** Closing the desktop window stopped its tunnel but
+  left the window open. A direct controller smoke reproduced
+  `Module with the Main dispatcher is missing`.
+- **Root Cause:** The teardown callback used `Dispatchers.Main`, but the
+  desktop runtime had no Main-dispatcher provider.
+- **Solution:** Posted the final window-exit callback to the JDK AWT event
+  queue after owned SDK/session/listener cleanup. This used the existing UI
+  event loop instead of adding another coroutine-dispatcher dependency.
+- **Prevention / Reference:** Verify native window close, not only tunnel
+  stop or compilation.
+
+### [2026-11-01] HTTP readiness incorrectly implied UDP readiness
+
+- **Context / Symptom:** The real-relay UDP smoke received an ACTIVE session
+  before its ready relay had allocated a UDP endpoint.
+- **Root Cause:** Capability readiness reused HTTP lease readiness for raw
+  transports, although endpoint allocation completed later.
+- **Solution:** Required a nonblank `tcp_addr` or `udp_addr` on a ready relay
+  for the respective transport. Missing or withdrawn endpoints leave the
+  session CONNECTING. The all-mode public smoke then passed exact TCP/UDP
+  echo round trips as well as HTTP, routes and static files.
+
+### [2026-11-01] macOS system Python could not negotiate the tunnel's TLS
+
+- **Context / Symptom:** Python 3.9 urllib requests failed with an unexpected
+  TLS EOF while current curl reached the same published service.
+- **Root Cause:** The system Python used LibreSSL 2.8.3 and reported
+  `ssl.HAS_TLSv1_3 == False`; the published tunnel negotiated TLS 1.3.
+- **Solution:** Used a TLS-1.3-capable client for runtime smoke requests.
+  Current curl completed certificate verification and the public request;
+  neither server TLS nor certificate verification was weakened.
+
+### [2026-11-01] Recompiling a running desktop sample invalidated lazy class loads
+
+- **Context / Symptom:** Clicking Publish in a long-lived development run
+  reported `NoClassDefFoundError: org/gosuda/portal/sample/WorkbenchRequest`
+  while a concurrent Gradle build regenerated its classes.
+- **Root Cause:** The JavaExec process loaded directly from mutable build
+  output directories; already-loaded classes survived while other class files
+  were being replaced.
+- **Solution:** Stopped the old sample and launched it after compilation
+  completed. The fresh UI published a static page and served a real request.
+- **Prevention / Reference:** Finish compilation before UI smoke; do not
+  rebuild the same JavaExec class directories under a running sample.
+
+### [2026-11-01] Android native task received a Provider instead of the SDK path
+
+- **Context / Symptom:** Android Maven staging reported
+  `Android NDK 29.0.14206865 not found` even though that exact revision was
+  installed under the Android SDK.
+- **Root Cause:** `Exec.environment("ANDROID_HOME", provider)` stringified the
+  Gradle Provider instead of supplying its resolved SDK directory.
+- **Solution:** Resolved the provider inside the task's `doFirst`, preserving
+  lazy Android SDK access while passing an actual filesystem path. Android
+  JNI assembly, ABI/16 KiB checks and Maven staging then completed.
+
+### [2026-11-01] Operating relays rejected the bundled engine protocol
+
+- **Context / Symptom:** The real-relay sample smoke failed on multiple
+  discovered relays with `relay sdk protocol version mismatch:
+  relay="10" client="9"` and ultimately a readiness timeout.
+- **Root Cause:** The bridge still pinned portal-tunnel v2.4.3 while current
+  relays used protocol 10.
+- **Solution:** Pinned upstream v2.7.1, migrated its current identity and HTTP
+  routing APIs, rebuilt the source-based native artifacts and pruned the Go
+  module graph. The linked graph no longer includes the previous
+  `go-ethereum` dependency. Removed upstream ECH/x402/method-route options
+  are explicitly rejected as `UNSUPPORTED_CAPABILITY`, not ignored.
+- **Prevention / Reference:** Run the explicit real-relay smoke when updating
+  the engine; ABI v1 compatibility alone does not prove relay-protocol
+  compatibility. See [upstream v2.7.1](https://github.com/gosuda/portal-tunnel/releases/tag/v2.7.1).
+
+### [2026-11-01] SDK validation and recovery regressions
+
+- **Context / Symptom:** Current regression tests run against the original
+  `ea6dad8` common implementation failed 10 of 53 cases: IPv6, routed
+  upstream/static-path policy, wildcard targets, live relay edits, UTF-8
+  metadata limits and diagnostic secret exposure. A separate iOS regression
+  reproduced a closed-owner state callback running off Main.
+- **Root Cause:** Startup and live validation differed; HTTP routes bypassed
+  target/static checks; IPv6 parsing was followed by a colon rejection;
+  metadata used a UTF-16 approximation; raw parser/failure text reached
+  diagnostics. Closed observation called back synchronously on the caller.
+- **Solution:** Unified validation, applied the explicit remote-target policy,
+  counted UTF-8 bytes, sanitized diagnostic exports without replacing typed
+  context, exposed iOS owned sessions for cleanup retry and dispatched final
+  observation on Main. The corrected common regressions and iOS lifecycle
+  cases passed through their platform test runners.
+- **Prevention / Reference:** Keep behavior regressions in `PortalClientTest`,
+  `PortalConfigTest` and `IosLifecycleTest`; raw snapshots/native errors are
+  not sanitized logging exports.
+
+### [2026-11-01] Native provenance failed on macOS system Python
+
+- **Context / Symptom:** Desktop/iOS engine builds failed with
+  `AttributeError: module 'hashlib' has no attribute 'file_digest'` under
+  `/usr/bin/python3` 3.9.6.
+- **Root Cause:** Provenance and desktop verification used a Python 3.11 API.
+  Provenance also queried Go outside `native/bridge`, reporting the shell's
+  1.27.1 rather than the module-selected 1.27.3 used for compilation.
+- **Solution:** Streamed SHA-256 input with the existing standard library,
+  queried Go from the bridge directory and aligned source-lock/toolchain docs.
+  Native build/artifact verification supports Python 3.9; the separate release
+  gate still requires Python 3.11 (`tomllib`).
+
+### [2026-11-01] Universal engine architecture verification rejected lipo arguments
+
+- **Context / Symptom:** The real universal dylib existed, but verification
+  stopped with `lipo: -verify_arch requires exactly one input file`.
+- **Root Cause:** The installed lipo parser rejected the combined architecture
+  argument layout used by the script.
+- **Solution:** Verified one named architecture at a time with the binary
+  first, then checked each slice's required exports. The macOS engine passed
+  both slices, all 11 ABI exports, header comparison, system dependencies
+  and streamed SHA-256/size verification.
+
+### [2026-11-01] iOS demo mode restart collided with fixed listener ports
+
+- **Context / Symptom:** A real HTTP → routes listener smoke failed with
+  `POSIXErrorCode(rawValue: 48): Address already in use`.
+- **Root Cause:** Demo modes reused fixed ports while Network.framework
+  listener cancellation completed asynchronously.
+- **Solution:** Bound loopback listeners to automatically assigned ports,
+  passed their resolved addresses into SDK configuration and displayed the
+  local endpoints. The same sample listener implementation then passed HTTP
+  webhook/size-limit, two route upstreams, exact TCP echo and UDP echo smoke.
+- **Prevention / Reference:** Avoid fixed demo ports and do not mistake an
+  asynchronous cancellation request for immediate address availability.
+
 ### [2026-09-21] Linux Maven staging invoked the Apple toolchain
 
 - **Context / Symptom:** Staging Android/Desktop artifacts failed in

@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import kotlinx.serialization.encodeToString
+import org.gosuda.portal.internal.PortalJson
 
 class PortalClientTest {
 
@@ -427,6 +429,27 @@ class PortalClientTest {
         assertEquals(listOf("https://relay.example", "https://r2.example"), sent.relays)
         client.close()
     }
+
+    @Test
+    fun relayEditsCannotBypassValidationAndUseTheSameCanonicalAddress() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        try {
+            val tunnel = client.open(siteConfig())
+            val failure = assertFailsWith<PortalException> {
+                tunnel.addRelay("http://remote.example")
+            }
+            assertEquals(PortalFailure.Codes.INVALID_CONFIG, failure.code)
+            assertTrue(engine.addedRelays.isEmpty())
+            tunnel.addRelay(" http://[::1]:8443/relay?token=discarded ")
+            tunnel.removeRelay("http://[::1]:8443/relay")
+            assertEquals(listOf("https://[::1]:8443"), engine.addedRelays)
+            assertEquals(engine.addedRelays, engine.removedRelays)
+        } finally {
+            client.close()
+        }
+    }
+
     @Test
     fun explicitIdentitySkipsDefaultPathResolution() = runTest {
         val client = PortalClient(
@@ -443,25 +466,6 @@ class PortalClientTest {
 
 
     @Test
-    fun builderCreatesWorkingClient() = runTest {
-        val client = Portal.builder()
-            .allowRemoteTargets(false)
-            .defaultIdentityPath("/tmp/test-identity.json")
-            .build()
-        assertFalse(client.isClosed)
-        assertTrue(client.capabilities().isNotEmpty())
-        client.close()
-        assertTrue(client.isClosed)
-    }
-
-    @Test
-    fun portalEntryPointCreatesClient() = runTest {
-        val client = Portal.client()
-        assertFalse(client.isClosed)
-        client.close()
-    }
-
-    @Test
     fun publishReturnsActiveTunnel() = runTest {
         val engine = FakeEngine()
         val client = clientWith(engine)
@@ -472,6 +476,51 @@ class PortalClientTest {
         assertEquals("https://site.portal.example", tunnel.state.value.primaryPublicUrl)
         assertEquals(listOf(tunnel.tunnelId), client.sessions.value.map { it.tunnelId })
         client.close()
+    }
+
+    @Test
+    fun rawTransportReadinessRequiresItsOwnEndpointAndTracksWithdrawal() = runTest {
+        val engine = FakeEngine().apply { statusActive = false }
+        val client = clientWith(engine)
+        try {
+            val tunnel = client.open(PortalConfig(
+                targetAddr = "127.0.0.1:8080", tcp = true,
+                udp = true, udpAddr = "127.0.0.1:8081",
+                discovery = false, relays = listOf("https://relay.example")
+            ))
+            fun emit(tcp: String? = null, udp: String? = null) {
+                engine.emit(tunnel.tunnelId, "STATUS_CHANGED", PortalJson.encodeToString(PortalStatus(
+                    tunnelId = tunnel.tunnelId, name = "transports", address = "0xfake",
+                    active = true, publicUrls = listOf("https://service.example"),
+                    relays = listOf(PortalRelayStatus(
+                        relayUrl = "https://relay.example", state = "ready",
+                        publicUrl = "https://service.example", tcpAddr = tcp, udpAddr = udp
+                    ))
+                )))
+            }
+
+            emit()
+            assertEquals(TunnelPhase.CONNECTING, tunnel.state.value.phase)
+            assertTrue(Capability.HTTP_TLS in tunnel.state.value.readyCapabilities)
+            assertEquals(PortalFailure.Codes.STOP_TIMEOUT,
+                assertFailsWith<PortalException> { tunnel.awaitReady(Capability.UDP, 1) }.code)
+
+            emit(tcp = "tcp.example:4000")
+            assertTrue(Capability.TCP in tunnel.awaitReady(Capability.TCP, 1).readyCapabilities)
+            assertEquals(PortalFailure.Codes.STOP_TIMEOUT,
+                assertFailsWith<PortalException> { tunnel.awaitActive(1) }.code)
+
+            emit(tcp = "tcp.example:4000", udp = "udp.example:4001")
+            assertEquals(TunnelPhase.ACTIVE, tunnel.awaitActive(1).phase)
+            assertTrue(Capability.UDP in tunnel.awaitReady(Capability.UDP, 1).readyCapabilities)
+
+            emit(tcp = "tcp.example:4000")
+            assertEquals(TunnelPhase.CONNECTING, tunnel.state.value.phase)
+            assertFalse(Capability.UDP in tunnel.state.value.readyCapabilities)
+            assertTrue(Capability.TCP in tunnel.state.value.readyCapabilities)
+        } finally {
+            client.close()
+        }
     }
 
     @Test
@@ -645,6 +694,100 @@ class PortalClientTest {
         assertEquals("https://relay.fake", session.activeRelay)
         assertEquals(PortalFailure.Codes.PROTOCOL_ERROR, session.lastFailure?.code)
         client.close()
+    }
+
+    @Test
+    fun unsupportedEngineFeaturesFailBeforeCreatingNativeSessions() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        try {
+            val unsupported = listOf(
+                siteConfig().copy(ech = true),
+                siteConfig().copy(x402 = PortalX402Config("0xrecipient")),
+                PortalConfig.routes(listOf(PortalHTTPRoute("/paid", upstream = "http://127.0.0.1:8080", amount = "1"))),
+                PortalConfig.routes(listOf(PortalHTTPRoute("/api", upstream = "http://127.0.0.1:8080", methods = listOf("GET"))))
+            )
+            for (config in unsupported) {
+                val failure = assertFailsWith<PortalException> { client.publish(config) }
+                assertEquals(PortalFailure.Codes.UNSUPPORTED_CAPABILITY, failure.code)
+            }
+            assertTrue(engine.startedIds.isEmpty())
+            assertTrue(client.sessions.value.isEmpty())
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun diagnosticsRedactIdentitySecretsWithoutLosingFailureContext() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        val identity = """{"name":"operator","address":"0xpublic","private_key":"private-material"}"""
+        try {
+            val tunnel = client.open(siteConfig().copy(identityJson = identity))
+            engine.statusFailure = PortalException(PortalFailure(
+                code = PortalFailure.Codes.PROTOCOL_ERROR,
+                message = "relay rejected identity $identity",
+                operation = "getStatus",
+                nativeCode = 7,
+                readinessFailure = PortalFailure(
+                    PortalFailure.Codes.IDENTITY_INVALID,
+                    "invalid private key private-material"
+                )
+            ))
+            assertFailsWith<PortalException> { tunnel.refresh() }
+            val diagnostics = client.diagnostics()
+            val text = diagnostics.toString()
+            assertFalse(text.contains(identity))
+            assertFalse(text.contains("private-material"))
+            val failure = assertNotNull(diagnostics.sessions.single().lastFailure)
+            assertTrue(failure.message.contains("relay rejected identity"))
+            assertEquals("getStatus", failure.operation)
+            assertEquals(7, failure.nativeCode)
+            assertEquals(PortalFailure.Codes.IDENTITY_INVALID, failure.readinessFailure?.code)
+            // Export redaction does not destroy the original observable error.
+            assertTrue(tunnel.state.value.lastFailure!!.message.contains("private-material"))
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun diagnosticsOnlyExportRelayOriginWithoutUrlSecrets() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        try {
+            val tunnel = client.open(siteConfig())
+            engine.emit(tunnel.tunnelId, "STATUS_CHANGED", PortalJson.encodeToString(PortalStatus(
+                tunnelId = tunnel.tunnelId,
+                name = "site",
+                address = "0xpublic",
+                active = true,
+                relays = listOf(PortalRelayStatus(
+                    relayUrl = "https://relay.example/private-path?token=secret#fragment",
+                    state = "ready"
+                ))
+            )))
+            assertEquals("https://relay.example", client.diagnostics().sessions.single().activeRelay)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun malformedStatusDoesNotEchoUntrustedPayloadIntoFailure() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        try {
+            val tunnel = client.open(siteConfig())
+            engine.statusJsonOverride = """{"active":"secret-request-body"}"""
+            val failure = assertFailsWith<PortalException> { tunnel.refresh() }
+            assertEquals(PortalFailure.Codes.PROTOCOL_ERROR, failure.code)
+            assertFalse(failure.message.orEmpty().contains("secret-request-body"))
+            assertFalse(client.diagnostics().toString().contains("secret-request-body"))
+        } finally {
+            client.close()
+        }
     }
 
     @Test

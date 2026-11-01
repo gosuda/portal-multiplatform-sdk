@@ -2,66 +2,66 @@
   "abi_version": 1,
   "wire_schema_version": 1,
   "core_repository": "https://github.com/gosuda/portal-tunnel",
-  "core_commit": "119d143bc1ad4d38e8cf6a427fa89deb9b8fff25 (tag v2.4.3)",
+  "core_commit": "3b2a51577b3b04bcf51a3cb9002e56fe1e4790bf (tag v2.7.1; tunnel protocol 10)",
   "mobile_bridge_source": "native/bridge (clean-room bridge over portal-tunnel/v2 sdk.Exposure; builds Android JNI c-shared, iOS c-archive, and desktop c-shared artifacts)",
-  "go_toolchain": "go1.27.1 (pinned by release workflows)",
+  "go_toolchain": "go1.27.3 (native/bridge/go.mod and release workflows)",
   "android_ndk_revision": "29.0.14206865 (r29; checked against source.properties by build-android-engine.sh)",
-  "desktop_toolchain": "go1.27.1 linux/amd64 + zig 0.16.0 (zig cc -target x86_64-linux-gnu.2.17); zig tarball sha256 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
+  "desktop_toolchain": "go1.27.3 linux/amd64 + zig 0.16.0 (zig cc -target x86_64-linux-gnu.2.17); zig tarball sha256 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
   "desktop_glibc_baseline": "glibc 2.17; verified for every release binary by verify-desktop-engine.sh",
   "xcode_version": "Recorded by the release workflow; compiler version recorded per artifact",
   "core_license": "MIT (portal-tunnel repository LICENSE, verified 2026-09-18)",
-  "bundled_dependency_license_review": "UNRESOLVED: go list -deps for native/bridge includes github.com/ethereum/go-ethereum v1.17.1 (including common, crypto, core/types and ethclient); common/types.go is LGPL-3.0-or-later. Complete bundled dependency notices/source and static-link redistribution compliance review before binary publication. Portal Tunnel's MIT license alone does not resolve these obligations.",
-  "android_binary_build": "VERIFIED: portal-native-android JNI libraries are built from native/bridge during Gradle assembly/publication with Go 1.27.1 and Android NDK r29; no external binary is fetched",
+  "bundled_dependency_license_review": "UNRESOLVED: complete the bundled-dependency notices/source/redistribution review for the v2.7.1 native graph before binary publication. go list -deps no longer includes the previous go-ethereum/LGPL dependency after the engine upgrade and module tidy; this does not replace a full redistribution review.",
+  "android_binary_build": "VERIFIED: portal-native-android JNI libraries are built from native/bridge during Gradle assembly/publication with Go 1.27.3 and Android NDK r29; no external binary is fetched",
   "artifacts": {
     "android/arm64-v8a/libportaltunnel.so": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
       "source_path": "native/bridge (bridge.go + jni_android.c)",
-      "toolchain": "go1.27.1 + Android NDK r29 aarch64-linux-android26-clang",
+      "toolchain": "go1.27.3 + Android NDK r29 aarch64-linux-android26-clang",
       "built_by": "portal-native-android:buildAndroidEngine",
       "elf_max_page_size": "16384"
     },
     "android/x86_64/libportaltunnel.so": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
       "source_path": "native/bridge (bridge.go + jni_android.c)",
-      "toolchain": "go1.27.1 + Android NDK r29 x86_64-linux-android26-clang",
+      "toolchain": "go1.27.3 + Android NDK r29 x86_64-linux-android26-clang",
       "built_by": "portal-native-android:buildAndroidEngine",
       "elf_max_page_size": "16384"
     },
     "ios/iosArm64/libportaltunnel.a": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
-      "toolchain": "go1.27.1 + Xcode clang (iphoneos arm64, min iOS 16.0)",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
+      "toolchain": "go1.27.3 + Xcode clang (iphoneos arm64, min iOS 16.0)",
       "built_by": "portal-sdk:buildIosEngine",
       "packaging": "embedded in portal-sdk-iosarm64 klib and PortalSDK XCFramework device slice"
     },
     "ios/iosSimulatorArm64/libportaltunnel.a": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
-      "toolchain": "go1.27.1 + Xcode clang (iphonesimulator arm64, min iOS 16.0)",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
+      "toolchain": "go1.27.3 + Xcode clang (iphonesimulator arm64, min iOS 16.0)",
       "built_by": "portal-sdk:buildIosEngine",
       "packaging": "embedded in portal-sdk-iossimulatorarm64 klib and PortalSDK XCFramework simulator slice"
     },
     "ios/iosX64/libportaltunnel.a": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
-      "toolchain": "go1.27.1 + Xcode clang (iphonesimulator x86_64, min iOS 16.0)",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
+      "toolchain": "go1.27.3 + Xcode clang (iphonesimulator x86_64, min iOS 16.0)",
       "built_by": "portal-sdk:buildIosEngine",
       "packaging": "embedded in portal-sdk-iosx64 klib and PortalSDK XCFramework simulator slice"
     },
     "desktop/linux-x64/libportaltunnel.so": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
       "built_by": "CI desktop-native linux-x64 job",
       "glibc_target": "x86_64-linux-gnu.2.17",
       "glibc_required_max": "checked against GLIBC_2.17 by verify-desktop-engine.sh",
-      "toolchain": "go1.27.1 + zig 0.16.0 cc",
+      "toolchain": "go1.27.3 + zig 0.16.0 cc",
       "note": "release sha256 and size are measured in dist/native-source-lock.json, not copied from development binaries"
     },
     "desktop/windows-x64/portaltunnel.dll": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
-      "toolchain": "go1.27.1 + x86_64-w64-mingw32-gcc",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
+      "toolchain": "go1.27.3 + x86_64-w64-mingw32-gcc",
       "built_by": "CI desktop-native job (windows-latest) on release-* tags",
       "note": "produced and verified on the release matrix; sha256 recorded in packaged index.json"
     },
     "desktop/macos-universal/libportaltunnel.dylib": {
-      "source": "native/bridge @ portal-tunnel v2.4.3",
-      "toolchain": "go1.27.1 + Xcode clang, lipo universal (min macOS 13.0)",
+      "source": "native/bridge @ portal-tunnel v2.7.1",
+      "toolchain": "go1.27.3 + Xcode clang, lipo universal (min macOS 13.0)",
       "built_by": "CI desktop-native job (macos-latest) on release-* tags",
       "note": "produced and verified on the release matrix; sha256 recorded in packaged index.json"
     }

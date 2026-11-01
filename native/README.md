@@ -3,7 +3,7 @@
 - `include/portaltunnel.h` — the v1 C ABI every platform binds to
   (Android JNI symbols wrap the same functions; iOS/Linux use it via
   cinterop).
-- `bridge/` — clean-room Go bridge over `portal-tunnel` v2.4.3
+- `bridge/` — clean-room Go bridge over `portal-tunnel` v2.7.1 (protocol 10)
   `sdk.Exposure`. Produces Android JNI shared libraries, iOS static archives,
   and desktop shared libraries from the same ABI implementation.
 - `stub/portaltunnel_stub.c` — C stub implementing the ABI, linked into the
@@ -16,8 +16,9 @@
 ## Android JNI engine
 
 `scripts/build-android-engine.sh` compiles `native/bridge` plus
-`jni_android.c` with Go 1.27.1 and Android NDK `29.0.14206865` (r29) for
-`arm64-v8a` and `x86_64`. Build/verification scripts require Python 3.11+.
+`jni_android.c` with Go 1.27.3 and Android NDK `29.0.14206865` (r29) for
+`arm64-v8a` and `x86_64`. Native build/artifact verification uses Python 3.9+;
+the release gate separately requires Python 3.11+ (`tomllib`).
 Gradle runs it automatically before merging native libraries or publishing
 `portal-native-android`. Outputs live under
 `portal-native-android/build/generated/jniLibs/`; no prebuilt `.so` is stored

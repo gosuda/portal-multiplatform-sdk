@@ -10,13 +10,16 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def command(*args):
-    return subprocess.check_output(args, cwd=ROOT, text=True).strip()
+def command(*args, cwd=ROOT):
+    return subprocess.check_output(args, cwd=cwd, text=True).strip()
 
 
 def sha256(path):
+    digest = hashlib.sha256()
     with path.open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def bridge_hash():
@@ -40,7 +43,7 @@ def record(args):
         "bridge_tree_sha256": bridge_hash(),
         "go_mod_sha256": sha256(ROOT / "native/bridge/go.mod"),
         "go_sum_sha256": sha256(ROOT / "native/bridge/go.sum"),
-        "go_toolchain": command(args.go, "version"),
+        "go_toolchain": command(args.go, "version", cwd=ROOT / "native/bridge"),
         "compiler_command": args.compiler,
         "compiler_version": command(*shlex.split(args.compiler), "--version"),
     }

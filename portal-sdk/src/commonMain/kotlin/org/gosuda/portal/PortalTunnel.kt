@@ -36,7 +36,7 @@ public class PortalTunnel internal constructor(
     internal val owner: PortalClient,
     internal val generation: Int
 ) {
-    private val engine: PortalNativeEngine get() = owner.nativeEngine
+    private val engine: PortalNativeEngine get() = owner.engine
 
     private val requestedCaps = ConfigValidation.requestedCapabilities(config)
 
@@ -162,15 +162,17 @@ public class PortalTunnel internal constructor(
 
     public suspend fun addRelay(relayUrl: String) {
         ensureUsable("addRelay")
+        val normalized = ConfigValidation.normalizeRelayUrl(relayUrl)
         opsMutex.withLock {
-            nativeCall("addRelay") { engine.addRelay(tunnelId, relayUrl) }
+            nativeCall("addRelay") { engine.addRelay(tunnelId, normalized) }
         }
     }
 
     public suspend fun removeRelay(relayUrl: String) {
         ensureUsable("removeRelay")
+        val normalized = ConfigValidation.normalizeRelayUrl(relayUrl)
         opsMutex.withLock {
-            nativeCall("removeRelay") { engine.removeRelay(tunnelId, relayUrl) }
+            nativeCall("removeRelay") { engine.removeRelay(tunnelId, normalized) }
         }
     }
 
@@ -317,10 +319,34 @@ public class PortalTunnel internal constructor(
             // Terminal sessions never resurrect; STOPPING keeps its phase so
             // a late status cannot flicker the session back to ACTIVE.
             if (current.isTerminal || current.phase == TunnelPhase.STOPPING) return@update current
-            val phase = if (status.active) TunnelPhase.ACTIVE else TunnelPhase.CONNECTING
+            var httpReady = false
+            var tcpReady = false
+            var udpReady = false
+            var relayReady = false
+            if (status.active) {
+                for (relay in status.relays) {
+                    if (!relay.isReady) continue
+                    relayReady = true
+                    if (!relay.publicUrl.isNullOrBlank()) httpReady = true
+                    if (!relay.tcpAddr.isNullOrBlank()) tcpReady = true
+                    if (!relay.udpAddr.isNullOrBlank()) udpReady = true
+                }
+            }
+            val ready = if (!relayReady) emptySet() else buildSet {
+                for (capability in requestedCaps) {
+                    if (when (capability) {
+                        Capability.HTTP_TLS, Capability.STATIC_SITE -> httpReady
+                        Capability.TCP -> tcpReady
+                        Capability.UDP -> udpReady
+                        Capability.DISCOVERY -> relayReady
+                        else -> false
+                    }) add(capability)
+                }
+            }
+            val phase = if (ready.containsAll(requestedCaps)) TunnelPhase.ACTIVE else TunnelPhase.CONNECTING
             current.copy(
                 phase = phase,
-                readyCapabilities = if (phase == TunnelPhase.ACTIVE) requestedCaps else emptySet(),
+                readyCapabilities = ready,
                 publicUrls = status.publicUrls,
                 relays = status.relays,
                 nativeStatus = status,
@@ -334,7 +360,7 @@ public class PortalTunnel internal constructor(
     } catch (e: Exception) {
         throw PortalException(
             PortalFailure.Codes.PROTOCOL_ERROR,
-            "native status is not valid JSON: ${e.message}"
+            "native status is not valid JSON"
         )
     }
 

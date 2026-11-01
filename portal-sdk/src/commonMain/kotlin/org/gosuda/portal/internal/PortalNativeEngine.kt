@@ -26,8 +26,8 @@ internal val PortalJson: Json = Json {
  */
 internal interface PortalNativeEngine {
     /**
-     * Installs the process-global native event listener. Called at most once
-     * per client; later calls replace the listener.
+     * Installs the process-global native event listener. The event hub calls
+     * this once per engine instance; later calls replace the listener.
      */
     fun setEventListener(listener: (tunnelId: String, eventType: String, payloadJson: String) -> Unit)
 
@@ -37,7 +37,6 @@ internal interface PortalNativeEngine {
     /** Starts a tunnel; returns the native tunnel id. */
     fun start(configJson: String): String
     fun stop(tunnelId: String)
-    fun stopAll()
 
     fun getStatus(tunnelId: String): String
     fun addRelay(tunnelId: String, relayUrl: String)

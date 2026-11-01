@@ -88,8 +88,6 @@ internal class DesktopPortalEngine private constructor(
     override fun stop(tunnelId: String) =
         callUnit("stop") { err -> library.PortalStop(cstr(tunnelId), err) }
 
-    override fun stopAll() = library.PortalStopAll()
-
     override fun getStatus(tunnelId: String): String =
         callString("getStatus") { out, err ->
             library.PortalGetStatus(cstr(tunnelId), out, err)

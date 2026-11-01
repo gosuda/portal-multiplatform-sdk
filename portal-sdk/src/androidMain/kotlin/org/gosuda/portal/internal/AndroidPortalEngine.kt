@@ -1,5 +1,6 @@
 package org.gosuda.portal.internal
 
+import kotlinx.coroutines.CancellationException
 import org.gosuda.portal.PortalException
 import org.gosuda.portal.PortalFailure
 import org.gosuda.portal.android.internal.PortalJni
@@ -28,9 +29,6 @@ internal class AndroidPortalEngine : PortalNativeEngine {
     override fun stop(tunnelId: String) =
         call("stop") { PortalJni.stop(tunnelId) }
 
-    override fun stopAll() =
-        call("stopAll") { PortalJni.stopAll() }
-
     override fun getStatus(tunnelId: String): String =
         call("getStatus") { PortalJni.getStatus(tunnelId) }
 
@@ -45,6 +43,8 @@ internal class AndroidPortalEngine : PortalNativeEngine {
 
     private inline fun <T> call(operation: String, block: () -> T): T = try {
         block()
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: PortalNativeUnavailableException) {
         throw PortalException(
             PortalFailure.Codes.NATIVE_UNAVAILABLE,

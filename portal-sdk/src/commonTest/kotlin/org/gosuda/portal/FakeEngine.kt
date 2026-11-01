@@ -20,6 +20,8 @@ internal class FakeEngine : PortalNativeEngine {
     val stoppedIds = mutableListOf<String>()
     val startedIds = mutableListOf<String>()
     val startedConfigs = mutableListOf<PortalConfig>()
+    val addedRelays = mutableListOf<String>()
+    val removedRelays = mutableListOf<String>()
 
     /** When set, `start` suspends until this deferred completes. */
     var startGate: CompletableDeferred<Unit>? = null
@@ -32,6 +34,7 @@ internal class FakeEngine : PortalNativeEngine {
 
     /** Failure delivered while reconciling a newly adopted native handle. */
     var statusFailure: Throwable? = null
+    var statusJsonOverride: String? = null
 
     /** When true, `start` emits STARTED + STATUS_CHANGED before returning. */
     var emitEventsInsideStart = true
@@ -83,17 +86,13 @@ internal class FakeEngine : PortalNativeEngine {
         emit(tunnelId, "STOPPED", "{}")
     }
 
-    override fun stopAll() {
-        stoppedIds.add("*")
-    }
-
     override fun getStatus(tunnelId: String): String {
         statusFailure?.let { throw it }
-        return statusJson(tunnelId, startedConfigs.lastOrNull())
+        return statusJsonOverride ?: statusJson(tunnelId, startedConfigs.lastOrNull())
     }
 
-    override fun addRelay(tunnelId: String, relayUrl: String) {}
-    override fun removeRelay(tunnelId: String, relayUrl: String) {}
+    override fun addRelay(tunnelId: String, relayUrl: String) { addedRelays.add(relayUrl) }
+    override fun removeRelay(tunnelId: String, relayUrl: String) { removedRelays.add(relayUrl) }
     override fun updateMetadata(tunnelId: String, metadataJson: String) {}
 
     fun emit(tunnelId: String, type: String, payload: String) {
@@ -113,6 +112,8 @@ internal class FakeEngine : PortalNativeEngine {
                     PortalRelayStatus(
                         relayUrl = "https://relay.fake",
                         publicUrl = "https://$name.portal.example",
+                        tcpAddr = if (statusActive && config?.tcp == true) "127.0.0.1:4000" else null,
+                        udpAddr = if (statusActive && config?.udp == true) "127.0.0.1:4001" else null,
                         state = if (statusActive) "ready" else "connecting"
                     )
                 )

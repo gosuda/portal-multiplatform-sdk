@@ -1,22 +1,14 @@
 import SwiftUI
 
 @main
+@MainActor
 struct PortalSampleApp: App {
-    private let contents: SampleContents
-    private let identityPath: String
-
-    init() {
-        let bundle = Bundle.main
-        let siteDir = bundle.resourceURL!.appendingPathComponent("site").path
-        let explainerDir = bundle.resourceURL!.appendingPathComponent("site-explainer").path
-        contents = SampleContents(siteDir: siteDir, explainerDir: explainerDir)
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        identityPath = docs.appendingPathComponent("identity.json").path
-    }
+    // The app, not a navigation destination, owns the SDK client and demos.
+    @StateObject private var model = PortalHomeModel()
 
     var body: some Scene {
         WindowGroup {
-            PortalHomeView(contents: contents, identityPath: identityPath)
+            PortalHomeView(model: model)
         }
     }
 }

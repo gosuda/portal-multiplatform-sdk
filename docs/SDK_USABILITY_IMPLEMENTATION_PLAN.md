@@ -1,8 +1,10 @@
 # SDK Usability Implementation Plan
 
 Date: 2026-09-18
-Status: implemented on macOS (2026-09-19); P4 release/distribution and
-post-release consumer verification remain open
+Status: historical implementation plan. Current easy-path APIs, supported
+capabilities and sample contracts are defined by DESIGN_RULES.md and README.md.
+P4 release/distribution and post-release consumer verification remain open;
+WORK_CHECKPOINT.md records current platform evidence.
 
 ## 1. Goal
 
@@ -262,17 +264,16 @@ Do not combine P4 release/distribution work with public API changes.
 Files:
 
 - `docs/SDK_USABILITY_IMPLEMENTATION_PLAN.md`
-- `samples/android/src/main/java/org/gosuda/portal/sample/QuickStartContract.kt`
-- `samples/ios/QuickStartContract.swift`
+- runnable Android and iOS sample owners/configuration
 - `samples/ios/project.yml`
 - `.github/workflows/gradle.yml`
 
 Steps:
 
-1. Add compile-only snippets containing exactly the intended quick-start calls.
-2. Include the Swift file in the generated Xcode sample target.
-3. Add the Android snippet to the existing sample source set so
-   `:samples:android:compileDebugKotlin` checks it.
+1. Exercise the intended quick-start API in the runnable sample owner.
+2. Include the Swift implementation in the generated Xcode sample target.
+3. Compile the Android implementation in the existing sample source set.
+   Do not retain duplicate compile-only snippets alongside real call sites.
 4. Add a macOS CI step that builds the generated iOS sample after the
    XCFramework and engine archive are available. Until native artifacts are
    distributable, keep this as a documented local/release check rather than a
@@ -285,10 +286,10 @@ Acceptance:
 
 - Android contract is at most 10 app-code lines.
 - Swift contract is at most 15 app-code lines.
-- Both fixtures use public APIs only.
-- Renaming or changing a documented API breaks a compiled fixture.
+- Runnable samples use public APIs only.
+- Renaming or changing a documented API breaks the actual sample build.
 
-Commit: `test(samples): lock quick-start api contracts`
+Verification superseded by runnable SDK workbenches on 2026-11-01.
 
 ### P1 — Make identity defaults platform-safe
 
@@ -347,18 +348,16 @@ Files:
 - `portal-sdk/src/iosMain/kotlin/org/gosuda/portal/PortalIos.kt` or a focused
   `PortalIosConfigFactory.kt`
 - `portal-sdk/src/commonTest/kotlin/org/gosuda/portal/PortalConfigTest.kt`
-- quick-start contract fixtures
+- runnable sample configuration and local protocol smoke
 
-RED checks, one observable contract per factory:
+Behavior checks:
 
-- HTTP sets only `target_addr` plus an optional name.
-- routes preserve route order and do not synthesize static/upstream values.
-- TCP sets `tcp=true`.
-- UDP sets both `udp=true` and `udp_addr`.
-- static site sets directory and the default/explicit index.
-- serialized defaults remain absent.
-- opening invalid factory output still returns the existing structured
-  `INVALID_CONFIG` rather than a factory-specific exception.
+- HTTP, route, TCP, UDP, and static-site modes perform real requests through
+  their configured local payloads; route selection and order remain visible.
+- Serialized defaults remain absent (the load-bearing native wire contract).
+- Invalid factory output fails through the shared validation path with
+  structured `INVALID_CONFIG`, not a factory-specific exception.
+- Do not keep tests that only repeat factory assignments or incidental defaults.
 
 GREEN implementation:
 
@@ -389,7 +388,7 @@ Files:
 - `portal-sdk/src/commonTest/kotlin/org/gosuda/portal/PortalClientTest.kt`
 - `portal-sdk/src/commonTest/kotlin/org/gosuda/portal/FakeEngine.kt`
 - iOS facade tests
-- quick-start contract fixtures
+- runnable sample publish paths
 
 Extend `FakeEngine` only with controls needed to observe readiness and cleanup;
 do not introduce timing sleeps.

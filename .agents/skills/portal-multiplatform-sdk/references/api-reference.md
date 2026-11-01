@@ -1,4 +1,28 @@
 # API Reference — org.gosuda.portal
+## Normal publish path
+
+Install the staged Maven artifacts or locally packaged XCFramework from the
+root README first; the checked-in `0.1.0` coordinates are not a public release.
+Start your app-owned loopback HTTP server, then create one long-lived client
+and publish one factory config:
+
+```kotlin
+val client = PortalClient(applicationContext) // Android
+// Desktop instead: PortalDesktop.client("com.example.myapp")
+val tunnel = client.publish(PortalConfig.http("127.0.0.1:8080"))
+println(tunnel.publicUrl)
+```
+
+Keep the server and client alive while serving, then `tunnel.stop()` or
+`client.close()` at the corresponding owner teardown. Handle `PortalException`
+through `failure.code`, `operation` and `retryable`; cancellation propagates.
+The SDK owns persistent platform identity, readiness waiting and rollback, so
+none requires an app-managed path or polling/cleanup sequence.
+
+ACTIVE covers all requested capabilities. HTTP/static require a ready public
+URL; TCP/UDP each require a nonblank transport endpoint on a ready relay.
+ACTIVE is not an upstream-health check. TCP/UDP endpoints are not browser URLs.
+
 
 ## PortalClient
 
@@ -57,7 +81,7 @@ data class PortalSnapshot(
     sessionId: String, generation: Int, revision: Long,
     phase: TunnelPhase,                       // IDLE STARTING CONNECTING ACTIVE STOPPING STOPPED FAILED
     requestedCapabilities: Set<Capability>,
-    readyCapabilities: Set<Capability>,       // requested ∩ confirmed-active
+    readyCapabilities: Set<Capability>,       // confirmed per ready relay endpoint
     publicUrls: List<String>,                 // primaryPublicUrl = first
     relays: List<PortalRelayStatus>,          // isReady/isConnecting/isFailed
     lastFailure: PortalFailure?,
@@ -80,12 +104,29 @@ thumbnail, hide, staticDir, staticIndex, targetAddr, udpAddr,
 httpRoutes(prefix, upstream|staticRoot, staticIndex, methods, amount),
 x402(payTo, testnet, network, asset, endpoints, facilitatorToken).
 
+The bundled portal-tunnel v2.7.1 uses relay protocol 10. `ech`, `x402`,
+nonempty route `methods`, route `amount`, and `overlay` are recognized v1
+fields but fail with `UNSUPPORTED_CAPABILITY` before native start. Consult
+`client.capabilities()`; never imply these policies are applied.
+
 `PortalConfig.Builder` mirrors portal-android-sdk setters.
 
-Intent factories (companion): `PortalConfig.http(targetAddr, name)`,
-`.routes(routes, name)`, `.tcp(name)`, `.udp(addr, name)`,
-`.staticSite(dir, index, name)` — each sets only its mode's fields; all other
-fields keep wire defaults and flow through the same validation.
+Intent factories (companion), with exact Kotlin argument names/defaults:
+
+```kotlin
+PortalConfig.http(targetAddress: String, name: String? = null): PortalConfig
+PortalConfig.routes(routes: List<PortalHTTPRoute>, name: String? = null): PortalConfig
+PortalConfig.tcp(targetAddress: String, name: String? = null): PortalConfig
+PortalConfig.udp(targetAddress: String, name: String? = null): PortalConfig
+PortalConfig.staticSite(
+    directory: String, index: String = "index.html", name: String? = null
+): PortalConfig
+```
+
+Each sets only its mode's fields; TCP sets `tcp` plus `targetAddr`, UDP sets
+`udp` plus `udpAddr`. All other fields retain wire defaults and use the same
+validation. Routes choose the longest matching path prefix, not list order;
+`/` can be a catch-all. Each route needs exactly one upstream or static root.
 
 ## PortalIdentity
 
@@ -164,9 +205,13 @@ failures surface as `PERMISSION_DENIED`. Per-OS identity defaults:
 ## iOS facade (iosMain)
 
 ```kotlin
-class PortalIosClient(allowRemoteTargets, defaultIdentityPath) {
+class PortalIosClient {
+    constructor()
+    constructor(allowRemoteTargets: Boolean = false, defaultIdentityPath: String? = null)
+    val sessions: List<PortalIosSession> // owned snapshot, including failed STOPPING cleanup
     fun diagnostics(): PortalDiagnostics
     fun open(config, completion: (PortalIosSession?, PortalFailure?) -> Unit): PortalOperation
+    fun publish(config, completion: (PortalIosSession?, PortalFailure?) -> Unit): PortalOperation
     fun publish(config, timeoutMillis, completion: (PortalIosSession?, PortalFailure?) -> Unit): PortalOperation
     fun close(completion: (PortalFailure?) -> Unit)
 // PortalIosSession adds: refresh, addRelay, removeRelay, updateMetadata,
@@ -184,16 +229,28 @@ class PortalIosSession {
 Completions fire once on the main dispatcher. `PortalOperation.cancel()`
 cancels an in-flight open/publish; `PortalSubscription.cancel()` ends
 observation only.
+Failed publish/cancellation rollback remains reachable via `client.sessions`;
+retry `session.stop()` rather than losing the native handle.
 
 When a config sets neither `identityJson` nor `identityPath`, the client
 resolves `Application Support/Portal/identity.json` at open/publish time
 (filesystem failures surface as PERMISSION_DENIED through the completion).
 `defaultIdentityPath` overrides that platform default.
-`PortalIosConfigFactory` gives Swift callers the intent factories with a
-stable spelling: `PortalIosConfigFactory.shared.http(targetAddress:name:)`,
-`.routes`, `.tcp`, `.udp`, `.staticSite`, plus `.custom(...)` — the advanced
-escape hatch covering every `PortalConfig` field without the generated
-all-fields initializer or `KotlinBoolean`.
+Swift's normal path is `PortalIosClient()` followed by
+`client.publish(config: PortalIosConfigFactory.shared.http(targetAddress:
+"127.0.0.1:8080")) { session, failure in … }`. The no-timeout overload uses
+30 seconds. `PortalIosConfigFactory.shared` exports these one-argument forms:
+`http(targetAddress:)`, `tcp(targetAddress:)`, `udp(targetAddress:)`,
+`routes(routes:)`, and `staticSite(directory:)`.
+`httpRoute(prefix:upstream:)` and `staticRoute(prefix:directory:)` construct
+route entries without the generated all-fields initializer.
+
+Named forms are `http(targetAddress:name:)`, `tcp(targetAddress:name:)`,
+`udp(targetAddress:name:)`, `routes(routes:name:)`; static's advanced form is
+`staticSite(directory:index:name:)`. `.custom(...)` covers the advanced
+config fields without a generated all-fields initializer or `KotlinBoolean`.
+See `docs/SWIFT_API.md` for every exported facade signature, including the
+explicit constructor and configurable-timeout publish overload.
 
 ## Android lifecycle (portal-android-lifecycle)
 

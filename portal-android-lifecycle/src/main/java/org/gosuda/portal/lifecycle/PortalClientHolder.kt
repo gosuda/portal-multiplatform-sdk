@@ -1,10 +1,10 @@
 package org.gosuda.portal.lifecycle
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.gosuda.portal.PortalClient
 import org.gosuda.portal.PortalConfig
@@ -64,7 +64,9 @@ public object PortalClientHolder {
      */
     public fun open(config: PortalConfig, onResult: (Result<PortalTunnel>) -> Unit) {
         scope.launch(Dispatchers.Main) {
-            onResult(runCatching { client.open(config) })
+            onResult(runCatching { client.open(config) }.onFailure {
+                if (it is CancellationException) throw it
+            })
         }
     }
 
@@ -80,7 +82,9 @@ public object PortalClientHolder {
         onResult: (Result<PortalTunnel>) -> Unit
     ) {
         scope.launch(Dispatchers.Main) {
-            onResult(runCatching { client.publish(config, timeoutMillis) })
+            onResult(runCatching { client.publish(config, timeoutMillis) }.onFailure {
+                if (it is CancellationException) throw it
+            })
         }
     }
 

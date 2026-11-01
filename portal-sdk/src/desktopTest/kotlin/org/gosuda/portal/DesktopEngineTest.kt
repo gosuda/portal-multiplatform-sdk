@@ -97,8 +97,4 @@ class DesktopEngineTest {
         assertTrue(status.contains("stub.portal.example"))
     }
 
-    @Test
-    fun stopAllDoesNotThrow() {
-        engine().stopAll()
-    }
 }

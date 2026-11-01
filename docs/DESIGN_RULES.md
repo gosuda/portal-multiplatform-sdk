@@ -66,6 +66,10 @@ app (Kotlin / Swift)
   STOPPING (retryable via `stop()`) and is reported with
   `operation="publish_cleanup"`; cancellation still propagates as
   `CancellationException`.
+- ACTIVE requires every requested capability. A ready HTTP lease cannot imply
+  raw transport readiness: TCP requires a nonblank `tcp_addr` on a ready relay,
+  UDP requires `udp_addr`, and HTTP/static require a ready public URL. Endpoint
+  withdrawal removes that capability and returns the session to CONNECTING.
 - Publish failures are typed: `PortalFailure.operation` is `publish` or
   `publish_cleanup`, `terminalPhase` records the phase that ended the
   session, and `readinessFailure` carries the original readiness error when
@@ -77,9 +81,14 @@ app (Kotlin / Swift)
   client after the block; `PortalClientHolder.publish` is the process-owned
   ready-on-return callback; iOS teardown is `PortalIosClient.close` +
   `PortalOperation.cancel`. Each pattern stops only its owner's sessions.
+- iOS exposes a point-in-time `PortalIosClient.sessions` ownership snapshot.
+  Failed publish/cancellation cleanup remains reachable in STOPPING; `stop`
+  can retry cleanup even after the client has closed.
 - `PortalDiagnostics` reports `engineVersion` (portal-tunnel core), and
-  per-session `activeRelay`/`lastFailure`; it never contains identity
-  documents, keys, tokens, or request bodies.
+  per-session relay origin/last structured failure. It redacts configured
+  inline identity material from diagnostic failure messages,
+  including nested readiness failures. Raw snapshots/native errors are not
+  sanitized logging exports.
 
 ## 4. Memory & threads (native)
 
@@ -99,12 +108,17 @@ app (Kotlin / Swift)
 - Relay URLs: `https` only; bare hosts default to `https`; `http` is
   accepted only for loopback hosts (the engine upgrades it); no user-info;
   port 1-65535. Mirrors `utils.NormalizeRelayURL` in portal-tunnel.
-- `target_addr`/`udp_addr` are loopback-only unless `allowRemoteTargets`.
-- `static_dir` rejects `..` segments; `static_index` is a plain file name.
-- A route needs exactly one of `upstream`/`static_root`; `amount` is a
-  decimal string (never Float/Double).
-- `overlay` is not in the v1 capability set; requesting it fails with
-  `UNSUPPORTED_CAPABILITY` rather than being silently ignored.
+  The same normalization and validation apply to live relay additions/removals;
+  bracketed IPv6 literals are accepted.
+- `target_addr`/`udp_addr` and HTTP route upstreams are loopback-only unless
+  `allowRemoteTargets`; wildcard addresses also require that explicit opt-in.
+- Static directories/route roots reject `..` segments; static indexes are plain
+  file names. Live metadata is limited by its UTF-8 byte size, not UTF-16 length.
+- A route needs exactly one of `upstream`/`static_root`.
+- The bundled portal-tunnel v2.7.1 uses relay protocol 10. ECH, x402,
+  priced routes, method-constrained routes and overlay are not supported by
+  this bridge. Recognized v1 fields fail with `UNSUPPORTED_CAPABILITY` before
+  native start; they must never be silently ignored or advertised as applied.
 - `PortalIdentity.document` is secret: redacted from `toString`, never
   logged; store via Keystore-wrapped file (Android) or Keychain (iOS).
 - `PortalConfig.toString()` and `PortalX402Config.toString()` redact inline
@@ -121,6 +135,12 @@ app (Kotlin / Swift)
 
 ## 6. Platform contracts
 
+- Ordinary onboarding is one application-owned client plus
+  `publish(intentFactory(...))`; identity persistence, readiness waiting and
+  failed-start rollback belong to the SDK. Kotlin `PortalConfig.tcp(address)`
+  sets both transport and target. Swift exports a real `PortalIosClient()`,
+  one-argument intent factories, two-argument route-entry factories and a
+  no-timeout-argument `publish` overload using the default 30 seconds.
 - Android: foreground-first. Long-running tunnels belong to an explicit
   service owner; the SDK never auto-starts services. Shipped ABIs:
   arm64-v8a, x86_64 (both 16KB-page aligned). minSdk 26.
@@ -157,9 +177,9 @@ app (Kotlin / Swift)
 - `native/source-lock.json` tracks core/bridge commits, toolchains, and
   artifact SHA-256s. `UNRESOLVED`/`PENDING`/`MISSING` fields block releases.
   Review every bundled dependency, not only Portal Tunnel's MIT license.
-  The current native graph includes LGPL-3.0-or-later `go-ethereum`; the
-  unresolved notices/source/static-link redistribution review blocks public
-  binary publication but does not block manual build verification.
+  The v2.7.1 SDK graph no longer links the previous `go-ethereum`/LGPL
+  dependency. The full notices/source/redistribution review remains unresolved
+  and blocks public binary publication, not local build verification.
 - The Go mobile bridge is reimplemented in `native/bridge` (upstream
   `portal-tunnel/mobile` was removed); iOS archives are built locally and
   gitignored. iOS engine support is verified: `iosSimulatorArm64Test` links
@@ -180,3 +200,33 @@ app (Kotlin / Swift)
 - Swift releases contain a complete downloadable local package ZIP, including
   wrapper sources and the XCFramework. A loose `Package.swift` release asset
   is not a remotely resolvable SwiftPM package.
+
+## 8. Sample applications
+
+- Samples demonstrate the SDK, not a separate game engine, model manager, or
+  server-installation product. Protocol listeners and request inspection belong
+  to sample modules, never `portal-sdk`.
+- Client-side web games are static-site examples. Keep one flat shared bundle
+  under `samples/shared/common/site` for Android assets, the iOS bundle and
+  desktop application resources. Snake, memory pairs, reaction testing and
+  volume-based water sloshing run in the browser, with keyboard/touch input,
+  local-tab scores, bounded work and paused/released input when hidden.
+  Do not add game state, installers, sensor permissions or frontend dependencies
+  to the SDK, or imply multiplayer/global score persistence.
+- Offer runnable static-site, HTTP API/webhook, HTTP prefix-route, TCP echo,
+  and UDP echo demonstrations, plus explicit custom loopback upstream inputs.
+  Built-in listeners bind only to loopback and have bounded input and logs.
+- Explain which SDK API each mode exercises and how to send a real request.
+  ACTIVE is tunnel readiness, not proof of upstream application success.
+  Show raw TCP/UDP relay addresses separately from browser URLs.
+- Configuration drafts apply to the next session; metadata/relay commands
+  target the current owned session. A display-name edit never rotates or
+  overwrites a persisted private identity.
+- Observation belongs to the view; sessions and built-in listeners belong to
+  the application owner. Failed rollback/stop keeps the owned session and its
+  payload reachable for retry. Stop listeners only after terminal cleanup.
+- Request inspection records bounded method/path or transport counters, not
+  authorization headers, identity documents, tokens, or request bodies.
+- Android background operation requires explicit foreground-service ownership;
+  iOS promises foreground operation only; desktop ends with its process unless
+  the user explicitly keeps the application alive.

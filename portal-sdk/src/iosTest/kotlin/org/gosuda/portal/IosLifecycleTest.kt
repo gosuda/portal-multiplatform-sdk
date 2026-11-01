@@ -21,7 +21,7 @@ import platform.Foundation.dateWithTimeIntervalSinceNow
 import platform.Foundation.timeIntervalSince1970
 
 class IosLifecycleTest {
-    private val config = PortalConfig.tcp(name = "lifecycle-test")
+    private val config = PortalConfig.tcp("127.0.0.1:8080", name = "lifecycle-test")
 
     @Test
     fun closeRetriesFailedNativeCleanupAfterOwnerScopeWasCancelled() {
@@ -72,6 +72,108 @@ class IosLifecycleTest {
         assertTrue(onMain.load())
         assertEquals(1, calls.load())
         assertEquals(PortalFailure.Codes.CLIENT_CLOSED, failure.load()?.code)
+    }
+
+    @Test
+    fun failedPublishCleanupRemainsReachableAndRetryableWithoutClosingClient() {
+        val engine = FakeEngine().apply {
+            statusActive = false
+            stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop failed")
+        }
+        val client = PortalIosClient(engine, allowRemoteTargets = false, defaultIdentityPath = "/test/identity.json")
+        var completed = false
+        var failure: PortalFailure? = null
+        client.publish(config, timeoutMillis = 1) { session, result ->
+            assertNull(session)
+            failure = result
+            completed = true
+        }
+        pumpUntil { completed }
+        assertEquals("publish_cleanup", failure?.operation)
+        val retained = client.sessions.single()
+        assertEquals(TunnelPhase.STOPPING, retained.snapshot.phase)
+        assertTrue(!client.isClosed)
+
+        engine.stopFailure = null
+        var stopped = false
+        retained.stop { result -> assertNull(result); stopped = true }
+        pumpUntil { stopped }
+        assertEquals(TunnelPhase.STOPPED, retained.snapshot.phase)
+        assertTrue(client.sessions.isEmpty())
+        var closed = false
+        client.close { closed = true }
+        pumpUntil { closed }
+    }
+
+    @Test
+    fun cancelledPublishRetainsFailedRollbackWithoutDeliveringCompletion() {
+        val engine = FakeEngine().apply {
+            statusActive = false
+            stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop failed")
+        }
+        val client = PortalIosClient(engine, allowRemoteTargets = false, defaultIdentityPath = "/test/identity.json")
+        var completions = 0
+        val operation = client.publish(config) { _, _ -> completions++ }
+        pumpUntil { client.sessions.isNotEmpty() }
+        operation.cancel()
+        pumpUntil {
+            client.sessions.singleOrNull()?.snapshot?.let {
+                it.phase == TunnelPhase.STOPPING && it.lastFailure != null
+            } == true
+        }
+        assertEquals(0, completions)
+        engine.stopFailure = null
+        var closed = false
+        client.close { result -> assertNull(result); closed = true }
+        pumpUntil { closed }
+        assertTrue(client.sessions.isEmpty())
+    }
+
+    @Test
+    fun sessionStopCanRetryAfterClientCloseCleanupFailed() {
+        val engine = FakeEngine()
+        val client = PortalIosClient(engine, allowRemoteTargets = false, defaultIdentityPath = "/test/identity.json")
+        var opened = false
+        client.open(config) { _, result -> assertNull(result); opened = true }
+        pumpUntil { opened }
+        engine.stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop failed")
+        var closed = false
+        client.close { result -> assertNotNull(result); closed = true }
+        pumpUntil { closed }
+        val retained = client.sessions.single()
+        engine.stopFailure = null
+        var stopped = false
+        retained.stop { result -> assertNull(result); stopped = true }
+        pumpUntil { stopped }
+        assertEquals(TunnelPhase.STOPPED, retained.snapshot.phase)
+        assertTrue(client.sessions.isEmpty())
+    }
+
+    @Test
+    fun closedStateObserverDeliversTerminalSnapshotOnMainFromWorkerThread() {
+        val client = PortalIosClient(FakeEngine(), allowRemoteTargets = false, defaultIdentityPath = "/test/identity.json")
+        var session: PortalIosSession? = null
+        client.open(config) { opened, failure -> assertNull(failure); session = opened }
+        pumpUntil { session != null }
+        val opened = assertNotNull(session)
+        var closed = false
+        client.close { failure -> assertNull(failure); closed = true }
+        pumpUntil { closed }
+        val calls = AtomicInt(0)
+        val onMain = AtomicBoolean(false)
+        val terminal = AtomicBoolean(false)
+
+        CoroutineScope(Dispatchers.Default).launch {
+            opened.observeState { snapshot ->
+                onMain.store(NSThread.isMainThread)
+                terminal.store(snapshot.isTerminal)
+                calls.addAndFetch(1)
+            }
+        }
+        pumpUntil { calls.load() > 0 }
+        assertTrue(onMain.load())
+        assertTrue(terminal.load())
+        assertEquals(1, calls.load())
     }
 
     private fun pumpUntil(condition: () -> Boolean) {

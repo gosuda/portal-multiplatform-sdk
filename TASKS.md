@@ -1,5 +1,19 @@
 # Tasks
 
+## Completed — SDK workbenches and shared arcade (2026-11-01)
+
+- [x] Simplified Kotlin TCP and Swift default publish/configuration APIs while
+      preserving SDK-owned identity, readiness and cleanup.
+- [x] Fixed validated lifecycle/security/readiness defects and migrated the
+      native engine to protocol 10, including incremental iOS archive inputs.
+- [x] Removed heavyweight installers, obsolete content/dependencies and
+      duplicate compile-only fixtures; kept five runnable SDK transport modes.
+- [x] Added one shared static arcade with Snake, memory pairs, reaction testing
+      and sloshing water fill, including keyboard/touch play and real scoring.
+- [x] Verified SDK suites, public transport round trips, sample builds and
+      browser gameplay. Current delivery/phone evidence is in
+      [`docs/WORK_CHECKPOINT.md`](docs/WORK_CHECKPOINT.md).
+
 ## Planned — KMP Desktop expansion
 
 Detailed architecture, file ownership, packaging, CI matrix, RED/GREEN steps,
@@ -19,11 +33,11 @@ and release criteria:
 - [x] D3 — Packaged checksum-indexed native resources in
       `portal-native-desktop` with deterministic, content-addressed
       extraction (file lock + fsync + atomic move) and no runtime downloads.
-- [x] D4 — Added a Compose Desktop sample publishing a loopback HTTP server
-      plus a headless `:samples:desktop:smoke` real-relay publish check.
-      Follow-up (2026-09-18): desktop-native sidebar layout, a real playable
-      Minecraft 1.21.1 server (`:samples:desktop:minecraftSmoke` join test),
-      and in-app Ollama setup (`OllamaSetup` managed daemon).
+- [x] D4 — Replaced the desktop sample with five SDK-focused demos: bundled
+      static files, HTTP API/webhooks, prefix routes, TCP and UDP echo.
+      `:samples:desktop:workbenchSmoke` exercises local listeners;
+      `:samples:desktop:smoke -Pportal.smoke.mode=ALL` performs real public-relay
+      round trips for all five modes.
 - [x] D5 — Added a per-OS `desktop-native` CI build/verify matrix and a
       `desktop-package` job gating on the complete runtime matrix; verified a
       clean Maven Local consumer resolves the desktop variant and loads the
@@ -62,11 +76,9 @@ packaging, verification commands, and exit criteria:
 
 - [x] Set onboarding budgets: Android local HTTP publish in ≤10 app-code lines;
       Swift in ≤15 lines; no caller-managed identity path on either platform.
-- [x] Add compile-only consumer fixtures for the documented Android/Kotlin and
-      Swift entry points so examples cannot drift from the exported API.
-      (`samples/android/.../QuickStartContract.kt`,
-      `samples/ios/QuickStartContract.swift` — wired into both build targets;
-      Android/Swift compilation pending a host with the SDK/Xcode.)
+- [x] Compiled public Kotlin/Swift APIs through the runnable sample apps.
+      Redundant compile-only snippets were removed in the 2026-11-01 sample
+      cutover; sample builds and runtime smoke now cover the real call sites.
 
 ### P1 — Make platform defaults safe
 
@@ -86,6 +98,9 @@ packaging, verification commands, and exit criteria:
       initializer and `KotlinBoolean` at Swift call sites.
 - [x] Preserve the raw constructor and builder as advanced escape hatches;
       validate every factory through the existing `ConfigValidation` path.
+- [x] Made TCP accept its target directly and exported real Swift defaults:
+      `PortalIosClient()`, one-argument config factories, route-entry helpers
+      and default-timeout `publish`.
 
 ### P3 — Add one-call publishing
 
@@ -98,21 +113,18 @@ packaging, verification commands, and exit criteria:
 
 ### P4 — Simplify distribution
 
-- [ ] Publish the Android/KMP artifact to Maven Central.
-      `android_ndk_revision` is pinned to r29 and the previous external
-      binary-license blocker was removed: Gradle now builds both JNI `.so`
-      files from the MIT-licensed `native/bridge`.
+- [ ] Publish the Android/KMP artifact to Maven Central after current native
+      dependency review, provenance and the complete release matrix pass.
+      Android JNI libraries are built from source with pinned NDK r29.
 - [x] Package the iOS engine with each published KMP klib and XCFramework
       slice so consumers do not build or manually link `libportaltunnel.a`.
-- [ ] Publish the generated versioned Swift package/XCFramework release asset.
-      The release workflow now builds and uploads the self-contained zip and
-      `Package.swift`; attaching them to the final GitHub release remains part
-      of the release operation.
+- [ ] Publish the generated XCFramework and complete local Swift-package ZIP.
+      The workflow prepares both artifacts; a public release is still gated.
 
 #### Next release verification
 
-- [ ] Push commit `24b3875` and run `Publish Multiplatform SDK` on a macOS
-      release runner.
+- [ ] Run manual release verification, or tag an approved `release(scope):`
+      commit with `release-*`; ordinary cleanup commits do not trigger release CI.
 - [x] Confirm all three staged iOS klibs contain `libportaltunnel.a`, the clean
       KMP consumer links its `iosArm64` framework, and the self-contained
       XCFramework passes embedded-symbol verification.
@@ -121,12 +133,9 @@ packaging, verification commands, and exit criteria:
       `package-ios-xcframework.sh` passes symbol checks on both slices.)
 - [ ] Publish the validated Android, desktop, and iOS Maven graph to Maven
       Central.
-- [x] Attach `PortalSDK.xcframework.zip` and the generated versioned
-      `Package.swift` to the matching GitHub release.
-      (Automated 2026-09-19: the publish workflow now generates the Dokka
-      reference and attaches the XCFramework zip, `Package.swift`, and
-      `dokka-html.zip` to the tag's GitHub release after Maven Central
-      succeeds; it still needs a green release run.)
+- [ ] Attach verified `PortalSDK.xcframework.zip`, `PortalSDK-swift-package.zip`,
+      checksums, native provenance and generated API documentation to the
+      approved GitHub release after the complete publication gates pass.
 
 ### P5 — Rebuild onboarding around outcomes
 
@@ -136,13 +145,10 @@ packaging, verification commands, and exit criteria:
       Android operation, identity persistence, and structured failure handling.
       (2026-09-19: README "Recipes" section covers all seven; structured
       failures documented with the new typed fields.)
-- [x] Update both sample apps to use the easy path, while retaining one
-      advanced screen or fixture that covers the low-level API.
-      (2026-09-19: Android/desktop contents declare factory-built
-      `baseConfig` merged with editor fields and publish via `client.publish`;
-      the iOS sample uses `PortalIosConfigFactory.custom` + `publish`.
-      `AdvancedContract.kt`/`.swift` fixtures keep raw `PortalConfig` +
-      `open` compiled; desktop `Smoke.kt` retains `open` + `awaitReady`.)
+- [x] Exercised factory configuration and owned-session lifecycle in runnable
+      samples rather than duplicate compile-only fixtures. The SDK workbenches
+      demonstrate static content, HTTP/webhooks, prefix routes, TCP, and UDP;
+      advanced inputs use the same public APIs.
 
 ### P6 — Remove remaining consumer friction
 
@@ -203,8 +209,8 @@ packaging, verification commands, and exit criteria:
       awkward; compile every documented Swift call site.
       (2026-09-19: reviewed `PortalSDK.h` on macOS — added
       `PortalIosConfigFactory.custom` and `PortalIosSession.primaryPublicUrl`;
-      `QuickStartContract.swift` + `AdvancedContract.swift` compile in the
-      sample target; `docs/SWIFT_API.md` records the reviewed surface.)
+      the runnable sample target compiles the exported API calls;
+      `docs/SWIFT_API.md` records the reviewed surface.)
 
 #### Outcome-oriented guidance
 
@@ -224,7 +230,7 @@ packaging, verification commands, and exit criteria:
 
 - [x] Keep first successful HTTP publication within 10 Android/Kotlin app-code
       lines and 15 Swift app-code lines, excluding imports and UI rendering.
-      (QuickStartContract.kt: 4 app lines; QuickStartContract.swift: 8.)
+      (See README quick starts; runnable samples exercise the same public API.)
 - [x] Verify identity persistence and automatic reuse across process relaunch
       on Android and iOS without a caller-supplied filesystem path.
       (2026-09-19: `IosIdentityPathTest` 8/8 — stable path across calls,

@@ -216,8 +216,13 @@ tasks.matching {
 // Each Apple cinterop embeds its matching Go archive into the published klib.
 // Consumers therefore resolve one KMP dependency and inherit Security linkage;
 // they never build or link libportaltunnel.a themselves.
-tasks.matching { it.name.startsWith("cinteropPortaltunnelIos") }.configureEach {
-    dependsOn(buildIosEngine, prepareIosInteropDefs)
+iosEngineTargets.forEach { targetName ->
+    val interopTaskName = "cinteropPortaltunnel${targetName.replaceFirstChar { it.uppercaseChar() }}"
+    tasks.matching { it.name == interopTaskName }.configureEach {
+        dependsOn(buildIosEngine, prepareIosInteropDefs)
+        // The klib embeds this archive; an unchanged .def path does not track its contents.
+        inputs.file(rootProject.file("native/ios/$targetName/libportaltunnel.a"))
+    }
 }
 
 // Kotlin/Native cinterop commonization and Dokka 2.1.0 reach back through

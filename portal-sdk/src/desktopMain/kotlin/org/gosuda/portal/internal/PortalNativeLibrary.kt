@@ -44,7 +44,6 @@ internal interface PortalNativeLibrary : Library {
     ): Int
 
     fun PortalStop(tunnelId: Pointer, outError: PointerByReference): Int
-    fun PortalStopAll()
 
     fun PortalGetStatus(
         tunnelId: Pointer,

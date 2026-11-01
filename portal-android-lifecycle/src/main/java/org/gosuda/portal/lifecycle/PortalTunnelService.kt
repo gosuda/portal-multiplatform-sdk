@@ -9,6 +9,7 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,8 +58,8 @@ public abstract class PortalTunnelService : Service() {
      */
     public fun startTunnel(config: PortalConfig, onResult: (Result<PortalTunnel>) -> Unit = {}) {
         serviceScope.launch {
-            onResult(runCatching {
-                client.open(config)
+            onResult(runCatching { client.open(config) }.onFailure {
+                if (it is CancellationException) throw it
             })
         }
     }
@@ -66,7 +67,11 @@ public abstract class PortalTunnelService : Service() {
     /** Stops every tunnel owned by this service. */
     public fun stopAllTunnels() {
         serviceScope.launch {
-            client.sessions.value.forEach { runCatching { it.stop() } }
+            client.sessions.value.forEach { tunnel ->
+                runCatching { tunnel.stop() }.onFailure {
+                    if (it is CancellationException) throw it
+                }
+            }
         }
     }
 

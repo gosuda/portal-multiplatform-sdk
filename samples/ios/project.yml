@@ -10,16 +10,11 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: PortalSampleApp.swift
-      - path: QuickStartContract.swift
-      - path: AdvancedContract.swift
       - path: PortalHomeView.swift
       - path: Contents.swift
       - path: LaunchScreen.storyboard
       - path: Assets.xcassets
-      - path: site
-        type: folder
-        buildPhase: resources
-      - path: site-explainer
+      - path: ../shared/common/site
         type: folder
         buildPhase: resources
     dependencies:

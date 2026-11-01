@@ -9,10 +9,8 @@
         android:name=".SampleApp"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Portal Sample"
-        android:largeHeap="true"
+        android:label="Portal Workbench"
         android:theme="@style/Theme.PortalSample">
-        <uses-native-library android:name="libOpenCL.so" android:required="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

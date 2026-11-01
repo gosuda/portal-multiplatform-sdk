@@ -95,8 +95,8 @@ case "$BIN" in
         ;;
     *.dylib)
         exports=$(nm -gU "$BIN" | awk '{print $NF}' | sed 's/^_//')
-        lipo -verify_arch x86_64 arm64 "$BIN"
         for arch in x86_64 arm64; do
+            lipo "$BIN" -verify_arch "$arch"
             slice_exports=$(nm -arch "$arch" -gU "$BIN" | awk '{print $NF}' | sed 's/^_//')
             for sym in "${REQUIRED[@]}"; do
                 grep -qx "$sym" <<<"$slice_exports" || err "missing $arch export: $sym"
@@ -177,7 +177,16 @@ while IFS= read -r dep; do
 done <<<"$deps"
 
 # --- 4. provenance -----------------------------------------------------------
-sha=$(python3 -c 'import hashlib, sys; print(hashlib.file_digest(open(sys.argv[1], "rb"), "sha256").hexdigest())' "$BIN")
+sha=$(python3 - "$BIN" <<'PY'
+import hashlib
+import sys
+digest = hashlib.sha256()
+with open(sys.argv[1], "rb") as source:
+    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+        digest.update(chunk)
+print(digest.hexdigest())
+PY
+)
 size=$(python3 -c 'import os, sys; print(os.path.getsize(sys.argv[1]))' "$BIN")
 note "sha256: $sha"
 note "size:   $size bytes"

@@ -19,6 +19,8 @@ android {
         compose = true
     }
 
+    sourceSets["main"].assets.directories.add(rootProject.file("samples/shared/common").absolutePath)
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -44,6 +46,4 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.litertlm.android)
 }

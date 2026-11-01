@@ -9,6 +9,37 @@ description: Kotlin Multiplatform SDK for Portal Tunnel — expose local service
 
 KMP wrapper over the `libportaltunnel` Go engine (v1 C ABI). Public API lives
 in `org.gosuda.portal`; the engine boundary is `internal PortalNativeEngine`.
+## Start with two steps
+
+First install staged Maven artifacts or a locally packaged XCFramework using
+the root README. `0.1.0` is unpublished; do not imply Maven Central or a remote
+SwiftPM release is available.
+
+1. Create one long-lived owner: Android `PortalClient(applicationContext)`,
+   desktop `PortalDesktop.client("com.example.myapp")`, or Swift
+   `PortalIosClient()`.
+2. Publish one factory config. Kotlin, inside a coroutine:
+   `client.publish(PortalConfig.http("127.0.0.1:8080"))`.
+   Swift: `client.publish(config:
+   PortalIosConfigFactory.shared.http(targetAddress: "127.0.0.1:8080")) {
+   session, failure in /* use session?.primaryPublicUrl or failure.code */ }`.
+
+Start the app's HTTP server before publishing and keep it, plus the client,
+alive while serving. The SDK supplies platform identity persistence, waits
+for readiness (30 seconds by default), and rolls back failed publish: do not
+ask consumers to build identity paths, polling or rollback routines for the
+normal path. At owner teardown call `client.close()` in Kotlin or
+`client.close { failure in ... }` in Swift; handle structured errors and retry
+retained STOPPING cleanup when necessary. Swift callbacks run on Main.
+
+For raw listeners use Kotlin `PortalConfig.tcp("127.0.0.1:9000")` or
+`.udp("127.0.0.1:9001")`; Swift uses
+`PortalIosConfigFactory.shared.tcp(targetAddress: "127.0.0.1:9000")` or
+`.udp(targetAddress: "127.0.0.1:9001")`. Read raw relay endpoints, not browser
+URLs. Names, explicit relays, custom timeout and constructor options belong
+after this minimal path. Never build TCP configs with a name-only factory
+and a later target-field copy.
+
 
 ## Mental model
 
@@ -25,15 +56,24 @@ in `org.gosuda.portal`; the engine boundary is `internal PortalNativeEngine`.
   directly.
 - `stop()` is retryable: failure leaves the session in STOPPING, still
   registered. Terminal phases (STOPPED/FAILED) never resurrect on late events.
+- ACTIVE means every requested capability is ready. Raw TCP/UDP each require
+  their own nonblank endpoint on a ready relay, not just an active HTTP lease.
+- HTTP prefix routing selects the longest matching prefix, not entered order;
+  `/` can be the catch-all. ACTIVE is not an upstream application-health check.
 - Cancelling `open`/`publish` rolls the native handle back; cancelling an
   observation never stops the tunnel.
+- Swift cleanup recovery is `PortalIosClient.sessions`: retained STOPPING
+  sessions remain reachable after failed publish/cancellation cleanup, and
+  `session.stop` can retry even after client close failed.
 
 ## Rules
 
 1. Validate before open: identity_json XOR identity_path; discovery=false
    needs >=1 relay; https-only relays (http allowed for loopback);
-   loopback targets unless `allowRemoteTargets`; route = upstream XOR
-   static_root; `overlay` is unsupported in v1 (UNSUPPORTED_CAPABILITY).
+   loopback targets and HTTP route upstreams unless `allowRemoteTargets`;
+   route = upstream XOR static_root. The bundled v2.7.1/protocol-10 engine
+   rejects ECH, x402/priced routes, method-constrained routes and overlay with
+   UNSUPPORTED_CAPABILITY. Live relay edits use the same normalization.
 2. `PortalIdentity.document` is secret — never log it; `toString` redacts.
    Persist via Keystore-wrapped file (Android) / Keychain (iOS).
 3. `encodeDefaults=false` on the wire codec is load-bearing. Do not change.
@@ -45,6 +85,12 @@ in `org.gosuda.portal`; the engine boundary is `internal PortalNativeEngine`.
    foreground-service owner chosen by the app.
 7. All SDK exceptions are `PortalException` with `failure.code` from
    `PortalFailure.Codes`; `CancellationException` always propagates.
+8. Samples are runnable SDK workbenches (static, HTTP/webhook, routes, TCP/UDP
+   echo). Demo listeners belong only to samples, bind loopback on ephemeral
+   ports, and stay alive until their owned tunnel actually stops.
+   Browser games are shared static content under `samples/shared/common/site`,
+   not SDK game/server code. Reuse that bundle across platforms; see the root
+   README's arcade instructions rather than duplicating platform pages.
 
 ## Files
 

@@ -1,255 +1,139 @@
 package org.gosuda.portal.sample
 
+import java.awt.EventQueue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.gosuda.portal.PortalClient
-import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalDesktop
 import org.gosuda.portal.PortalDiagnostics
-import org.gosuda.portal.PortalEvent
 import org.gosuda.portal.PortalException
-import org.gosuda.portal.PortalIdentity
+import org.gosuda.portal.PortalEvent
 import org.gosuda.portal.PortalMetadata
-import org.gosuda.portal.PortalSnapshot
 import org.gosuda.portal.PortalTunnel
-import org.gosuda.portal.sample.content.PublishableContent
-import org.gosuda.portal.sample.content.SampleContents
-import org.gosuda.portal.sample.content.SampleEnv
-import org.gosuda.portal.sample.content.ondevice.OnDeviceModelContent
-import java.io.File
 
-/**
- * Desktop application state + actions — the analogue of Android's
- * `SampleApp`/`MainActivity` merged. Owns the process-wide [PortalClient],
- * the current tunnel, and every action the screen invokes. The tunnel
- * outlives the window: closing to the tray keeps it alive.
- */
+/** One desktop window owns one client. Closing only exits after owned sessions are stopped. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PortalApp {
-
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    /** Process-wide client; created lazily so a missing engine doesn't
-     *  crash the app before the user publishes. */
-    val client: PortalClient by lazy {
-        PortalDesktop.client("org.gosuda.portal.sample.desktop")
-    }
-
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val clientDelegate: Lazy<PortalClient> = lazy { PortalDesktop.client("org.gosuda.portal.sample.desktop") }
+    private val client: PortalClient by clientDelegate
     val tunnel = MutableStateFlow<PortalTunnel?>(null)
     val busy = MutableStateFlow(false)
-    val keepAlive = MutableStateFlow(SampleSettings.getBoolean("keepAlive", false))
     val lastError = MutableStateFlow<String?>(null)
-    val identity = MutableStateFlow<PortalIdentity?>(null)
     val eventLog = MutableStateFlow<List<String>>(emptyList())
     val diagnostics = MutableStateFlow<PortalDiagnostics?>(null)
-
-    /** Content whose local payload is live for the current tunnel. */
-    private var activeContent: PublishableContent? = null
-
-    val snapshot: StateFlow<PortalSnapshot?> =
-        tunnel.flatMapLatest { it?.state ?: flowOf(null) }
-            .stateIn(scope, SharingStarted.Eagerly, tunnel.value?.state?.value)
+    private val payload = MutableStateFlow<LocalDemo?>(null)
+    val snapshot = tunnel.flatMapLatest { it?.state ?: flowOf(null) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+    val demoActivity = payload.flatMapLatest { it?.activity ?: flowOf(LocalDemo.Activity()) }
+        .stateIn(scope, SharingStarted.Eagerly, LocalDemo.Activity())
+    val localConfig = MutableStateFlow<org.gosuda.portal.PortalConfig?>(null)
 
     init {
-        observeEvents()
+        scope.launch {
+            tunnel.flatMapLatest { it?.events ?: flowOf(null) }.collect { event ->
+                if (event != null) eventLog.value = (eventLog.value + describe(event)).takeLast(40)
+            }
+        }
+        scope.launch {
+            tunnel.flatMapLatest { it?.state ?: flowOf(null) }.collect { state ->
+                if (state?.isTerminal == true && !busy.value) releasePayload()
+            }
+        }
     }
 
-    // ---- actions -----------------------------------------------------------
-
-    fun startTunnel(config: PortalConfig, contentId: String) {
+    fun startTunnel(request: WorkbenchRequest) {
         if (busy.value || tunnel.value?.state?.value?.isTerminal == false) return
         busy.value = true
         scope.launch {
-            lastError.value = null
-            val content = SampleContents.byId(contentId)
             try {
-                content.start()
-                val base = content.baseConfig()
-                val resolved = base.copy(
-                    name = config.name,
-                    description = config.description,
-                    tags = config.tags,
-                    relays = config.relays,
-                    discovery = config.discovery,
-                    ech = config.ech,
-                    banMitm = config.banMitm,
-                    hide = config.hide,
-                    udp = config.udp || base.udp,
-                    udpAddr = config.udpAddr ?: base.udpAddr,
-                    tcp = config.tcp || base.tcp,
-                    identityPath = resolveIdentityFile(config)
-                )
-                tunnel.value = client.publish(resolved)
-                activeContent = content
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                content.stop()
-                throw e
-            } catch (e: Exception) {
-                content.stop()
-                lastError.value = "Could not start publishing: ${e.message}"
+                lastError.value = null
+                releasePayload()
+                check(payload.value == null) { "Previous local demo cleanup failed; close the window to retry." }
+                val prepared = withContext(Dispatchers.IO) {
+                    LocalDemo.prepare(request).also { payload.value = it }
+                }
+                localConfig.value = prepared.config
+                tunnel.value = client.publish(prepared.config)
+            } catch (failure: CancellationException) {
+                withContext(NonCancellable) { recoverPublish() }
+                throw failure
+            } catch (failure: Exception) {
+                recoverPublish()
+                showFailure("Publish", failure)
             } finally {
+                if (tunnel.value?.state?.value?.isTerminal == true) releasePayload()
                 busy.value = false
             }
         }
     }
 
-    fun stopTunnel() {
-        val t = tunnel.value ?: return
+    private fun recoverPublish() {
+        val retained = if (clientDelegate.isInitialized())
+            client.sessions.value.firstOrNull { !it.state.value.isTerminal } else null
+        tunnel.value = retained
+        // publish_cleanup retains ownership and the local service until a successful stop retry.
+        if (retained == null) releasePayload()
+    }
+
+    @Synchronized
+    private fun releasePayload() {
+        val owned = payload.value ?: return
+        try {
+            owned.close()
+            payload.value = null
+        } catch (failure: Exception) { showFailure("Local demo cleanup", failure) }
+    }
+
+    fun stopTunnel() = operate("Stop (retry is safe)") {
+        tunnel.value?.stop()
+        releasePayload()
+    }
+    fun refresh() = operate("Refresh") { tunnel.value?.refresh() }
+    fun awaitReady() = operate("Await active") { tunnel.value?.awaitActive(15_000) }
+    fun updateMetadata(metadata: PortalMetadata) = operate("Metadata") { tunnel.value?.updateMetadata(metadata) }
+    fun addRelay(url: String) = operate("Add relay") { tunnel.value?.addRelay(url.trim()) }
+    fun removeRelay(url: String) = operate("Remove relay") { tunnel.value?.removeRelay(url.trim()) }
+    fun loadDiagnostics() = operate("Diagnostics") { diagnostics.value = client.diagnostics() }
+
+    private fun operate(label: String, operation: suspend () -> Unit) {
         if (busy.value) return
         busy.value = true
         scope.launch {
-            try {
-                t.stop()
-                lastError.value = null
-            } catch (e: PortalException) {
-                lastError.value = "Could not stop. Try again: ${e.message}"
-            } finally {
+            try { lastError.value = null; operation() }
+            catch (failure: CancellationException) { throw failure }
+            catch (failure: Exception) { showFailure(label, failure) }
+            finally {
+                if (tunnel.value?.state?.value?.isTerminal == true) releasePayload()
                 busy.value = false
             }
         }
     }
 
-    fun refresh() {
-        val t = tunnel.value ?: return
-        scope.launch {
-            try {
-                t.refresh()
-            } catch (e: PortalException) {
-                lastError.value = "refresh failed: ${e.code} ${e.message}"
-            }
-        }
-    }
-
-    fun awaitReady() {
-        val t = tunnel.value ?: return
-        scope.launch {
-            try {
-                t.awaitActive(timeoutMillis = 15_000)
-            } catch (e: PortalException) {
-                lastError.value = "awaitReady failed: ${e.code} ${e.message}"
-            }
-        }
-    }
-
-    fun generateIdentity() {
-        scope.launch {
-            try {
-                identity.value = PortalIdentity.generate("kmp-sample")
-            } catch (e: PortalException) {
-                lastError.value = "identity failed: ${e.code} ${e.message}"
-            }
-        }
-    }
-
-    fun updateMetadata(metadata: PortalMetadata) {
-        val t = tunnel.value ?: return
-        scope.launch {
-            try {
-                t.updateMetadata(metadata)
-            } catch (e: PortalException) {
-                lastError.value = "metadata failed: ${e.code} ${e.message}"
-            }
-        }
-    }
-
-    fun addRelay(url: String) {
-        val t = tunnel.value ?: return
-        scope.launch {
-            try {
-                t.addRelay(url)
-            } catch (e: PortalException) {
-                lastError.value = "addRelay failed: ${e.code} ${e.message}"
-            }
-        }
-    }
-
-    fun removeRelay(url: String) {
-        val t = tunnel.value ?: return
-        scope.launch {
-            try {
-                t.removeRelay(url)
-            } catch (e: PortalException) {
-                lastError.value = "removeRelay failed: ${e.code} ${e.message}"
-            }
-        }
-    }
-
-    fun loadDiagnostics() {
-        diagnostics.value = runCatching { client.diagnostics() }.getOrNull()
-    }
-
-    fun setKeepAlive(enabled: Boolean) {
-        keepAlive.value = enabled
-        SampleSettings.putBoolean("keepAlive", enabled)
-    }
-
-    fun onModelChanged() = OnDeviceModelContent.onModelChanged()
-
-    // ---- plumbing ----------------------------------------------------------
-
-    /**
-     * The public URL is `<identity-name>.<relay-domain>`, so the name field
-     * only takes effect when the saved identity's name differs — a fresh
-     * identity is generated and written over the file. An empty name keeps
-     * whatever is on disk (or lets the engine create one).
-     */
-    private suspend fun resolveIdentityFile(config: PortalConfig): String {
-        val path = config.identityPath
-            ?: File(SampleEnv.appDir, "identity.json").absolutePath
-        val wanted = config.name?.trim().orEmpty()
-        if (wanted.isEmpty()) return path
-        return withContext(Dispatchers.Default) {
-            val file = File(path)
-            val current = runCatching {
-                if (file.isFile) PortalIdentity.parse(file.readText()).name else null
-            }.getOrNull()
-            if (current != wanted) {
-                val fresh = PortalIdentity.generate(wanted)
-                file.parentFile?.mkdirs()
-                file.writeText(fresh.document)
-            }
-            path
-        }
-    }
-
-    private fun observeEvents() {
-        scope.launch {
-            tunnel.flatMapLatest { it?.events ?: flowOf(null) }
-                .collect { event -> if (event != null) appendLog(describe(event)) }
-        }
-        // Stop the content's local payload when the session ends for any
-        // reason (user stop, native failure, process teardown).
-        scope.launch {
-            tunnel.flatMapLatest { it?.state ?: flowOf(null) }
-                .collect { snap ->
-                    if (snap?.isTerminal == true) {
-                        activeContent?.stop()
-                        activeContent = null
-                    }
-                }
-        }
-    }
-
-    private fun appendLog(line: String) {
-        eventLog.value = (eventLog.value + line).takeLast(50)
+    private fun showFailure(label: String, failure: Exception) {
+        lastError.value = if (failure is PortalException) {
+            val detail = failure.failure
+            "$label: ${detail.code} [${detail.operation ?: "SDK"}, retryable=${detail.retryable}] ${detail.message}" +
+                (detail.readinessFailure?.let { "\nReadiness: ${it.code}: ${it.message}" } ?: "")
+        } else "$label: ${failure.message ?: failure.javaClass.simpleName}"
     }
 
     private fun describe(event: PortalEvent): String = when (event) {
         is PortalEvent.Started -> "STARTED ${event.name}"
         is PortalEvent.Stopped -> "STOPPED"
-        is PortalEvent.StatusChanged ->
-            "STATUS_CHANGED active=${event.status.active} relays=${event.status.relays.size}"
+        is PortalEvent.StatusChanged -> "STATUS_CHANGED active=${event.status.active} relays=${event.status.relays.size}"
         is PortalEvent.MitmSuspected -> "MITM_SUSPECTED ${event.relayUrl}"
         is PortalEvent.RelayAdded -> "RELAY_ADDED ${event.relayUrl}"
         is PortalEvent.RelayRemoved -> "RELAY_REMOVED ${event.relayUrl}"
@@ -257,7 +141,12 @@ class PortalApp {
         is PortalEvent.Unknown -> "UNKNOWN ${event.type}"
     }
 
-    fun shutdown() {
-        scope.cancel()
+    fun shutdown(onClosed: () -> Unit) = operate("Close (retry window close or Stop)") {
+        if (clientDelegate.isInitialized()) client.close()
+        releasePayload()
+        if (payload.value == null) {
+            EventQueue.invokeLater(onClosed)
+            scope.cancel()
+        }
     }
 }

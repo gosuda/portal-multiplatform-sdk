@@ -170,9 +170,9 @@ public data class PortalConfig(
         public fun routes(routes: List<PortalHTTPRoute>, name: String? = null): PortalConfig =
             PortalConfig(name = name, httpRoutes = routes)
 
-        /** Exposes the app's raw TCP listener. */
-        public fun tcp(name: String? = null): PortalConfig =
-            PortalConfig(name = name, tcp = true)
+        /** Exposes a loopback TCP listener (`tcp` + `target_addr`). */
+        public fun tcp(targetAddress: String, name: String? = null): PortalConfig =
+            PortalConfig(name = name, tcp = true, targetAddr = targetAddress)
 
         /** Exposes a loopback UDP listener (`udp` + `udp_addr`). */
         public fun udp(targetAddress: String, name: String? = null): PortalConfig =

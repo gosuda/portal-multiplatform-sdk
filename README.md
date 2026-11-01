@@ -31,15 +31,169 @@ no public IP or port forwarding required:
 - **Dev tunnels** — reach an app's local service from remote QA, demos, or
   development tooling.
 - **Route-based applications** — send different URL prefixes to local HTTP
-  upstreams or bundled assets, with optional x402 pricing per route.
+  upstreams or bundled assets behind one public endpoint.
 - **Static applications** — publish files directly when running an embedded
   HTTP server would add unnecessary weight.
-- **Privacy-aware endpoints** — use ECH, unlisted discovery, and MITM
-  self-probing across multiple relays.
+- **Privacy-aware endpoints** — use unlisted discovery and relay-dependent MITM
+  self-probing across multiple relays; unlisted does not mean access-controlled.
+
+
+## Install
+
+The intended Maven coordinates are shown below. `0.1.0` is not published to
+Maven Central, and no downloadable GitHub release is available. Use the staged
+Maven repository or locally packaged XCFramework below; adding these
+coordinates alone will not resolve an unpublished version. Binary publication
+is still gated on dependency redistribution review.
+
+```kotlin
+dependencies {
+    implementation("io.github.gosuda:portal-sdk:0.1.0")
+}
+```
+
+Android apps that use the optional process/lifecycle helpers also add:
+
+```kotlin
+implementation("io.github.gosuda:portal-android-lifecycle:0.1.0")
+```
+
+API references: [Swift](docs/SWIFT_API.md). Generate Kotlin reference locally
+with `./gradlew :portal-sdk:dokkaGenerate`; release CI attaches
+`dokka-html.zip` after successful publication.
+
+The samples consume the intended Maven coordinates rather than `project()`
+dependencies. Android JNI libraries are built directly from this repository's
+MIT-licensed `native/bridge` with Go and Android NDK r29 during
+`portal-native-android` assembly/publication; no external `.so` is downloaded
+or republished. To verify an unpublished checkout through an isolated Maven
+repository:
+
+```bash
+# Requires Go 1.27.3, Python 3.9+, and the host C toolchain.
+# Linux additionally needs Zig 0.16.0; Windows needs MinGW; macOS needs Xcode.
+./scripts/build-desktop-engine.sh
+./gradlew publishDesktopSdkToSampleRepository
+./gradlew :samples:desktop:build \
+  -Pportal.samples.repository="$PWD/build/sample-maven"
+
+# Requires an installed Android SDK:
+./gradlew publishAndroidSdkToSampleRepository
+./gradlew :samples:android:assembleDebug \
+  -Pportal.samples.repository="$PWD/build/sample-maven"
+```
+
+iOS KMP variants embed the matching Go engine archive and propagate required
+Security framework linkage. On macOS, build
+`:portal-sdk:assemblePortalSDKReleaseXCFramework`, then run
+`scripts/package-ios-xcframework.sh`. For SwiftPM, extract
+`dist/PortalSDK-swift-package.zip` and add its `PortalSDK` directory using
+Xcode's **Add Local Package** action. The ZIP includes the manifest, wrapper
+source, and XCFramework; no manual engine or Security linkage is needed.
+The repository URL and a standalone release-asset `Package.swift` are not
+currently supported remote SwiftPM install paths.
+
+Desktop (JVM) resolves the `portal-sdk-desktop` variant plus the
+`portal-native-desktop` runtime JAR transitively — no extra dependency or
+native install step. The engine is extracted to a content-addressed cache on
+first use; loading the packaged engine does not require a download. Public
+tunneling still requires network access and a compatible reachable relay.
+
+
+## Quick start: two steps to a public HTTP endpoint
+
+Start your own HTTP server on `127.0.0.1:8080` first. The SDK publishes that
+server; it does not create it. For a server included in the app, try one of the
+[sample workbenches](#explore-the-sdk-in-the-samples).
+
+### 1. Create one long-lived client
+
+Keep the client in your application or another owner that outlives the screen:
+
+```kotlin
+// Android
+val client = PortalClient(applicationContext)
+// Desktop/JVM: use this instead.
+// val client = PortalDesktop.client("com.example.myapp")
+```
+
+```swift
+// iOS
+let client = PortalIosClient()
+```
+
+### 2. Publish one factory config
+
+Kotlin, from a coroutine:
+
+```kotlin
+val tunnel = client.publish(PortalConfig.http("127.0.0.1:8080"))
+println(tunnel.publicUrl)
+```
+
+Swift:
+
+```swift
+let operation = client.publish(
+    config: PortalIosConfigFactory.shared.http(targetAddress: "127.0.0.1:8080")
+) { session, failure in
+    if let failure = failure {
+        print("Publish failed: \(failure.code)")
+        return
+    }
+    print(session?.primaryPublicUrl ?? "No HTTP URL")
+}
+```
+
+That's the normal path: no identity file paths, readiness polling, or
+app-written rollback routine. `publish` waits up to 30 seconds for ACTIVE
+and stops the session if readiness fails or the call is cancelled. ACTIVE
+means **every requested feature** is ready: HTTP/static need a public URL;
+TCP and UDP each need their own nonblank endpoint on a ready relay. It is
+not an upstream-health check or proof that an application request succeeded.
+
+### When finished: clean up the owner
+
+Keep your server and client alive for the entire tunnel lifetime. Do not
+close the client immediately after displaying the URL. Retain the returned
+tunnel/session when you need to stop just that publication:
+
+```kotlin
+tunnel.stop()   // only this tunnel
+client.close()  // at owner teardown: all sessions owned by this client
+```
+
+```swift
+client.close { failure in
+    if let failure = failure { print("Cleanup failed: \(failure.code)") }
+}
+```
+
+Kotlin failures throw `PortalException`; handle `e.failure.code`,
+`.operation`, and `.retryable` in your coroutine. Do not swallow
+`CancellationException`. Swift reports the same fields through the
+completion's `PortalFailure`; callbacks run on Main. Keep the returned
+`PortalOperation` if you need to cancel an in-flight publish. Cancellation
+suppresses its Swift completion, but the SDK still owns cleanup.
+
+Cleanup failures remain retryable: a native stop failure keeps the session
+in STOPPING and reachable in `client.sessions`. Retry its stop or client
+close; keep app-owned listeners alive until cleanup is terminal. You do not
+need to implement the SDK's readiness/rollback sequence yourself.
+
+Platform identity storage is automatic. Android uses `filesDir/identity.json`,
+iOS uses Application Support, and desktop uses a per-application OS directory.
+Display-name changes do not overwrite an existing private identity. Android
+background execution needs an explicit foreground-service owner; iOS offers
+foreground sessions, not indefinite background execution.
+
+See [Android](samples/android/README.md), [iOS](samples/ios/README.md), and
+[desktop](samples/desktop/README.md) for runnable demos and
+[the Swift API reference](docs/SWIFT_API.md) for the advanced call surface.
 
 ## What it does
 
-This SDK is a mobile tunnel runtime around `libportaltunnel`. `PortalConfig`
+This SDK is an app-local tunnel runtime around `libportaltunnel`. `PortalConfig`
 describes which app-local service to expose; `PortalClient` owns its tunnel
 sessions and reports their authoritative state:
 
@@ -47,8 +201,8 @@ sessions and reports their authoritative state:
   in the app process.
 - **Raw TCP and UDP tunnels** expose app-owned sockets and custom protocols.
 - **Static directories** are a convenience mode, not a required architecture.
-- **One lifecycle API** covers relay discovery, ECH privacy, x402 payments,
-  structured failures, and explicit session ownership.
+- **One lifecycle API** covers relay discovery, structured failures and
+  explicit session ownership.
 - **`StateFlow` snapshots** are authoritative; bounded events are auxiliary
   notifications.
 
@@ -57,16 +211,76 @@ sessions and reports their authoritative state:
 | App-local source | `PortalConfig` shape | Typical use |
 |---|---|---|
 | HTTP server | `targetAddr = "127.0.0.1:8080"` | APIs, webhooks, dev servers |
-| HTTP routes | `httpRoutes = listOf(...)` | Prefix routing, mixed upstreams, x402 |
-| TCP listener | `tcp = true` | Custom protocols, game sessions |
+| HTTP routes | `httpRoutes = listOf(...)` | Prefix routing, mixed upstreams/static assets |
+| TCP listener | `tcp = true, targetAddr = "127.0.0.1:25565"` | Custom protocols, game sessions |
 | UDP listener | `udp = true, udpAddr = "127.0.0.1:7777"` | Real-time and datagram protocols |
 | Static directory | `staticDir = dir` | Serverless assets and bundled web UIs |
+
+The SDK does **not** create your HTTP/TCP/UDP server, install an application
+runtime, or grant background execution. Start and own your local service
+before publishing. Static-directory mode serves existing files without an
+extra HTTP server. `publish` returning ACTIVE proves tunnel readiness, not
+that your upstream is reachable or that an application request succeeded.
+
+TCP and UDP endpoints are in `snapshot.relays[].tcpAddr` / `udpAddr`; they
+are not browser URLs. Use a client for your protocol to exercise them.
+`hide` only controls discovery listings, not authentication or access control.
+The bundled v2.7.1 engine uses relay protocol 10. ECH, x402, priced or
+method-constrained routes, and overlay are unsupported; requests fail with
+`UNSUPPORTED_CAPABILITY` before native start. Their v1 configuration fields
+remain recognizable, never silently treated as applied policy.
+
+## Explore the SDK in the samples
+
+All three sample apps offer five runnable exposure modes. Built-in listeners
+live in the sample, not the SDK; custom upstream inputs let you substitute
+your own service without changing the tunnel code.
+
+| Mode | Built-in demonstration | How to verify |
+|---|---|---|
+| Web games / static site | Shared four-game arcade served by the native engine | Open the returned HTTPS URL and play |
+| HTTP API / webhooks | Loopback HTTP receiver with bounded request activity | Send GET/POST requests through the public URL |
+| HTTP routes | Prefixes dispatch to local demo endpoints | Request each prefix and compare the responses |
+| TCP | Loopback echo listener | Send bytes to the relay's TCP endpoint with a TCP client |
+| UDP | Loopback datagram echo listener | Send a datagram to the relay's UDP endpoint |
+
+### Play the arcade
+
+1. Select **Web games / static site** in any sample (leave the desktop directory blank).
+2. Publish and wait for ACTIVE.
+3. Open or share the HTTPS URL. No separate game server or game runtime is installed.
+
+| Game | What you can do |
+|---|---|
+| Snake | Steer with arrows/WASD or the touch direction pad; eat food, avoid collisions, pause and restart |
+| Memory pairs | Match eight shuffled letter pairs with click, tap or keyboard |
+| Reaction test | Wait for green; false starts are rejected and successful trials show last/best/median times |
+| Water fill | Hold to pour, release to stop, tilt/drag the cup to slosh and spill, then score against a target level |
+
+The flat HTML/CSS/JavaScript bundle has one source:
+[`samples/shared/common/site`](samples/shared/common/site). Android packages it
+as assets, iOS as a resource folder, and desktop as Compose application resources.
+These are client-side games, not multiplayer or a server-side leaderboard.
+Scores stay in the browser tab. Switching games or hiding the page pauses
+timers and releases held input.
+
+
+Use the workbench to publish/stop, inspect authoritative state and relay
+endpoints, edit live metadata, add/remove relays, and inspect diagnostics.
+Settings apply to the next publish; live operations act on the owned session.
+Sample names do not replace an existing private identity: the platform
+identity persists across launches.
+
+Android background use requires the sample's explicit foreground-service
+option. iOS remains foreground-only; desktop keeps running only for the
+lifetime of its process. See the platform READMEs for run commands and local
+upstream prerequisites.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph app["Android / iOS app"]
+    subgraph app["Android / iOS / Desktop app"]
         UI["App lifecycle"] --> PC["PortalClient"]
         HTTP["HTTP server<br/>127.0.0.1:8080"]
         TCP["TCP listener"]
@@ -93,152 +307,10 @@ flowchart LR
 
 | Target | Status | Native engine |
 |---|---|---|
-| `android` (arm64-v8a, x86_64) | ✅ shipped | JNI `libportaltunnel.so` built reproducibly from `native/bridge`, 16 KB-page aligned |
-| `iosArm64` / `iosSimulatorArm64` / `iosX64` | ✅ shipped | matching `libportaltunnel.a` embedded in each published KMP klib/XCFramework slice |
-| `desktop` (JVM 17+, linux-x64 / windows-x64 / macos-universal) | ✅ shipped | `libportaltunnel` shared library packaged in `portal-native-desktop`, loaded via JNA |
+| `android` (arm64-v8a, x86_64) | Supported local builds | JNI `libportaltunnel.so` built from `native/bridge`, 16 KB-page aligned |
+| `iosArm64` / `iosSimulatorArm64` / `iosX64` | Supported local builds | matching `libportaltunnel.a` embedded in each packaged KMP klib/XCFramework slice |
+| `desktop` (JVM 17+, linux-x64 / windows-x64 / macos-universal) | Supported packaging targets | `libportaltunnel` shared library packaged in `portal-native-desktop`, loaded via JNA |
 | `linuxX64` | 🧪 experimental | C stub for tests; link the real `.so` for production |
-
-## Install
-
-The SDK's intended Maven coordinates are shown below. As of 2026-09-21,
-`0.1.0` is not available from Maven Central and no GitHub release exists.
-Until publication, use the isolated staging commands below; do not expect a
-clean application to resolve an unpublished version.
-
-```kotlin
-dependencies {
-    implementation("io.github.gosuda:portal-sdk:0.1.0")
-}
-```
-
-Android apps that use the optional process/lifecycle helpers also add:
-
-```kotlin
-implementation("io.github.gosuda:portal-android-lifecycle:0.1.0")
-```
-
-API references: [Swift](docs/SWIFT_API.md). Generate Kotlin reference locally
-with `./gradlew :portal-sdk:dokkaGenerate`; release CI attaches
-`dokka-html.zip` after successful publication.
-
-The samples consume the intended Maven coordinates rather than `project()`
-dependencies. Android JNI libraries are built directly from this repository's
-MIT-licensed `native/bridge` with Go and Android NDK r29 during
-`portal-native-android` assembly/publication; no external `.so` is downloaded
-or republished. To verify an unpublished checkout through an isolated Maven
-repository:
-
-```bash
-# Requires Go 1.27.1, Python 3.11+, and the host C toolchain.
-# Linux additionally needs Zig 0.16.0; Windows needs MinGW; macOS needs Xcode.
-./scripts/build-desktop-engine.sh
-./gradlew publishDesktopSdkToSampleRepository
-./gradlew :samples:desktop:build \
-  -Pportal.samples.repository="$PWD/build/sample-maven"
-
-# Requires an installed Android SDK:
-./gradlew publishAndroidSdkToSampleRepository
-./gradlew :samples:android:assembleDebug \
-  -Pportal.samples.repository="$PWD/build/sample-maven"
-```
-
-iOS KMP variants embed the matching Go engine archive and propagate required
-Security framework linkage. On macOS, build
-`:portal-sdk:assemblePortalSDKReleaseXCFramework`, then run
-`scripts/package-ios-xcframework.sh`. For SwiftPM, extract
-`dist/PortalSDK-swift-package.zip` and add its `PortalSDK` directory using
-Xcode's **Add Local Package** action. The ZIP includes the manifest, wrapper
-source, and XCFramework; no manual engine or Security linkage is needed.
-The repository URL and a standalone release-asset `Package.swift` are not
-currently supported remote SwiftPM install paths.
-
-Desktop (JVM) resolves the `portal-sdk-desktop` variant plus the
-`portal-native-desktop` runtime JAR transitively — no extra dependency or
-native install step. The engine is extracted to a content-addressed cache on
-first use and works offline.
-
-
-## Quick start: expose a local HTTP server
-
-Start your HTTP server on a loopback address, then publish it:
-
-### Kotlin (Android / common)
-
-```kotlin
-val client = PortalClient(applicationContext)
-
-// Opens the tunnel, waits until it is ACTIVE, and rolls back on failure.
-val tunnel = client.publish(
-    PortalConfig.http("127.0.0.1:8080", name = "device-api")
-)
-
-println(tunnel.publicUrl)   // first public URL; live updates stay on tunnel.state
-
-tunnel.stop()      // retryable on native failure
-client.close()     // stops only the sessions this client owns
-```
-
-`publish` is the easy path: it returns only after the tunnel reports ACTIVE
-and stops the session if readiness fails. Use `open` when you need
-accepted-before-ready semantics — e.g. to render CONNECTING or await a single
-capability:
-
-```kotlin
-val tunnel = client.open(PortalConfig.http("127.0.0.1:8080"))
-tunnel.state.collect { snapshot ->
-    println("${snapshot.phase} ${snapshot.primaryPublicUrl}")
-}
-val ready = tunnel.awaitReady(Capability.HTTP_TLS)
-// or: tunnel.awaitActive(15_000)
-```
-
-
-### Kotlin (Desktop / JVM)
-
-```kotlin
-// Resolves the packaged native engine and a per-OS identity path.
-val client = PortalDesktop.client("com.example.myapp")
-
-val tunnel = client.publish(
-    PortalConfig.http("127.0.0.1:8080", name = "desktop-api")
-)
-println(tunnel.publicUrl)
-
-tunnel.stop()
-client.close()
-```
-
-`PortalDesktop.client(applicationId)` loads the verified `libportaltunnel`
-from the `portal-native-desktop` runtime JAR (extracted to a
-content-addressed cache) and defaults `identity_path` to a per-OS location:
-`$XDG_STATE_HOME/<app>/portal` on Linux, `%LOCALAPPDATA%/<app>/Portal` on
-Windows, `~/Library/Application Support/<app>/Portal` on macOS. Pass
-`storageDirectory` or `nativeLibraryPath` to override. See
-[samples/desktop](samples/desktop) for the Compose app — a Publish /
-Settings / Activity UI mirroring the Android sample (Snake game, explainer,
-Ollama on-device model, Minecraft ping) — plus headless
-`:samples:desktop:smoke` and `:samples:desktop:ondeviceSmoke` checks.
-
-### Swift (iOS)
-
-```swift
-let client = PortalIosClient(allowRemoteTargets: false, defaultIdentityPath: nil)
-let config = PortalIosConfigFactory.shared.http(
-    targetAddress: "127.0.0.1:8080", name: "device-api"
-)
-operation = client.publish(config: config, timeoutMillis: 30_000) {
-    session, failure in
-    // session?.primaryPublicUrl, or a structured PortalFailure
-}
-```
-
-The Android and iOS sample apps use static assets because that makes the demo
-self-contained. Static serving is optional; the same lifecycle API owns HTTP,
-TCP, and UDP tunnels.
-
-See [samples/android](samples/android) for the complete Compose app and
-[samples/ios](samples/ios) for the SwiftUI equivalent. The full Swift call
-surface is documented in [docs/SWIFT_API.md](docs/SWIFT_API.md).
 
 
 ## Usage
@@ -263,7 +335,7 @@ PortalConfig.routes(
 )
 
 // Raw TCP / UDP listeners
-PortalConfig.tcp(name = "tcp-service")
+PortalConfig.tcp("127.0.0.1:25565", name = "tcp-service")
 PortalConfig.udp("127.0.0.1:7777", name = "game")
 
 // Static assets without an embedded HTTP server
@@ -273,16 +345,11 @@ PortalConfig.staticSite(dir, index = "index.html", name = "site")
 PortalConfig(name = "private", discovery = false,
              relays = listOf("https://portal.example.com"))
 
-// Paid route (x402)
-PortalConfig(
-    name = "paid",
-    httpRoutes = listOf(
-        PortalHTTPRoute(prefix = "/premium", upstream = "http://127.0.0.1:8080",
-                        amount = "0.01")
-    ),
-    x402 = PortalX402Config(payTo = "0x…", network = "sui", asset = "USDC")
-)
 ```
+Routing uses the **longest matching path prefix**, not the order entered.
+Use `/` as a catch-all fallback. Each route needs exactly one of `upstream`
+or `staticRoot`.
+
 
 Key rules: `identity_json` XOR `identity_path`; `discovery=false` needs ≥1
 relay; relays are `https`-only (`http` allowed for loopback); targets are
@@ -302,6 +369,19 @@ loopback-only unless `PortalClient(allowRemoteTargets = true)`.
   session in `STOPPING`, not `STOPPED`.
 - Cancelling `open` or `publish` rolls the native handle back — no orphaned
   sessions.
+- ACTIVE requires all requested capabilities. A ready HTTP lease cannot
+  substitute for a TCP or UDP endpoint on a ready relay.
+
+For advanced accepted-before-ready UI, use `open` and observe state in a
+separate coroutine; `open` does not imply readiness:
+
+```kotlin
+val tunnel = client.open(PortalConfig.http("127.0.0.1:8080"))
+// Render tunnel.state from a separate collector.
+val ready = tunnel.awaitReady(Capability.HTTP_TLS)
+// Or wait for every requested feature: tunnel.awaitActive(15_000)
+```
+
 
 ### Observing state
 
@@ -415,8 +495,11 @@ PortalClientHolder.publish(PortalConfig.http("127.0.0.1:8080")) { result ->
 
 ```swift
 // iOS: the client owns sessions; close tears down only its own.
-let client = PortalIosClient(allowRemoteTargets: false, defaultIdentityPath: nil)
-let op = client.publish(config: config, timeoutMillis: 30_000) { s, f in … }
+let client = PortalIosClient()
+let op = client.publish(config: config) { session, failure in
+    if let failure = failure { print(failure.code) }
+    else { print(session?.primaryPublicUrl ?? "No HTTP URL") }
+}
 op.cancel()          // cancels the in-flight publish; completion never fires
 client.close { _ in } // stops every session this client opened
 ```
@@ -447,16 +530,18 @@ The same fields reach Swift through `PortalFailure` — `failure.operation`,
 ### Expose a TCP listener (game server, custom protocol)
 
 ```kotlin
-val tunnel = client.publish(PortalConfig.tcp(name = "minecraft"))
+val tunnel = client.publish(
+    PortalConfig.tcp("127.0.0.1:25565", name = "custom-protocol")
+)
 // The relay hands out a TCP endpoint; read it from the relay status:
-tunnel.state.value.relays.firstOrNull()?.tcpAddr
+tunnel.state.value.relays.firstOrNull { it.isReady && !it.tcpAddr.isNullOrBlank() }?.tcpAddr
 ```
 
 ### Expose a UDP listener
 
 ```kotlin
 val tunnel = client.publish(PortalConfig.udp("127.0.0.1:7777", name = "voice"))
-tunnel.state.value.relays.firstOrNull()?.udpAddr
+tunnel.state.value.relays.firstOrNull { it.isReady && !it.udpAddr.isNullOrBlank() }?.udpAddr
 ```
 
 ### Route URL prefixes to different local services
@@ -472,6 +557,10 @@ val tunnel = client.publish(
     )
 )
 ```
+The longest matching prefix wins regardless of list order: `/api` selects the
+upstream and `/` is the static fallback. These are path prefixes, not
+method constraints; method-constrained routes are unsupported.
+
 
 ### Publish a directory without an HTTP server
 
@@ -533,7 +622,7 @@ for symptom → field → fix mappings.
 | 0.1.0 | 2.4.x | minSdk 26, NDK r29 (build-time only) | iOS 16+ | 17+ | android: arm64-v8a, x86_64 · ios: arm64, sim arm64/x86_64 · desktop: linux-x64, windows-x64, macos-universal |
 
 The bundled `libportaltunnel` engine is built from `native/bridge` over
-portal-tunnel v2.4.3 (C ABI v1). iOS Kotlin/Native consumers get the engine
+portal-tunnel v2.7.1 (C ABI v1, relay protocol 10). iOS Kotlin/Native consumers get the engine
 archive embedded in each published klib; JVM consumers get it inside
 `portal-native-desktop`. Experimental `linuxX64` consumers still link the
 real shared library explicitly.
@@ -569,11 +658,11 @@ or modified artifacts. Only matching `release-v<SDK version>` tags on
 `release(scope):` commits may publish; manual dispatch defaults to
 verification-only.
 
-Binary publication is currently blocked on bundled-dependency redistribution
-review: the native dependency graph includes LGPL-3.0-or-later
-`go-ethereum v1.17.1`. Portal Tunnel's MIT license does not cover that
-dependency. Resolve the notices/source/static-link obligations recorded in
-`native/source-lock.json` before publishing; local builds remain available.
+Binary publication remains blocked on the bundled-dependency redistribution
+review recorded in `native/source-lock.json`. The v2.7.1 SDK dependency graph
+no longer links the previous `go-ethereum`/LGPL dependency, but that does not
+replace a complete notices/source/redistribution review. Local builds remain
+available.
 
 ## Repository layout
 
@@ -583,10 +672,9 @@ portal-native-android/    JNI bridge + source-built libportaltunnel.so
 portal-native-desktop/    Verified desktop libportaltunnel runtime JAR (linux/windows/macos)
 portal-android-lifecycle/ Process-scoped client + foreground-service base
 native/                   portaltunnel.h, C test stub, source provenance
-samples/android/          Compose sample (config, identity, relays, events, diagnostics)
-                          — see samples/android/README.md for the on-device model API
-samples/ios/              SwiftUI sample + XCFramework instructions
-samples/desktop/          Compose Desktop sample + headless publish smoke
+samples/android/          Compose SDK workbench + explicit foreground owner
+samples/ios/              SwiftUI SDK workbench + XCFramework instructions
+samples/desktop/          Compose Desktop SDK workbench + local/relay smoke
 docs/                     DESIGN_RULES, TROUBLESHOOTING, WORK_CHECKPOINT
 .agents/skills/           agent skill: API reference, examples, troubleshooting
 ```

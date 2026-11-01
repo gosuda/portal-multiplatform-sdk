@@ -38,7 +38,7 @@ for library in info["AvailableLibraries"]:
         if key in seen:
             raise SystemExit(f"duplicate XCFramework slice: {key}")
         seen.add(key)
-        subprocess.run(["lipo", "-verify_arch", arch, str(binary)], check=True)
+        subprocess.run(["lipo", str(binary), "-verify_arch", arch], check=True)
         symbols = subprocess.check_output(["nm", "-arch", arch, "-gU", str(binary)], text=True)
         exports = {line.split()[-1].removeprefix("_") for line in symbols.splitlines() if line.split()}
         missing = {"PortalStart", "PortalStop", "PortalFreeString"} - exports

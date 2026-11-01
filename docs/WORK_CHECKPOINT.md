@@ -5,6 +5,9 @@
 The initial SDK cleanup, easy APIs, five-mode workbenches and four-game arcade
 were implemented, verified and pushed as `04d3144`; retained JOSE/QUIC
 dependency fixes were then rebuilt/verified and pushed as `a1db914`.
+The completed additions were committed as `c0449bf`
+(`feat(samples): add private local AI and monochrome workbenches`) and pushed
+to `origin/main`; the push advanced `a1db914..c0449bf`. No release tag was created.
 The final prefix/monochrome/local-AI/password APK was updated on the connected
 Galaxy S10 5G (SM-G977N, Android 12 / API 31) with `adb install -r`.
 Launch returned `Status: ok`, the app process ran, and the installed APK's
@@ -15,9 +18,9 @@ No model weights were seeded or automatically downloaded on the phone.
 The additions were implemented and exercised: runtime domain prefixes,
 BLACK & WHITE native/web UI, real device-local LLM hosting, four pinned models
 with explicit downloads/persistent caches, and separately configured/generated
-passwords. Links contain no credentials. The final scoped commit/push and
-delivery-record update are the only remaining actions; no implementation work
-is pending. Binary publication remains outside this request.
+passwords. Links contain no credentials. Implementation, runtime verification,
+ordinary-main push and final phone installation are complete. Binary publication
+remains outside this request.
 
 Baseline: `main`, initially clean at `ea6dad8`. No release/tag/public binary
 publication was requested. Ordinary commits must not use `release(scope):`.
@@ -81,6 +84,8 @@ publication was requested. Ordinary commits must not use `release(scope):`.
   pruned dependency graph and truthful capability/provenance metadata.
 - `samples/android`, `samples/desktop`, `samples/ios`, `samples/shared`:
   SDK-focused apps, real demo services, shared arcade and asset packaging.
+- `samples/local-llm`, `scripts/build-sample-llm.sh`: shared pinned CPU inference,
+  standard-UTF-8 JNI/C interfaces, platform archives and packaged license notice.
 - `scripts/native-provenance.py`, `verify-desktop-engine.sh`,
   `package-ios-xcframework.sh`, `verify-ios-swift-package.sh`: portable hashing,
   architecture checks and real-workbench Swift-package consumer verification.
@@ -200,11 +205,11 @@ publication was requested. Ordinary commits must not use `release(scope):`.
 
 ## Exact next actions
 
-1. Commit the scoped implementation/docs/checkpoint and push ordinary `main`.
-2. Record the actual implementation commit/push result here, commit that
-   delivery record and push it. Do not create a release tag.
-3. No additional phone action is required for installation. Interactive phone
-   checks require the user's normal unlock; no unlock bypass or data clearing.
+None for this request. The connected phone already has the final APK with its
+data preserved. Interactive phone checks require the user's normal unlock;
+do not bypass keyguard or clear app data. Owned verification devices, preview
+services and throwaway source/control files were removed; host model caches,
+generated builds and runtime evidence were retained.
 
 ## Remaining release gates (outside this request)
 

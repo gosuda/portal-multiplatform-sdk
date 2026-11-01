@@ -1,19 +1,23 @@
 # Work Checkpoint
 
-## Active task — 2026-11-01
+## Session outcome — 2026-11-01
 
-The requested SDK cleanup, easy publishing APIs, five-mode workbenches and
-shared four-game arcade are implemented and verified. Feature commit
-`04d3144` was pushed to `origin/main`; its APK was installed with `-r` on the
-connected Galaxy S10 5G (SM-G977N, Android 12 / API 31). Activity launch
-returned `Status: ok`, and the sample process remained alive. The phone
-is securely locked, so no interactive phone-screen result is claimed.
+The initial SDK cleanup, easy APIs, five-mode workbenches and four-game arcade
+were implemented, verified and pushed as `04d3144`; retained JOSE/QUIC
+dependency fixes were then rebuilt/verified and pushed as `a1db914`.
+The final prefix/monochrome/local-AI/password APK was updated on the connected
+Galaxy S10 5G (SM-G977N, Android 12 / API 31) with `adb install -r`.
+Launch returned `Status: ok`, the app process ran, and the installed APK's
+SHA-256 matched the build. The phone remains securely locked: interactive
+phone-screen verification was not performed and its keyguard was not bypassed.
+No model weights were seeded or automatically downloaded on the phone.
 
-Delivery remains active: four retained JOSE/QUIC dependency alerts were
-discovered during push and patched. Rebuilt native outputs, actual consumer
-builds and all five public round trips passed with the patched versions.
-Commit/push this patch, then reinstall the final APK and record its result.
-Do not infer deployment completion from a feature commit or a clean tree.
+The additions were implemented and exercised: runtime domain prefixes,
+BLACK & WHITE native/web UI, real device-local LLM hosting, four pinned models
+with explicit downloads/persistent caches, and separately configured/generated
+passwords. Links contain no credentials. The final scoped commit/push and
+delivery-record update are the only remaining actions; no implementation work
+is pending. Binary publication remains outside this request.
 
 Baseline: `main`, initially clean at `ea6dad8`. No release/tag/public binary
 publication was requested. Ordinary commits must not use `release(scope):`.
@@ -50,6 +54,21 @@ publication was requested. Ordinary commits must not use `release(scope):`.
 - iOS cinterop tracks embedded native archives as inputs; engine upgrades no
   longer leave old Go code in cached klibs. Desktop teardown uses AWT's event
   queue, not an unavailable Main coroutine dispatcher.
+- `domainPrefix` changes only the in-memory listener name, not persisted keys
+  or identity files. Preferred public URLs use a ready relay's granted alias;
+  canonical URLs remain available and are used when the alias is unavailable.
+- Shared native llama.cpp CPU inference is sample-only, pinned by commit/archive
+  hash and built for desktop, Android and iOS. No cloud API, external daemon,
+  fake response or bundled GGUF is used.
+- A single model catalog records exact download bytes, SHA-256, revision,
+  source and Apache-2.0 license for SmolLM2 135M/360M and Qwen2.5 0.5B/1.5B.
+  Download is explicit; completed verified files survive stop/relaunch/update.
+- Native secure password controls allow custom 12–128-code-point passwords,
+  secure random generation and explicit copy. Passwords stay in owner memory,
+  reset on relaunch and cannot change while serving. Web login uses UTF-8
+  Basic authentication; no private link, fragment, cookie or browser storage.
+- Android system-bar contrast and iOS scrolled-card safe-area clipping were
+  verified on the actual redesigned surfaces.
 
 ## Changed file groups
 
@@ -72,15 +91,15 @@ publication was requested. Ordinary commits must not use `release(scope):`.
 
 | SDK suite | Tests | Failures/errors/skips |
 |---|---:|---:|
-| `:portal-sdk:desktopTest` | 83 | 0 |
-| `:portal-sdk:testAndroidHostTest` | 53 | 0 |
-| `:portal-sdk:iosSimulatorArm64Test` | 71 | 0 |
+| `:portal-sdk:desktopTest` | 85 | 0 |
+| `:portal-sdk:testAndroidHostTest` | 55 | 0 |
+| `:portal-sdk:iosSimulatorArm64Test` | 73 | 0 |
 
 - Original common sources reproduced 10 failures out of 53 targeted cases.
   The closed-owner iOS callback regression also failed before its fix.
-- `go test ./...` in `native/bridge` passed (no Go test files). Real native
-  builds/export/header/architecture checks passed for macOS universal,
-  Android arm64/x86_64 with 16 KiB alignment, and all three iOS slices.
+- `go test ./...` in `native/bridge` passed, including prefix/identity safety
+  regressions. Real native builds/export/header/architecture checks passed for
+  macOS universal, Android arm64/x86_64 and all three iOS slices.
 - Desktop/Android Maven staging, debug and R8 release sample APK builds passed.
 - Desktop local smoke passed twice for HTTP, routes, TCP and UDP, including
   bounded activity, 413 rejection, listener shutdown and restart.
@@ -123,7 +142,38 @@ publication was requested. Ordinary commits must not use `release(scope):`.
   distribution built; local listener smoke passed twice and all five public
   modes passed again on the explicit relay. UDP exercised a real QUIC backhaul.
 - Final debug APK SHA-256:
-  `8982942618f8b2e76c9eebad83b74fee79ab9cdd0afd4b17e170dd2a8a7357d5`.
+  `b4f97b766813e225c61f4c1bd33e0bbf5d505f83e2ab545efb8c0ea643f6c7f9`.
+- Prefix regression suites passed all 213 SDK executions. All five public
+  transports passed again using `https://mono-sdk-1101.kakashit.org:443`,
+  with discovery disabled only in that explicit reproducible relay fixture.
+- Final password-enabled Android debug/R8 APKs, packaged desktop distribution,
+  actual Swift-package simulator/device consumer and production iOS app built.
+  Desktop local/public LLM smoke passed with UTF-8 passwords; missing/wrong
+  passwords returned 401 and real generation returned 200.
+- All four catalog models were explicitly downloaded, size/hash verified and
+  generated real UTF-8 responses through the native CPU ABI. Oversized-context
+  and permanent-cancellation errors were observed for each model.
+- A fresh JVM reused the cached model with an unreachable SOCKS proxy and
+  performed no download. Android's explicit Download action produced verified
+  cache, preserved through `install -r`; iOS's explicit download and relaunch
+  cache reuse were exercised in the actual app.
+- Android native UI: configured a password, published a short alias, logged in
+  through real Chromium, rejected a wrong password and generated a real answer
+  on the emulator CPU. Browser fragment, local/session storage and cookies
+  remained empty. Mobile dark mode had no 390px horizontal overflow.
+- Actual Android HTTP API rejected blank/invalid-limit/context-overflow inputs
+  with 400 and an over-16-KiB body with 413. Two concurrent valid requests
+  returned 200/409. Native password editing/generation stayed disabled while
+  serving; after owned stop, Generate produced a new 32-character password.
+- Actual iOS UI workflow passed: custom secure-field input, Copy action,
+  public unauthenticated 401/authenticated generation 200, edit lock, owned
+  stop and cache reuse after relaunch. Final production-source run passed in
+  50.029 seconds; its screenshot confirmed status-bar overlap was fixed.
+- Final APK contained both LLM JNI ABIs and the engine notice, no GGUF weights.
+  Both native LLM libraries had 16-KiB LOAD alignment; embedded Go modules
+  remained go-jose v4.1.6 / quic-go v0.59.1.
+- Owned desktop preview closed normally with exit code 0; owned browser tabs,
+  preview server, Android emulator and iOS simulator were stopped after proof.
 
 ## Commands / environment
 
@@ -150,15 +200,11 @@ publication was requested. Ordinary commits must not use `release(scope):`.
 
 ## Exact next actions
 
-1. Commit/push the verified dependency patch normally (no release tag).
-2. Reinstall the rebuilt final APK with `adb install -r`; confirm its installed
-   checksum and actual launch/process on the authorized phone without bypassing
-   the keyguard. If unlocked, publish/request the arcade and stop it; otherwise
-   explicitly record the interactive limit. Leave no owned public session.
-3. Record actual final phone/push and current dependency-alert results, then
-   commit/push this checkpoint. Owned iOS/Android simulators and temporary
-   harnesses/download archives are already removed; installed JDK and
-   verification result bundles remain.
+1. Commit the scoped implementation/docs/checkpoint and push ordinary `main`.
+2. Record the actual implementation commit/push result here, commit that
+   delivery record and push it. Do not create a release tag.
+3. No additional phone action is required for installation. Interactive phone
+   checks require the user's normal unlock; no unlock bypass or data clearing.
 
 ## Remaining release gates (outside this request)
 

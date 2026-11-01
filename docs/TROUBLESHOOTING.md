@@ -60,6 +60,58 @@ or the iOS completion's `PortalFailure`) unless noted.
 - `code == "ABI_MISMATCH"` → engine older/newer than ABI v1; rebuild from
   `native/bridge` at the pinned portal-tunnel version.
 
+### [2026-11-01] Cross-app pasteboard reads stalled the iOS UI smoke runner
+
+- **Context / Symptom:** The throwaway UI workflow stalled after copying a
+  password, then exceeded its command deadline. The runner logged
+  `This application is not expected to prompt for paste authorization`.
+- **Root Cause:** The test runner read another app's `UIPasteboard.general.string`
+  directly, crossing iOS paste authorization rather than exercising a user paste.
+- **Solution:** Kept the real Copy action, but authenticated the public endpoint
+  using the custom password actually typed in the secure field. Cache reuse was
+  checked after relaunch by scrolling the verified model card into view.
+  No production permission bypass, clipboard entitlement or test-only app hook
+  was introduced.
+
+### [2026-11-01] AGP rejected a task provider in the sample assets SourceSet
+
+- **Context / Symptom:** SDK staging stopped during Android sample
+  configuration: `You cannot add Provider instances to the Android SourceSet API`.
+  The new generated native-license asset used `assets.srcDir(taskProvider)`.
+- **Root Cause:** Current AGP requires the Variant Sources API to distinguish
+  generated read-only assets from static editable source directories.
+- **Solution:** Declared a typed notice task with an output `DirectoryProperty`
+  and wired it through `variant.sources.assets.addGeneratedSourceDirectory`.
+  Static shared Java/assets use `directories` rather than deprecated `srcDir`.
+  The disallow-provider safety check remains enabled.
+- **Related source-set migration:** Built-in Kotlin does not compile custom
+  `AndroidSourceSet.java` Kotlin roots. The shared JVM code must use
+  `sourceSets["main"].kotlin.directories`; otherwise model types appear unresolved.
+  See [AGP built-in Kotlin migration](https://developer.android.com/build/migrate-to-built-in-kotlin).
+
+### [2026-11-01] Android API 26 was rejected by the sample CMake guard
+
+- **Context / Symptom:** Configure failed with `requires Android API 26 or newer`
+  even though AGP passed `-DANDROID_PLATFORM=android-26`.
+- **Root Cause:** NDK's legacy toolchain intentionally sets
+  `CMAKE_SYSTEM_VERSION` to 1 to inhibit CMake's separate NDK handling.
+- **Solution:** Checked the NDK's effective `ANDROID_PLATFORM_LEVEL` instead.
+  The minimum remains API 26; no guard or NDK safety option was disabled.
+
+### [2026-11-01] Domain edits did not apply and samples exposed only long canonical URLs
+
+- **Context / Symptom:** Public URLs included the identity's 40-hex suffix;
+  editing the old display-name field did not reliably change the hostname.
+- **Root Cause:** Upstream `identity.LoadOrCreate` retains an existing stored
+  name; the bridge also omitted the granted `AliasURL` from relay status.
+- **Solution:** Added explicit `domain_prefix` / `withDomainPrefix` to override
+  only the in-memory lease name. Kept stored signing keys/identity unchanged.
+  Forwarded relay-granted aliases and preferred them only while ACTIVE/ready.
+  All workbenches expose Domain prefix and use the SDK preferred copy/open URL.
+- **Prevention / Reference:** Never strip the canonical address to invent an
+  alias. Collisions can decline the short alias; reconnect/stop can release it.
+  Native identity-preservation and SDK lease-transition regressions cover this.
+
 ### [2026-11-01] Engine migration retained vulnerable indirect JOSE and QUIC versions
 
 - **Context / Symptom:** The first feature push printed an outdated total

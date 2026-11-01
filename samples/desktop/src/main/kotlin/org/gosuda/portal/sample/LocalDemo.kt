@@ -4,6 +4,8 @@ import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.gosuda.portal.PortalConfig
+import org.gosuda.portal.sample.llm.LocalLlmServer
+import org.gosuda.portal.sample.llm.ModelStore
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -27,6 +29,7 @@ class LocalDemo private constructor() : AutoCloseable {
     private var tcp: ServerSocket? = null
     @Volatile private var connection: Socket? = null
     private var udp: DatagramSocket? = null
+    private var llm: LocalLlmServer? = null
 
     @Synchronized
     private fun record(line: String) {
@@ -120,6 +123,8 @@ class LocalDemo private constructor() : AutoCloseable {
 
     override fun close() {
         closed.set(true)
+        llm?.close()
+        llm = null
         httpServers.forEach { it.stop(0) }
         connection?.close()
         tcp?.close()
@@ -127,10 +132,23 @@ class LocalDemo private constructor() : AutoCloseable {
     }
 
     companion object {
-        fun prepare(request: WorkbenchRequest): LocalDemo {
+        fun prepare(request: WorkbenchRequest, models: ModelStore? = null, password: String? = null): LocalDemo {
             val demo = LocalDemo()
             try {
                 val resolved = when {
+                    request.mode == WorkbenchMode.LOCAL_LLM -> {
+                        val store = checkNotNull(models) { "Local AI requires the model catalog." }
+                        val model = store.model(request.modelId)
+                        val file = checkNotNull(store.cachedFile(model.id)) {
+                            "Download ${model.title} explicitly before publishing."
+                        }
+                        DesktopModels.loadNative()
+                        val server = LocalLlmServer(model, file, checkNotNull(password) {
+                            "Local AI requires an explicitly configured password."
+                        }, DesktopModels::asset)
+                        demo.llm = server
+                        request.copy(target = server.address)
+                    }
                     request.mode == WorkbenchMode.STATIC && request.directory.isBlank() -> {
                         val resources = checkNotNull(System.getProperty("compose.application.resources.dir")) {
                             "Run with Gradle or the packaged launcher to locate bundled games."

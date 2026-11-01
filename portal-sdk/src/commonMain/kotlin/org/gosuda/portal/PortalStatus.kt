@@ -15,7 +15,9 @@ public data class PortalRelayStatus(
     @SerialName("version") val version: String? = null,
     @SerialName("state") val state: String,
     @SerialName("failure") val failure: String? = null,
-    @SerialName("error") val error: String? = null
+    @SerialName("error") val error: String? = null,
+    /** Relay-granted short URL; valid only while this lease is ready. */
+    @SerialName("alias_url") val aliasUrl: String? = null
 ) {
     val isReady: Boolean get() = state.equals("ready", ignoreCase = true)
     val isConnecting: Boolean get() = state.equals("connecting", ignoreCase = true)
@@ -42,5 +44,14 @@ public data class PortalStatus(
     @SerialName("public_urls") val publicUrls: List<String> = emptyList(),
     @SerialName("relays") val relays: List<PortalRelayStatus> = emptyList()
 ) {
-    val primaryPublicUrl: String? get() = publicUrls.firstOrNull()
+    val primaryPublicUrl: String?
+        get() = (if (active) readyAliasUrl(relays) else null) ?: publicUrls.firstOrNull()
+}
+
+internal fun readyAliasUrl(relays: List<PortalRelayStatus>): String? {
+    for (index in relays.indices) {
+        val relay = relays[index]
+        if (relay.isReady && !relay.isMitm && !relay.aliasUrl.isNullOrBlank()) return relay.aliasUrl
+    }
+    return null
 }

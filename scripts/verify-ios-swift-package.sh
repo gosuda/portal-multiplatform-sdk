@@ -4,13 +4,20 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGE="${1:-$ROOT/dist/PortalSDK-swift-package.zip}"
+SAMPLE_LLM="$ROOT/build/sample-llm/ios/PortalSampleLlm.xcframework"
+[[ -d "$SAMPLE_LLM" ]] || {
+    echo "Build the sample-only inference module: scripts/build-sample-llm.sh ios" >&2
+    exit 1
+}
 WORK="$ROOT/build/ios-swift-package-consumer"
 rm -rf "$WORK"
 mkdir -p "$WORK/Sources"
 unzip -q "$PACKAGE" -d "$WORK"
 cp "$ROOT"/samples/ios/*.swift "$WORK/Sources/"
 cp -R "$ROOT/samples/ios/Assets.xcassets" "$ROOT/samples/ios/LaunchScreen.storyboard" \
-    "$ROOT/samples/shared/common/site" "$WORK/Sources/"
+    "$ROOT/samples/shared/common/site" "$ROOT/samples/shared/common/llm" \
+    "$ROOT/samples/shared/common/models.json" "$WORK/Sources/"
+cp -R "$SAMPLE_LLM" "$WORK/PortalSampleLlm.xcframework"
 cat > "$WORK/project.yml" <<'YAML'
 name: PortalPackageConsumer
 options:
@@ -25,13 +32,18 @@ targets:
     platform: iOS
     sources:
       - path: Sources
-        excludes: [site]
+        excludes: [site, llm]
       - path: Sources/site
+        type: folder
+        buildPhase: resources
+      - path: Sources/llm
         type: folder
         buildPhase: resources
     dependencies:
       - package: PortalSDK
         product: PortalSDK
+      - framework: PortalSampleLlm.xcframework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.gosuda.portal.packageconsumer

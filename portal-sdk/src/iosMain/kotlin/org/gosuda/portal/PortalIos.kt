@@ -59,7 +59,7 @@ public class PortalIosSession internal constructor(
     /** True while the session is in [TunnelPhase.ACTIVE]. */
     public val isActive: Boolean get() = tunnel.isActive
 
-    /** First public URL from the latest snapshot, or null before assignment. */
+    /** Current relay-granted alias, or the identity-bound canonical fallback. */
     public val primaryPublicUrl: String? get() = tunnel.publicUrl
 
     /**

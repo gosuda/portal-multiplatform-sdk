@@ -19,7 +19,7 @@ class KeepAliveService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val app = application as SampleApp
         if (intent?.action == "stop") {
-            if (app.tunnel.value == null) stopSelf() else app.stop()
+            if (app.tunnel.value == null && !app.cleanupPending.value) stopSelf() else app.stop()
             // Successful stop releases the service through the process owner.
             // Failed stop keeps the notification and owned listener for retry.
         } else {

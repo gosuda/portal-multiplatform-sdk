@@ -183,9 +183,32 @@ need to implement the SDK's readiness/rollback sequence yourself.
 
 Platform identity storage is automatic. Android uses `filesDir/identity.json`,
 iOS uses Application Support, and desktop uses a per-application OS directory.
-Display-name changes do not overwrite an existing private identity. Android
-background execution needs an explicit foreground-service owner; iOS offers
-foreground sessions, not indefinite background execution.
+The optional domain prefix changes the lease name, not the persisted private
+identity. Android background execution needs an explicit foreground-service
+owner; iOS offers foreground sessions, not indefinite background execution.
+
+### Choose a short domain
+
+```kotlin
+val tunnel = client.publish(
+    PortalConfig.staticSite(siteDir).withDomainPrefix("my-arcade")
+)
+println(tunnel.publicUrl)
+```
+
+Swift uses `config.withDomainPrefix(prefix: "my-arcade")` before publishing.
+The workbenches expose **Domain prefix** without advanced settings.
+Use one 1–63 character label: letters, digits and internal hyphens. The engine
+normalizes it to lowercase and requests `https://my-arcade.<relay-host>`.
+The relay must actually grant that alias; if another identity owns it, the
+SDK returns the canonical identity-bound URL instead. Aliases last only for
+the live lease and must not be treated as permanent bookmarks.
+
+`tunnel.publicUrl` / `snapshot.primaryPublicUrl` select the current short
+alias while ACTIVE, otherwise the canonical fallback. `snapshot.publicUrls`
+keeps canonical URLs for diagnostics; never create an alias by deleting the
+address suffix yourself. `name` remains an identity-creation label, not a
+runtime prefix override for an existing identity.
 
 See [Android](samples/android/README.md), [iOS](samples/ios/README.md), and
 [desktop](samples/desktop/README.md) for runnable demos and
@@ -232,9 +255,9 @@ remain recognizable, never silently treated as applied policy.
 
 ## Explore the SDK in the samples
 
-All three sample apps offer five runnable exposure modes. Built-in listeners
-live in the sample, not the SDK; custom upstream inputs let you substitute
-your own service without changing the tunnel code.
+All three sample apps offer five core transport demos and a device-local LLM
+webpage. Built-in listeners and inference live in the samples, not the SDK;
+custom upstream inputs substitute your own service without changing tunnel code.
 
 | Mode | Built-in demonstration | How to verify |
 |---|---|---|
@@ -243,6 +266,7 @@ your own service without changing the tunnel code.
 | HTTP routes | Prefixes dispatch to local demo endpoints | Request each prefix and compare the responses |
 | TCP | Loopback echo listener | Send bytes to the relay's TCP endpoint with a TCP client |
 | UDP | Loopback datagram echo listener | Send a datagram to the relay's UDP endpoint |
+| Local LLM | Explicitly downloaded GGUF model runs on the host device's CPU | Open the private link and generate a real single-turn response |
 
 ### Play the arcade
 
@@ -254,7 +278,7 @@ your own service without changing the tunnel code.
 |---|---|
 | Snake | Steer with arrows/WASD or the touch direction pad; eat food, avoid collisions, pause and restart |
 | Memory pairs | Match eight shuffled letter pairs with click, tap or keyboard |
-| Reaction test | Wait for green; false starts are rejected and successful trials show last/best/median times |
+| Reaction test | Wait for the GO signal; false starts are rejected and successful trials show last/best/median times |
 | Water fill | Hold to pour, release to stop, tilt/drag the cup to slosh and spill, then score against a target level |
 
 The flat HTML/CSS/JavaScript bundle has one source:
@@ -264,12 +288,52 @@ These are client-side games, not multiplayer or a server-side leaderboard.
 Scores stay in the browser tab. Switching games or hiding the page pauses
 timers and releases held input.
 
+### Serve a device-local model
+
+1. Select **Local LLM** and choose a model from the catalog.
+2. Click **Download**. Nothing downloads on launch, selection or publish.
+   Completed files are size/SHA-256 verified and kept in app storage, so
+   later runs and app restarts reuse them without another download.
+3. Set an optional **Domain prefix** and a separate **Password**, then publish
+   after the download completes. Type your own 12–128 character password or
+   use **Generate password**; **Copy password** shares it separately.
+4. Copy/open the ordinary public URL and enter the password on the webpage.
+   URLs contain no credentials. HTTPS API requests use UTF-8 Basic auth with
+   the fixed username `portal`; the password stays in page memory.
+5. Keep the host app running and stop publishing when finished. Passwords
+   live only in the application/window owner, survive view recreation and
+   session stops, and are editable only while stopped. Relaunch generates
+   a new default password but retains downloaded model files.
+
+The fixed catalog uses public, revision-pinned GGUF files. Sizes below are
+decimal download sizes, not RAM requirements or measured speed promises.
+
+| Model | Quantization | Download | Language | Source / license |
+|---|---|---:|---|---|
+| SmolLM2 135M Instruct | Q4_K_M | 105 MB | English | [Hugging Face model, bartowski quantization](https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF), Apache-2.0 |
+| SmolLM2 360M Instruct | Q8_0 | 386 MB | English | [Official Hugging Face](https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF), Apache-2.0 |
+| Qwen2.5 0.5B Instruct | Q4_K_M | 491 MB | Multilingual, including Korean | [Official Qwen](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF), Apache-2.0 |
+| Qwen2.5 1.5B Instruct | Q4_K_M | 1.12 GB | Multilingual, including Korean | [Official Qwen](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF), Apache-2.0 |
+
+Use the smallest model for an older-phone demo; choose Qwen for Korean.
+Model quality, available RAM and CPU speed vary by device. The sample limits
+context to 1,024 tokens, generation to 128 tokens and concurrency to one.
+Prompts are independent: no cloud inference, external daemon, retained chat
+history, prompt logs or canned-response fallback.
+
+The sample-only [llama.cpp module](samples/local-llm) performs inference;
+Portal publishes its loopback HTTP service with the normal `PortalConfig.http`
+API. The SDK does not download/load models. The shared
+[`models.json`](samples/shared/common/models.json) is the only catalog source.
+Public transport smokes do not implicitly download gigabytes of weights.
+
+
 
 Use the workbench to publish/stop, inspect authoritative state and relay
 endpoints, edit live metadata, add/remove relays, and inspect diagnostics.
 Settings apply to the next publish; live operations act on the owned session.
-Sample names do not replace an existing private identity: the platform
-identity persists across launches.
+Domain prefix applies to the next lease; the private identity persists across
+launches and is never replaced by a prefix edit.
 
 Android background use requires the sample's explicit foreground-service
 option. iOS remains foreground-only; desktop keeps running only for the
@@ -389,7 +453,7 @@ val ready = tunnel.awaitReady(Capability.HTTP_TLS)
 // Authoritative snapshot — render this in UI.
 tunnel.state.collect { snap ->
     snap.phase               // IDLE → STARTING → CONNECTING → ACTIVE → …
-    snap.primaryPublicUrl    // first public URL, if any
+    snap.primaryPublicUrl    // current short alias, or canonical fallback
     snap.relays              // per-relay state/failure/error
     snap.hasSecurityWarning  // sticky MITM flag
     snap.isActive / isTerminal

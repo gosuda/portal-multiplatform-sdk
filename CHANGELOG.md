@@ -2,6 +2,19 @@
 
 ## 2026-11-01
 
+- fix(samples): clipped scrolled iOS cards to the viewport so fields did not
+  overlap the system status bar
+- feat(samples): added separately configured or randomly generated LLM
+  passwords and UTF-8 Basic authentication, replacing secret-bearing links
+  with ordinary public URLs and explicit webpage password entry
+- feat(samples): added explicit, persistent, checksum-verified model downloads
+  and sample-owned device-local CPU inference served through authenticated
+  Portal webpages without cloud inference or SDK model-management dependencies
+- feat(design): redesigned native workbenches, launcher assets and shared
+  browser surfaces in responsive black-and-white light/dark styles
+- feat(api): added identity-preserving domain-prefix configuration and preferred
+  relay-granted short URLs, with lease-safe canonical fallback and prefix
+  controls in Android, iOS and desktop workbenches
 - fix(security): upgraded indirect go-jose to v4.1.6 and quic-go to v0.59.1
   to remove the four remaining dependency advisories after the engine migration
 - feat(samples): added shared Snake, memory-pair, reaction-time and physical

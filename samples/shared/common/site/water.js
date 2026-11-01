@@ -140,30 +140,30 @@ export function mountWater(root) {
     solveSurface();
     context.clearRect(0, 0, 640, 470);
     const backdrop = context.createLinearGradient(0, 0, 0, 470);
-    backdrop.addColorStop(0, '#101f36');
-    backdrop.addColorStop(1, '#07111f');
+    backdrop.addColorStop(0, '#ffffff');
+    backdrop.addColorStop(1, '#f5f5f5');
     context.fillStyle = backdrop;
     context.fillRect(0, 0, 640, 470);
 
-    context.fillStyle = '#162b43';
+    context.fillStyle = '#e4e4e4';
     context.beginPath();
     context.ellipse(320, 426, 180, 17, 0, 0, Math.PI * 2);
     context.fill();
-    context.fillStyle = '#b6c9dc';
+    context.fillStyle = '#444444';
     context.fillRect(307, 20, 26, 29);
-    context.fillStyle = '#7292ad';
+    context.fillStyle = '#111111';
     context.fillRect(293, 13, 54, 11);
 
     if (pouring() && !finished && !paused) {
       const surfaceY = 270 + (HALF_HEIGHT - baseDepth) * Math.cos(radians());
-      context.strokeStyle = '#67d9ff';
+      context.strokeStyle = '#777777';
       context.lineWidth = 9;
       context.lineCap = 'round';
       context.beginPath();
       context.moveTo(320, 50);
       context.lineTo(320 + Math.sin(simulationTime * 25) * 1.5, clamp(surfaceY, 100, 393));
       context.stroke();
-      context.strokeStyle = '#d7f9ff';
+      context.strokeStyle = '#dddddd';
       context.lineWidth = 2;
       context.stroke();
     }
@@ -171,7 +171,7 @@ export function mountWater(root) {
     context.save();
     context.translate(320, 270);
     context.rotate(radians());
-    context.fillStyle = 'rgba(167, 204, 237, 0.05)';
+    context.fillStyle = 'rgba(0, 0, 0, 0.025)';
     context.fillRect(-HALF_WIDTH, -HALF_HEIGHT, CUP_WIDTH, CUP_HEIGHT);
     context.save();
     context.beginPath();
@@ -179,8 +179,8 @@ export function mountWater(root) {
     context.clip();
     if (volume > 0.00001) {
       const water = context.createLinearGradient(0, -HALF_HEIGHT, 0, HALF_HEIGHT);
-      water.addColorStop(0, '#66d7f4');
-      water.addColorStop(1, '#147da9');
+      water.addColorStop(0, '#aaaaaa');
+      water.addColorStop(1, '#555555');
       context.fillStyle = water;
       context.beginPath();
       context.moveTo(-HALF_WIDTH, HALF_HEIGHT);
@@ -190,7 +190,7 @@ export function mountWater(root) {
       context.lineTo(HALF_WIDTH, HALF_HEIGHT);
       context.closePath();
       context.fill();
-      context.strokeStyle = '#b6f6ff';
+      context.strokeStyle = '#222222';
       context.lineWidth = 2.5;
       context.beginPath();
       for (let i = 0; i < SAMPLE_COUNT; i++) {
@@ -203,7 +203,7 @@ export function mountWater(root) {
     }
     context.restore();
 
-    context.strokeStyle = 'rgba(224, 239, 255, 0.25)';
+    context.strokeStyle = 'rgba(0, 0, 0, 0.25)';
     context.lineWidth = 1;
     for (let mark = 0.25; mark < 1; mark += 0.25) {
       const y = HALF_HEIGHT - CUP_HEIGHT * mark;
@@ -216,14 +216,14 @@ export function mountWater(root) {
     }
     const targetY = HALF_HEIGHT - target * CUP_HEIGHT;
     context.setLineDash([6, 5]);
-    context.strokeStyle = '#ffd58a';
+    context.strokeStyle = '#111111';
     context.lineWidth = 2;
     context.beginPath();
     context.moveTo(-HALF_WIDTH, targetY);
     context.lineTo(HALF_WIDTH, targetY);
     context.stroke();
     context.setLineDash([]);
-    context.strokeStyle = '#c4d9ee';
+    context.strokeStyle = '#222222';
     context.lineWidth = 5;
     context.lineJoin = 'round';
     context.lineCap = 'round';
@@ -235,7 +235,7 @@ export function mountWater(root) {
     context.stroke();
     context.restore();
 
-    context.fillStyle = '#79dcfa';
+    context.fillStyle = '#777777';
     for (const drop of droplets) {
       context.globalAlpha = clamp(drop.life * 2, 0, 1);
       context.beginPath();
@@ -243,10 +243,10 @@ export function mountWater(root) {
       context.fill();
     }
     context.globalAlpha = 1;
-    context.fillStyle = '#b7c9df';
+    context.fillStyle = '#555555';
     context.font = '14px system-ui, sans-serif';
     context.textAlign = 'center';
-    context.fillText('Gold line = target when upright', 320, 454);
+    context.fillText('Dashed line = target when upright', 320, 454);
     updateMeasurements();
   }
 

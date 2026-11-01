@@ -524,6 +524,50 @@ class PortalClientTest {
     }
 
     @Test
+    fun shortUrlTracksTheGrantedLeaseAndNeverSurvivesReconnectionOrStop() = runTest {
+        val engine = FakeEngine()
+        val client = clientWith(engine)
+        try {
+            val tunnel = client.open(siteConfig())
+            val canonical = "https://arcade-identity.relay.example"
+            val alias = "https://arcade.relay.example"
+            fun emit(state: String, granted: String?) {
+                engine.emit(tunnel.tunnelId, "STATUS_CHANGED", PortalJson.encodeToString(PortalStatus(
+                    tunnelId = tunnel.tunnelId, name = "arcade", address = "0xfake",
+                    active = state == "ready", publicUrls = listOf(canonical),
+                    relays = listOf(PortalRelayStatus(
+                        relayUrl = "https://relay.example", state = state,
+                        publicUrl = canonical, aliasUrl = granted
+                    ))
+                )))
+            }
+
+            emit("ready", alias)
+            assertEquals(alias, tunnel.publicUrl)
+            assertEquals(listOf(canonical), tunnel.state.value.publicUrls)
+            emit("ready", null) // The relay can decline an occupied prefix.
+            assertEquals(canonical, tunnel.publicUrl)
+            emit("connecting", alias) // Even an erroneously retained alias is not current.
+            assertEquals(TunnelPhase.CONNECTING, tunnel.state.value.phase)
+            assertEquals(canonical, tunnel.publicUrl)
+            emit("ready", alias)
+            assertEquals(alias, tunnel.publicUrl)
+
+            engine.stopFailure = PortalException(PortalFailure.Codes.INTERNAL_ERROR, "stop failed")
+            assertFailsWith<PortalException> { tunnel.stop() }
+            assertEquals(TunnelPhase.STOPPING, tunnel.state.value.phase)
+            assertEquals(canonical, tunnel.publicUrl)
+            engine.stopFailure = null
+            tunnel.stop()
+            emit("ready", alias)
+            assertEquals(TunnelPhase.STOPPED, tunnel.state.value.phase)
+            assertEquals(canonical, tunnel.publicUrl)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun publishWaitsForDelayedActive() = runTest {
         val engine = FakeEngine().apply { statusActive = false }
         val client = clientWith(engine)

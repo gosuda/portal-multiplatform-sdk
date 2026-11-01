@@ -1,6 +1,13 @@
 package org.gosuda.portal.sample
 
 import android.content.ClipData
+import android.content.ClipDescription
+import android.os.PersistableBundle
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -10,9 +17,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -22,6 +36,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,11 +45,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import org.gosuda.portal.PortalConfig
 import org.gosuda.portal.PortalDiagnostics
@@ -45,6 +65,10 @@ import org.gosuda.portal.TunnelPhase
 import org.gosuda.portal.sample.content.DemoActivity
 import org.gosuda.portal.sample.content.PublishMode
 import org.gosuda.portal.sample.content.PublishRequest
+import org.gosuda.portal.sample.llm.DownloadPhase
+import org.gosuda.portal.sample.llm.LlmPassword
+import org.gosuda.portal.sample.llm.ModelDownloadState
+import org.gosuda.portal.sample.llm.ModelSpec
 
 data class SampleActions(
     val onStart: (PublishRequest) -> Unit,
@@ -56,11 +80,43 @@ data class SampleActions(
     val onRemoveRelay: (String) -> Unit,
     val onDiagnostics: () -> Unit,
     val onKeepAlive: (Boolean) -> Unit,
+    val onDownloadModel: (String) -> Unit,
+    val onCancelDownload: () -> Unit,
+    val onLlmPasswordChange: (String) -> Unit,
+    val onGenerateLlmPassword: () -> Unit,
 )
 
 @Composable
 fun PortalSampleTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(), content = content)
+    val dark = isSystemInDarkTheme()
+    val ink = if (dark) Color.White else Color(0xFF111111)
+    val canvas = if (dark) Color(0xFF0B0B0B) else Color(0xFFFAFAFA)
+    val paper = if (dark) Color(0xFF141414) else Color.White
+    val neutral = if (dark) Color(0xFFB4B4B4) else Color(0xFF666666)
+    val line = if (dark) Color(0xFF363636) else Color(0xFFDEDEDE)
+    val base = if (dark) darkColorScheme() else lightColorScheme()
+    MaterialTheme(
+        colorScheme = base.copy(
+            primary = ink, onPrimary = canvas, primaryContainer = ink, onPrimaryContainer = canvas,
+            secondary = ink, onSecondary = canvas, secondaryContainer = line, onSecondaryContainer = ink,
+            tertiary = ink, onTertiary = canvas, tertiaryContainer = line, onTertiaryContainer = ink,
+            background = canvas, onBackground = ink, surface = paper, onSurface = ink,
+            surfaceVariant = paper, onSurfaceVariant = neutral, outline = line, outlineVariant = line,
+            error = ink, onError = canvas, errorContainer = line, onErrorContainer = ink,
+            inverseSurface = ink, inverseOnSurface = canvas, inversePrimary = canvas,
+            surfaceTint = Color.Transparent, surfaceBright = paper, surfaceDim = canvas,
+            surfaceContainer = paper, surfaceContainerLow = canvas, surfaceContainerLowest = canvas,
+            surfaceContainerHigh = line, surfaceContainerHighest = line,
+        ),
+        shapes = Shapes(small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(16.dp),
+            large = RoundedCornerShape(20.dp)),
+        typography = Typography(
+            headlineLarge = Typography().headlineLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-1).sp),
+            titleMedium = Typography().titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            labelLarge = Typography().labelLarge.copy(fontWeight = FontWeight.SemiBold),
+        ),
+        content = content,
+    )
 }
 
 @Composable
@@ -74,13 +130,22 @@ fun SampleScreen(
     keepAlive: Boolean,
     demo: DemoActivity,
     localEndpoint: String?,
+    models: List<ModelSpec>,
+    cachedModels: Set<String>,
+    download: ModelDownloadState,
+    activeModelId: String?,
+    cleanupPending: Boolean,
+    llmPassword: String,
     actions: SampleActions,
 ) {
     var tab by rememberSaveable { mutableStateOf(0) }
     var modeName by rememberPersistedString("workbench.mode", PublishMode.STATIC_SITE.name)
     val mode = PublishMode.entries.firstOrNull { it.name == modeName } ?: PublishMode.STATIC_SITE
+    var modelId by rememberPersistedString("workbench.model", models.firstOrNull()?.id.orEmpty())
+    val selectedModel = models.firstOrNull { it.id == modelId } ?: models.firstOrNull()
+    var modeMenu by rememberSaveable { mutableStateOf(false) }
     var builtIn by rememberPersistedBoolean("workbench.builtIn", true)
-    var name by rememberPersistedString("workbench.name", "android-workbench")
+    var domainPrefix by rememberPersistedString("workbench.domainPrefix", "android-demo")
     var description by rememberPersistedString("workbench.description", "Published from the Portal Android SDK workbench")
     var tags by rememberPersistedString("workbench.tags", "sdk,android")
     var relayUrls by rememberPersistedString("relays", "")
@@ -101,16 +166,28 @@ fun SampleScreen(
     var relay by rememberSaveable { mutableStateOf("") }
     var openError by rememberSaveable { mutableStateOf<String?>(null) }
     val running = snapshot != null && !snapshot.isTerminal
-    val editable = !running && !busy
+    val owned = running || cleanupPending
+    val editable = !owned && !busy
     val operable = running && !busy && snapshot.phase != TunnelPhase.STOPPING
     val missingRelay = !discovery && commaValues(relayUrls).isEmpty()
+    val validLlmPassword = LlmPassword.isValid(llmPassword)
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val copy: (String) -> Unit = { value ->
         scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Portal endpoint", value))) }
     }
+    val copyPassword: () -> Unit = {
+        scope.launch {
+            val clip = ClipData.newPlainText("Portal AI password", llmPassword)
+            clip.description.extras = PersistableBundle().apply {
+                putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+            }
+            clipboard.setClipEntry(ClipEntry(clip))
+        }
+    }
     val uriHandler = LocalUriHandler.current
-    val publicHttpUrl = snapshot?.publicUrls?.firstOrNull { it.startsWith("https://") || it.startsWith("http://") }
+    val primaryPublicUrl = snapshot?.primaryPublicUrl
+    val publicHttpUrl = primaryPublicUrl?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
     val target = when (mode) { PublishMode.TCP -> tcpTarget; PublishMode.UDP -> udpTarget; else -> httpTarget }
 
     Scaffold(
@@ -118,23 +195,28 @@ fun SampleScreen(
             Column {
                 Button(
                     onClick = {
-                        if (running) actions.onStop()
+                        if (owned) actions.onStop()
                         else actions.onStart(PublishRequest(
                             mode = mode, builtIn = builtIn,
                             options = PortalConfig(
-                                name = name.trim().ifBlank { null },
+                                domainPrefix = domainPrefix.trim().ifBlank { null },
                                 description = description.ifBlank { null }, tags = commaValues(tags),
                                 relays = commaValues(relayUrls), discovery = discovery,
                                 banMitm = banMitm, hide = hide,
                             ),
                             target = target, firstPrefix = firstPrefix, firstUpstream = firstUpstream,
                             secondPrefix = secondPrefix, secondUpstream = secondUpstream,
+                            modelId = selectedModel?.id,
                         ))
                     },
-                    enabled = !busy && (running || !missingRelay),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    enabled = !busy && (owned || (!missingRelay &&
+                        (mode != PublishMode.LOCAL_LLM || (validLlmPassword &&
+                            selectedModel?.id?.let { it in cachedModels } == true)))),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(16.dp),
                 ) {
-                    Text(when { busy -> "Working…"; snapshot?.phase == TunnelPhase.STOPPING -> "Retry stop"; running -> "Stop publishing"; else -> "Publish" })
+                    Text(when { busy -> "Working…"; cleanupPending || snapshot?.phase == TunnelPhase.STOPPING -> "Retry stop"; running -> "Stop publishing"; else -> "Publish ${if (mode == PublishMode.LOCAL_LLM) "local AI" else "to the web"}" })
                 }
                 NavigationBar {
                     listOf("Publish", "Session", "Capabilities").forEachIndexed { index, label ->
@@ -145,14 +227,18 @@ fun SampleScreen(
             }
         },
     ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            modifier = Modifier.widthIn(max = 900.dp).fillMaxSize(),
+            contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                Text("Portal SDK workbench", style = MaterialTheme.typography.headlineMedium)
-                Text("${snapshot?.phase ?: "IDLE"} · ${if (busy) "operation in progress" else "process-owned client"}")
+                Text("PORTAL / DEVICE WORKBENCH", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 2.sp)
+                Text("Your device.\nOn the web.", style = MaterialTheme.typography.headlineLarge)
+                Text("${snapshot?.phase ?: "READY TO CREATE"} · ${if (busy) "Working" else "Local services, real public links"}",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (lastError != null || failure != null || snapshot?.lastFailure != null || snapshot?.hasSecurityWarning == true || openError != null) {
                 item {
@@ -165,17 +251,32 @@ fun SampleScreen(
                     }
                 }
             }
+            item {
+                Panel("YOUR ADDRESS / Domain prefix") {
+                    Field("Domain prefix", domainPrefix, editable) { domainPrefix = it }
+                    Text("A short label, such as my-arcade. Leave blank for your stored identity. The relay grants an available alias only for the active session; a collision falls back to the canonical URL.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             if (tab == 0) {
                 item {
-                    Panel("1 · Choose a capability") {
-                        PublishMode.entries.forEach { candidate ->
-                            OutlinedButton(onClick = { modeName = candidate.name }, enabled = editable,
-                                modifier = Modifier.fillMaxWidth()) {
-                                Text((if (candidate == mode) "✓ " else "") + candidate.title)
+                    Panel("What would you like to share?") {
+                        Box {
+                            OutlinedButton(onClick = { modeMenu = true }, enabled = editable,
+                                modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+                                Text("${mode.title}  ▾")
+                            }
+                            DropdownMenu(expanded = modeMenu, onDismissRequest = { modeMenu = false }) {
+                                PublishMode.entries.forEach { candidate ->
+                                    DropdownMenuItem(text = { Text(candidate.title) }, onClick = {
+                                        modeName = candidate.name
+                                        modeMenu = false
+                                    })
+                                }
                             }
                         }
                         Text(mode.help)
-                        if (mode != PublishMode.STATIC_SITE) {
+                        if (mode != PublishMode.STATIC_SITE && mode != PublishMode.LOCAL_LLM) {
                             Toggle("Use built-in loopback demo", builtIn, editable) { builtIn = it }
                             Text(if (builtIn) "Starts a real sample-only listener on an ephemeral loopback port. No installation or external server required."
                                 else "Advanced: start your upstream on this Android device before publishing. Desktop localhost is not device localhost. Remote targets remain disabled.")
@@ -185,17 +286,49 @@ fun SampleScreen(
                             if (!builtIn) Field("Route 1 upstream URL", firstUpstream, editable) { firstUpstream = it }
                             Field("Route 2 prefix (fallback)", secondPrefix, editable) { secondPrefix = it }
                             if (!builtIn) Field("Route 2 upstream URL", secondUpstream, editable) { secondUpstream = it }
-                        } else if (mode != PublishMode.STATIC_SITE && !builtIn) {
+                        } else if (mode != PublishMode.STATIC_SITE && mode != PublishMode.LOCAL_LLM && !builtIn) {
                             Field("Loopback host:port", target, editable) {
                                 when (mode) { PublishMode.TCP -> tcpTarget = it; PublishMode.UDP -> udpTarget = it; else -> httpTarget = it }
                             }
                         }
                     }
                 }
+                if (mode == PublishMode.LOCAL_LLM) {
+                    item {
+                        ModelPanel(models, selectedModel, cachedModels, download, editable,
+                            activeModelId, onSelect = { modelId = it }, actions = actions)
+                    }
+                    item {
+                        Panel("LOCAL AI / Password") {
+                            OutlinedTextField(
+                                value = llmPassword, onValueChange = actions.onLlmPasswordChange,
+                                label = { Text("Password") }, enabled = editable, singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                isError = !validLlmPassword,
+                                supportingText = {
+                                    Text(if (validLlmPassword) "12–128 Unicode characters. A generated password is recommended."
+                                        else "Enter 12–128 Unicode characters before publishing.")
+                                },
+                                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = actions.onGenerateLlmPassword, enabled = editable) {
+                                    Text("Generate password")
+                                }
+                                OutlinedButton(onClick = copyPassword, enabled = validLlmPassword) {
+                                    Text("Copy password")
+                                }
+                            }
+                            Text("Open the public URL, then enter this password on the webpage. Sharing the URL alone does not grant inference access.",
+                                style = MaterialTheme.typography.bodySmall)
+                            Text("Kept only in app memory through rotation and session stops; a fresh app process generates a new default. Editing and generation are locked until publishing and cleanup finish.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
                 item {
-                    Panel("2 · Listing and relay configuration") {
-                        Field("Display name", name, editable) { name = it }
-                        Text("The SDK persists identity in app-private storage. Editing a display name never regenerates identity or guarantees a new public hostname.")
+                    AdvancedPanel("Relay & listing options") {
                         Field("Description", description, editable) { description = it }
                         Field("Tags (comma-separated)", tags, editable) { tags = it }
                         Toggle("Relay discovery", discovery, editable) { discovery = it }
@@ -203,11 +336,11 @@ fun SampleScreen(
                         if (missingRelay) Text("Choose discovery or supply at least one relay.")
                         Toggle("Reject suspected MITM relays", banMitm, editable) { banMitm = it }
                         Toggle("Hide from public listings", hide, editable) { hide = it }
-                        Text("Hide is a listing preference, not authentication. Publishing exposes this content to anyone with its address.")
+                        Text("Hide is a listing preference, not authentication. Public addresses expose shared content; local AI inference additionally requires its password.")
                     }
                 }
                 item {
-                    Panel("Execution policy") {
+                    AdvancedPanel("Execution policy") {
                         Toggle("Optional foreground service", keepAlive, !busy, actions.onKeepAlive)
                         Text("Off by default. Opt in while the app is visible for notification-backed background execution. Android can still stop the process and limits data-sync service duration; this is not indefinite hosting. Rotation does not stop the session.")
                     }
@@ -222,14 +355,26 @@ fun SampleScreen(
                         Text("Ready: ${snapshot?.readyCapabilities.orEmpty().joinToString()}")
                         Text("Dropped auxiliary events: ${snapshot?.droppedEventCount ?: 0}")
                         if (snapshot?.phase == TunnelPhase.STOPPING) Text("Stop did not complete. Ownership and the built-in listener are retained. Retry stop; do not start a replacement session.")
-                        snapshot?.publicUrls.orEmpty().forEach { url ->
+                        if (cleanupPending) Text("Local cleanup is retained. Retry stop before starting another session.")
+                        primaryPublicUrl?.let { url ->
+                            Text("Primary public URL")
                             Copyable(url) { copy(url) }
-                            if (url.startsWith("http://") || url.startsWith("https://")) {
+                            if (publicHttpUrl != null) {
                                 OutlinedButton(onClick = {
                                     try { uriHandler.openUri(url); openError = null }
                                     catch (e: RuntimeException) { openError = "No browser could open this address: ${e.message}" }
                                 }) { Text("Open in browser") }
                             }
+                        }
+                        if (activeModelId != null && running && publicHttpUrl != null) {
+                            Text("Password-protected local AI", style = MaterialTheme.typography.titleSmall)
+                            Text("Open the public URL above and enter the password separately. The password stays out of the URL, SDK metadata and logs.",
+                                style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(onClick = copyPassword) { Text("Copy password") }
+                        }
+                        snapshot?.publicUrls.orEmpty().filter { it != primaryPublicUrl }.forEach { url ->
+                            Text("Canonical identity-bound URL")
+                            Copyable(url) { copy(url) }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = actions.onRefresh, enabled = operable) { Text("Refresh") }
@@ -249,6 +394,7 @@ fun SampleScreen(
                         SelectionContainer {
                             Text(when (mode) {
                                 PublishMode.STATIC_SITE -> "curl '$base/'"
+                                PublishMode.LOCAL_LLM -> "Open the public URL above and enter the password from Copy password. The browser sends Basic authorization as portal; no prompts, passwords or outputs appear in this log."
                                 PublishMode.HTTP, PublishMode.ROUTES -> "curl '$base/api'\ncurl -X POST '$base/webhook' -H 'Content-Type: text/plain' --data 'hello portal'"
                                 PublishMode.TCP -> "printf 'hello portal\\n' | nc ${endpointArguments(tcpAddress)}"
                                 PublishMode.UDP -> "printf 'hello portal\\n' | nc -u -w 2 ${endpointArguments(udpAddress)}"
@@ -298,22 +444,27 @@ fun SampleScreen(
                 item {
                     Panel("What this SDK does") {
                         Text("Static site: serves app-private files directly, without an embedded web server.")
+                        Text("Device-local AI: explicit one-time verified model download, persistent app-private cache, native CPU inference, and a private single-turn webpage. No weights ship in the APK. Downloading and inference are sample-owned, not SDK features.")
                         Text("HTTP: forwards a real loopback service. Built-in GET /api returns JSON; POST /webhook acknowledges a body without storing it (16 KiB maximum, Content-Length required).")
                         Text("Routes: the longest matching path prefix wins. Built-in /api selects the JSON API service and / selects a separate webhook receiver; custom mode supports two independent services.")
                         Text("TCP and UDP: forward raw traffic to a real listener. Built-in echo uses 4 KiB buffers; TCP limits each connection to 64 KiB with a 3-second idle timeout. Relay support is required; use raw relay endpoints.")
                         Text("publish waits for readiness. Application owns the PortalClient and listeners; screen observation never owns the tunnel. A failed stop remains retryable, including failed publish cleanup.")
-                        Text("No global stop, identity editor, remote targets, game server or model installer. This UI covers the main modes, not every SDK option. Overlay is unsupported in v1; hide is not access control.")
+                        Text("Domain prefix requests a lease-scoped short HTTP URL without changing stored identity. The primary URL comes from snapshot.primaryPublicUrl: a ready relay-granted alias while ACTIVE, or the canonical fallback when the alias is unavailable. Raw TCP/UDP endpoints are unchanged.")
+                        Text("No global stop, identity editor or remote targets. This UI covers the main modes, not every SDK option. Overlay is unsupported in v1; hide is not access control. Local AI additionally requires its configured password.")
                     }
                 }
             }
+        }
         }
     }
 }
 
 @Composable
 private fun Panel(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             content()
         }
@@ -321,9 +472,93 @@ private fun Panel(title: String, content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
+private fun AdvancedPanel(title: String, content: @Composable ColumnScope.() -> Unit) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Panel(title) {
+        OutlinedButton(onClick = { expanded = !expanded }) {
+            Text(if (expanded) "Hide settings −" else "Show settings +")
+        }
+        if (expanded) content()
+    }
+}
+
+@Composable
+private fun ModelPanel(
+    models: List<ModelSpec>,
+    selected: ModelSpec?,
+    cached: Set<String>,
+    progress: ModelDownloadState,
+    editable: Boolean,
+    activeModelId: String?,
+    onSelect: (String) -> Unit,
+    actions: SampleActions,
+) {
+    var menu by rememberSaveable { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
+    var sourceError by rememberSaveable { mutableStateOf(false) }
+    val downloading = progress.phase == DownloadPhase.DOWNLOADING || progress.phase == DownloadPhase.VERIFYING
+    Panel("MODEL LIBRARY / Download once, keep locally") {
+        Box {
+            OutlinedButton(onClick = { menu = true }, enabled = editable,
+                modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+                Text("${selected?.title ?: "No model available"}  ▾")
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                models.forEach { candidate ->
+                    DropdownMenuItem(text = {
+                        Text("${candidate.title} · ${candidate.downloadBytes / 1_048_576} MiB${if (candidate.id in cached) " · Cached" else ""}")
+                    }, onClick = { onSelect(candidate.id); menu = false; sourceError = false })
+                }
+            }
+        }
+        selected?.let { model ->
+            Text(model.summary)
+            Text("${model.parameters} · ${model.quantization} · ${model.downloadBytes / 1_048_576} MiB",
+                style = MaterialTheme.typography.titleSmall)
+            Text("Languages: ${model.languages}\nLicense: ${model.license}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SelectionContainer { Text(model.source, style = MaterialTheme.typography.bodySmall) }
+            OutlinedButton(onClick = {
+                try { uriHandler.openUri(model.source); sourceError = false }
+                catch (_: RuntimeException) { sourceError = true }
+            }) { Text("View model source & license") }
+            if (sourceError) Text("No browser is available to open the model source.")
+            val ready = model.id in cached
+            Text(when {
+                model.id == activeModelId -> "IN USE / Native CPU inference"
+                ready -> "CACHED / Ready to publish offline weights"
+                else -> "NOT DOWNLOADED / Publishing is disabled until verified"
+            }, style = MaterialTheme.typography.labelLarge)
+            Button(onClick = { actions.onDownloadModel(model.id) },
+                enabled = editable && !downloading && !ready) {
+                Text(if (ready) "Already downloaded" else "Download ${model.downloadBytes / 1_048_576} MiB")
+            }
+        }
+        if (downloading) {
+            Text("${models.firstOrNull { it.id == progress.modelId }?.title ?: "Model"} · ${if (progress.phase == DownloadPhase.VERIFYING) "Verifying SHA-256…" else "Downloading…"}")
+            LinearProgressIndicator(progress = {
+                if (progress.totalBytes > 0) (progress.receivedBytes.toFloat() / progress.totalBytes).coerceIn(0f, 1f) else 0f
+            }, modifier = Modifier.fillMaxWidth())
+            Text("${progress.receivedBytes / 1_048_576} / ${progress.totalBytes / 1_048_576} MiB",
+                style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = actions.onCancelDownload) { Text("Cancel download") }
+        } else if (progress.phase == DownloadPhase.FAILED) {
+            Text("Download failed: ${progress.error ?: "Check your connection and available storage, then retry."}")
+        } else if (progress.phase == DownloadPhase.CANCELLED) {
+            Text("Download cancelled. No incomplete weights can be published.")
+        }
+        Text("Nothing downloads on launch, selection or Publish. Completed, size- and hash-verified weights persist in app files through restarts and session stops. No model is bundled in the APK. Smaller models reduce storage and memory needs; speed and answer quality depend on your device.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("The shared page runs independent single-turn requests on this device's CPU, not a cloud API. Keep this app alive while serving. Open the public URL and enter the separately configured password; do not share the password publicly.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
 private fun Field(label: String, value: String, enabled: Boolean, change: (String) -> Unit) {
     OutlinedTextField(value = value, onValueChange = change, enabled = enabled,
-        label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp))
 }
 
 @Composable

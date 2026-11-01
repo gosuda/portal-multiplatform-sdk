@@ -74,9 +74,10 @@ app (Kotlin / Swift)
   `publish_cleanup`, `terminalPhase` records the phase that ended the
   session, and `readinessFailure` carries the original readiness error when
   cleanup itself failed — no message parsing.
-- `tunnel.publicUrl` is the ready-result convenience surface (first URL of
-  the authoritative snapshot); `PortalIosSession.primaryPublicUrl` mirrors
-  it for Swift.
+- `tunnel.publicUrl` / `PortalSnapshot.primaryPublicUrl` prefer a ready,
+  relay-granted alias only while the session is ACTIVE; Swift mirrors this.
+  `publicUrls` retains canonical identity-bound URLs. Never invent short URLs
+  by trimming the identity suffix or keep a lease alias current after stop.
 - Managed lifetime: `PortalClient.use {}` (suspend extension) closes the
   client after the block; `PortalClientHolder.publish` is the process-owned
   ready-on-return callback; iOS teardown is `PortalIosClient.close` +
@@ -105,6 +106,11 @@ app (Kotlin / Swift)
 ## 5. Validation & security
 
 - `identity_json` XOR `identity_path`; `discovery=false` requires >=1 relay.
+- Optional `domain_prefix` overrides only the in-memory lease name, never the
+  stored identity/key. It is a trimmed 1–63 ASCII DNS label (letters/digits,
+  internal hyphens), normalized lowercase, excluding canonical 40-hex shapes.
+  A missing value retains the stored name. An occupied alias falls back to
+  the canonical URL; a requested prefix is not a permanent domain reservation.
 - Relay URLs: `https` only; bare hosts default to `https`; `http` is
   accepted only for loopback hosts (the engine upgrades it); no user-info;
   port 1-65535. Mirrors `utils.NormalizeRelayURL` in portal-tunnel.
@@ -206,6 +212,28 @@ app (Kotlin / Swift)
 - Samples demonstrate the SDK, not a separate game engine, model manager, or
   server-installation product. Protocol listeners and request inspection belong
   to sample modules, never `portal-sdk`.
+- Native and web sample surfaces use a cohesive black/white palette with
+  neutral borders, clear typography, keyboard/touch access and responsive
+  layouts. Dark mode inverts the palette; no saturated semantic/accent colors.
+- A device-local LLM is a sample-owned HTTP upstream, not an SDK inference
+  capability. Its pinned CPU backend, catalog/cache and web UI stay under
+  `samples`; no cloud daemon, fake response or SDK-side model installer.
+- Model availability is one shared revision/size/SHA-256/license catalog.
+  Downloads are explicit per model, never triggered by launch/select/publish.
+  Only complete verified files become cached artifacts; they persist across
+  launches/stops without another download. Partial/cancelled files are not runnable.
+- Local inference is bounded (1,024-token context, at most 128 generated
+  tokens, one request at a time), runs off the UI thread and clears request
+  state between prompts. Teardown cancels work before freeing model memory.
+- LLM HTTP binds loopback and requires a separately configured password
+  (12–128 Unicode code points), defaulting to cryptographic randomness.
+  Native settings offer secure input, Generate and Copy; changes apply only
+  while stopped. The owner keeps the draft in memory, not on disk.
+- Webpages use UTF-8 Basic auth with fixed username `portal` and memory-only
+  credentials. Links contain no secret or fragment. Passwords never enter SDK
+  metadata, logs or diagnostics; do not issue browser-native auth challenges.
+  Sharing the URL alone does not grant inference. Public webpages cannot
+  download models; no indefinite iOS background hosting is promised.
 - Client-side web games are static-site examples. Keep one flat shared bundle
   under `samples/shared/common/site` for Android assets, the iOS bundle and
   desktop application resources. Snake, memory pairs, reaction testing and
@@ -214,14 +242,16 @@ app (Kotlin / Swift)
   Do not add game state, installers, sensor permissions or frontend dependencies
   to the SDK, or imply multiplayer/global score persistence.
 - Offer runnable static-site, HTTP API/webhook, HTTP prefix-route, TCP echo,
-  and UDP echo demonstrations, plus explicit custom loopback upstream inputs.
+  UDP echo and local-LLM demonstrations, plus custom loopback upstream inputs.
   Built-in listeners bind only to loopback and have bounded input and logs.
 - Explain which SDK API each mode exercises and how to send a real request.
   ACTIVE is tunnel readiness, not proof of upstream application success.
   Show raw TCP/UDP relay addresses separately from browser URLs.
 - Configuration drafts apply to the next session; metadata/relay commands
-  target the current owned session. A display-name edit never rotates or
-  overwrites a persisted private identity.
+  target the current owned session. Domain prefix is an obvious configuration
+  field even in simple mode; edits apply to the next publish without rotating
+  or overwriting persisted identity. Primary copy/open uses the SDK preferred
+  URL; canonical URLs are separately labelled, not mistaken for the short alias.
 - Observation belongs to the view; sessions and built-in listeners belong to
   the application owner. Failed rollback/stop keeps the owned session and its
   payload reachable for retry. Stop listeners only after terminal cleanup.

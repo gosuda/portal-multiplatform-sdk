@@ -64,7 +64,9 @@ public data class PortalConfig(
     @SerialName("target_addr") val targetAddr: String? = null,
     @SerialName("udp_addr") val udpAddr: String? = null,
     @SerialName("http_routes") val httpRoutes: List<PortalHTTPRoute>? = null,
-    @SerialName("x402") val x402: PortalX402Config? = null
+    @SerialName("x402") val x402: PortalX402Config? = null,
+    /** Requested DNS label, independent of the persisted identity's name/key. */
+    @SerialName("domain_prefix") val domainPrefix: String? = null
 ) {
     override fun toString(): String =
         "PortalConfig(name=$name, identityJson=${if (identityJson == null) null else "<redacted>"}, " +
@@ -72,7 +74,14 @@ public data class PortalConfig(
             "maxActiveRelays=$maxActiveRelays, banMitm=$banMitm, ech=$ech, overlay=$overlay, " +
             "udp=$udp, tcp=$tcp, description=$description, tags=$tags, owner=$owner, " +
             "thumbnail=$thumbnail, hide=$hide, staticDir=$staticDir, staticIndex=$staticIndex, " +
-            "targetAddr=$targetAddr, udpAddr=$udpAddr, httpRoutes=$httpRoutes, x402=$x402)"
+            "targetAddr=$targetAddr, udpAddr=$udpAddr, httpRoutes=$httpRoutes, x402=$x402, domainPrefix=$domainPrefix)"
+
+    /**
+     * Requests `<prefix>.<relay-host>` without regenerating identity.
+     * A relay may decline an occupied alias; [PortalSnapshot.primaryPublicUrl]
+     * then falls back to the identity-bound canonical URL.
+     */
+    public fun withDomainPrefix(prefix: String?): PortalConfig = copy(domainPrefix = prefix)
 
     /**
      * Fluent builder mirroring `PortalConfig.Builder` in the Android SDK,
@@ -101,8 +110,10 @@ public data class PortalConfig(
         private var udpAddr: String? = null
         private var httpRoutes: MutableList<PortalHTTPRoute> = mutableListOf()
         private var x402: PortalX402Config? = null
+        private var domainPrefix: String? = null
 
         public fun setName(name: String): Builder = apply { this.name = name }
+        public fun setDomainPrefix(prefix: String): Builder = apply { domainPrefix = prefix }
         public fun setIdentityJson(json: String): Builder = apply { this.identityJson = json }
         public fun setIdentityPath(path: String): Builder = apply { this.identityPath = path }
         public fun addRelay(url: String): Builder = apply { this.relays.add(url) }
@@ -151,7 +162,8 @@ public data class PortalConfig(
             targetAddr = targetAddr,
             udpAddr = udpAddr,
             httpRoutes = httpRoutes.toList().takeIf { it.isNotEmpty() },
-            x402 = x402
+            x402 = x402,
+            domainPrefix = domainPrefix
         )
     }
 

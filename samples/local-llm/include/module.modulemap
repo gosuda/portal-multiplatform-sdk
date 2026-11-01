@@ -1,0 +1,5 @@
+module PortalSampleLlm {
+    header "PortalSampleLlm.h"
+    link "c++"
+    export *
+}

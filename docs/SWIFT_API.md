@@ -56,6 +56,16 @@ succeeded. HTTP/static need a ready public URL; TCP/UDP each need their own
 nonblank endpoint on a ready relay. `primaryPublicUrl` is a browser URL;
 `snapshot.relays[].tcpAddr` and `.udpAddr` are raw protocol endpoints.
 
+Set an optional domain label with
+`config.withDomainPrefix(prefix: "my-arcade")` before `publish`. This overrides
+the lease name even with an existing identity, without changing its keys/file.
+Use 1–63 ASCII letters/digits/internal hyphens; the engine normalizes lowercase.
+The relay grants `https://my-arcade.<relay-host>` only when available.
+`primaryPublicUrl` prefers that granted alias while ACTIVE and falls back to
+the canonical identity-bound URL on collision/reconnect/stop. Canonical URLs
+remain in `snapshot.publicUrls`; `snapshot.relays[].aliasUrl` is lease-scoped.
+Never synthesize an alias or reuse it as a permanent bookmark.
+
 The remaining sections cover optional names, explicit relays, custom timeout,
 manual observation and advanced identity/constructor control.
 
@@ -102,7 +112,7 @@ is intentional.
 class PortalIosSession {
     var sessionId: String { get }
     var snapshot: PortalSnapshot { get }        // authoritative current state
-    var primaryPublicUrl: String? { get }       // first public URL
+    var primaryPublicUrl: String? { get }       // current alias, or canonical fallback
     var name: String? { get }
     var address: String? { get }
     var isActive: Bool { get }
@@ -138,15 +148,18 @@ PortalIosConfigFactory.shared.staticSite(directory: String) -> PortalConfig
 PortalIosConfigFactory.shared.httpRoute(prefix: String, upstream: String) -> PortalHTTPRoute
 PortalIosConfigFactory.shared.staticRoute(prefix: String, directory: String) -> PortalHTTPRoute
 
-// Optional display names and the explicit static index.
+// Optional identity-creation names and the explicit static index.
 PortalIosConfigFactory.shared.http(targetAddress: String, name: String?) -> PortalConfig
 PortalIosConfigFactory.shared.routes(routes: [PortalHTTPRoute], name: String?) -> PortalConfig
 PortalIosConfigFactory.shared.tcp(targetAddress: String, name: String?) -> PortalConfig
 PortalIosConfigFactory.shared.udp(targetAddress: String, name: String?) -> PortalConfig
 PortalIosConfigFactory.shared.staticSite(directory: String, index: String, name: String?) -> PortalConfig
 
-// Advanced escape hatch — every PortalConfig field, plain Bool/String?
-// parameters, no KotlinBoolean and no generated all-fields initializer:
+// Optional runtime domain prefix for any config, including custom(...).
+config.withDomainPrefix(prefix: String?) -> PortalConfig
+
+// Advanced escape hatch for identity, relays, metadata and transport combinations;
+// plain Bool/String? parameters, no KotlinBoolean/all-fields initializer:
 PortalIosConfigFactory.shared.custom(
     name: String?, identityJson: String?, identityPath: String?,
     relays: [String]?, discovery: Bool, maxActiveRelays: Int32,

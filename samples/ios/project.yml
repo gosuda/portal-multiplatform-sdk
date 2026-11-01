@@ -12,13 +12,25 @@ targets:
       - path: PortalSampleApp.swift
       - path: PortalHomeView.swift
       - path: Contents.swift
+      - path: ModelStore.swift
+      - path: LocalLlmServer.swift
+      - path: WorkbenchStyle.swift
       - path: LaunchScreen.storyboard
       - path: Assets.xcassets
       - path: ../shared/common/site
         type: folder
         buildPhase: resources
+      - path: ../shared/common/llm
+        type: folder
+        buildPhase: resources
+      - path: ../shared/common/models.json
+        buildPhase: resources
+      - path: ../local-llm/NOTICE
+        buildPhase: resources
     dependencies:
       - framework: ../../dist/PortalSDK.xcframework
+        embed: false
+      - framework: ../../build/sample-llm/ios/PortalSampleLlm.xcframework
         embed: false
     settings:
       base:

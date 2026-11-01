@@ -1,0 +1,73 @@
+Portal sample-local CPU inference
+=================================
+
+This module is sample application code, not part of the Portal tunneling SDK.
+It links llama.cpp and ggml statically into the sample's CPU-only native library.
+No upstream source tree, native binary, or model weights are vendored here.
+
+Pinned upstream release: llama.cpp v0.8.0
+Release: https://github.com/ggml-org/llama.cpp/releases/tag/v0.8.0
+Commit: 8642541b255bfb5dc39cd351a178be09013a55d6
+Source: https://github.com/ggml-org/llama.cpp/tree/8642541b255bfb5dc39cd351a178be09013a55d6
+Archive: https://codeload.github.com/ggml-org/llama.cpp/tar.gz/8642541b255bfb5dc39cd351a178be09013a55d6
+Archive SHA-256: 1688a167a8edd9499cdd0c19b8bd044f0fa184b466981977bbf2222d884953a4
+Upstream C API: include/llama.h
+Inference example: examples/simple/simple.cpp (llama_batch_ext / llama_process)
+Original license: https://github.com/ggml-org/llama.cpp/blob/8642541b255bfb5dc39cd351a178be09013a55d6/LICENSE
+
+Build from the repository root:
+  ./scripts/build-sample-llm.sh desktop
+  ./scripts/build-sample-llm.sh ios
+Android uses this directory's CMakeLists.txt through externalNativeBuild with
+NDK 29.0.14206865, API 26+, c++_shared, arm64-v8a/x86_64. ELF max/common page
+alignment is 16 KiB. Desktop requires CMake >=3.22, C++17 and JDK17. iOS requires
+Xcode, targets iOS16+, and packages static arm64 device and arm64/x86_64 simulator
+libraries with the PortalSampleLlm C module and automatic c++ linkage.
+
+Configure-time source fetching checks the pinned archive SHA-256 before
+extraction and uses ~/.cache/portal-sample-llm (or XDG_CACHE_HOME/LOCALAPPDATA).
+PORTAL_SAMPLE_LLM_CACHE may select a different cache outside the repository.
+Build output stays under build/sample-llm; no build step downloads any model.
+Model downloads are a separate, explicit application action. Model licenses and
+sources are listed in samples/shared/common/models.json, independently of the
+engine's MIT license. Keep this notice with redistributed sample native binaries.
+
+Native ownership and limits:
+  Each handle owns its model, 1024-token context, batch, and sampling chain.
+  Requests use the model's actual chat template with a system and one user turn.
+  The sampler uses top-k40, top-p0.95, temperature0.8 and distribution sampling.
+  Context/sampler state resets around every request; no conversation is retained
+  as inference history. Requested output is 1..128 tokens, at most four CPU
+  threads. Over-budget/invalid input fails rather than being silently truncated.
+  Cancel is permanent and interrupts CPU evaluation. Destroy cancels and waits
+  before freeing state; do not reuse a destroyed handle. Output/error buffers
+  must be freed through PortalSampleLlmFree. JNI passes standard UTF-8 byte
+  arrays; generated incomplete trailing UTF-8 scalars are removed at a token cap.
+  Upstream logging is disabled so model metadata, prompts, paths and answers do
+  not enter application logs. The backend registry initializes once per process
+  and remains resident; models and per-owner inference buffers do not.
+
+llama.cpp / ggml license
+=======================
+
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

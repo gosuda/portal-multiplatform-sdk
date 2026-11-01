@@ -1,0 +1,54 @@
+[
+  {
+    "id": "smollm2-135m",
+    "title": "SmolLM2 135M Instruct",
+    "summary": "Smallest download for an English CPU inference demo. Limited reasoning quality; start here on older phones.",
+    "parameters": "135M",
+    "quantization": "Q4_K_M",
+    "languages": "English",
+    "downloadBytes": 105454432,
+    "url": "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/09816acd5d99df7be770d85ea30822623dab342c/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+    "sha256": "2e8040ceae7815abe0dcb3540b9995eaa1fa0d2ca9e797d0a635ae4433c68c2d",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF"
+  },
+  {
+    "id": "smollm2-360m",
+    "title": "SmolLM2 360M Instruct",
+    "summary": "Official Hugging Face GGUF with 8-bit weights. A larger English-only alternative to the 135M demo.",
+    "parameters": "360M",
+    "quantization": "Q8_0",
+    "languages": "English",
+    "downloadBytes": 386404992,
+    "url": "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/593b5a2e04c8f3e4ee880263f93e0bd2901ad47f/smollm2-360m-instruct-q8_0.gguf",
+    "sha256": "48ab3034d0dd401fbc721eb1df3217902fee7dab9078992d66431f09b7750201",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF"
+  },
+  {
+    "id": "qwen25-05b",
+    "title": "Qwen2.5 0.5B Instruct",
+    "summary": "Official 4-bit GGUF for multilingual prompts, including Korean. Larger download than SmolLM2; output quality is not guaranteed.",
+    "parameters": "0.5B",
+    "quantization": "Q4_K_M",
+    "languages": "Multilingual, including Korean",
+    "downloadBytes": 491400032,
+    "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+  },
+  {
+    "id": "qwen25-15b",
+    "title": "Qwen2.5 1.5B Instruct",
+    "summary": "Official larger multilingual 4-bit model. Needs more device memory and CPU time; choose a smaller model if loading fails.",
+    "parameters": "1.5B",
+    "quantization": "Q4_K_M",
+    "languages": "Multilingual, including Korean",
+    "downloadBytes": 1117320736,
+    "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+    "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+    "license": "Apache-2.0",
+    "source": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF"
+  }
+]

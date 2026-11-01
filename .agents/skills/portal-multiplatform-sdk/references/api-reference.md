@@ -61,7 +61,7 @@ val events: SharedFlow<PortalEvent>
 val isActive: Boolean
 val name: String?     // native status name, else config.name
 val address: String?  // native status address
-val publicUrl: String? // first public URL from the latest snapshot
+val publicUrl: String? // current relay-granted alias, or canonical fallback
 suspend fun awaitReady(capability: Capability, timeoutMillis: Long = 30_000): PortalSnapshot
 suspend fun awaitActive(timeoutMillis: Long = 30_000): PortalSnapshot
 suspend fun refresh(): PortalSnapshot
@@ -82,7 +82,7 @@ data class PortalSnapshot(
     phase: TunnelPhase,                       // IDLE STARTING CONNECTING ACTIVE STOPPING STOPPED FAILED
     requestedCapabilities: Set<Capability>,
     readyCapabilities: Set<Capability>,       // confirmed per ready relay endpoint
-    publicUrls: List<String>,                 // primaryPublicUrl = first
+    publicUrls: List<String>,                 // canonical identity-bound URLs
     relays: List<PortalRelayStatus>,          // isReady/isConnecting/isFailed
     lastFailure: PortalFailure?,
     hasSecurityWarning: Boolean,              // sticky MITM flag
@@ -102,7 +102,14 @@ name, identityJson, identityPath, relays, discovery(true), maxActiveRelays(3),
 banMitm, ech, overlay(unsupported), udp, tcp, description, tags, owner,
 thumbnail, hide, staticDir, staticIndex, targetAddr, udpAddr,
 httpRoutes(prefix, upstream|staticRoot, staticIndex, methods, amount),
-x402(payTo, testnet, network, asset, endpoints, facilitatorToken).
+x402(payTo, testnet, network, asset, endpoints, facilitatorToken), domainPrefix.
+
+`config.withDomainPrefix("my-arcade")` (Swift: `prefix:`) requests a runtime
+domain label independently of the stored identity's name/key. Use 1–63 ASCII
+letters/digits/internal hyphens, no canonical 40-hex shape; normalized lowercase.
+`PortalRelayStatus.aliasUrl` is an actual relay-granted lease alias, never an
+inferred hostname. `primaryPublicUrl` prefers a ready alias only while ACTIVE,
+else the canonical fallback. Occupied prefixes need not receive an alias.
 
 The bundled portal-tunnel v2.7.1 uses relay protocol 10. `ech`, `x402`,
 nonempty route `methods`, route `amount`, and `overlay` are recognized v1

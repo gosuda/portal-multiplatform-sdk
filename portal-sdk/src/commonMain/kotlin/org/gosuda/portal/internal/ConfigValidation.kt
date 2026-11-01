@@ -22,6 +22,8 @@ internal object ConfigValidation {
 
     private val urlPattern = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://([^/?#]*)([^?#]*)(?:\\?[^#]*)?(?:#.*)?$")
     private val amountPattern = Regex("^\\d+(\\.\\d{1,18})?$")
+    private val domainPrefixPattern = Regex("^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
+    private val canonicalPrefixPattern = Regex("(^|-)[a-fA-F0-9]{40}$")
 
     fun validate(
         config: PortalConfig,
@@ -30,6 +32,12 @@ internal object ConfigValidation {
     ) {
         if (!config.identityJson.isNullOrEmpty() && !config.identityPath.isNullOrEmpty()) {
             fail("identity_json and identity_path are mutually exclusive")
+        }
+        config.domainPrefix?.let { raw ->
+            val prefix = raw.trim()
+            if (!domainPrefixPattern.matches(prefix) || canonicalPrefixPattern.containsMatchIn(prefix)) {
+                fail("domain_prefix must be a 1–63 character DNS label (letters, digits, internal hyphens), not an identity-bound canonical label")
+            }
         }
         if (config.maxActiveRelays !in 0..MAX_RELAYS) {
             fail("max_active_relays must be in 0..$MAX_RELAYS (0 = engine default), got ${config.maxActiveRelays}")

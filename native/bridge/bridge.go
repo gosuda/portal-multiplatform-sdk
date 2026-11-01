@@ -42,6 +42,7 @@ import (
 
 type portalConfig struct {
 	Name            string            `json:"name"`
+	DomainPrefix    *string           `json:"domain_prefix"`
 	IdentityJSON    string            `json:"identity_json"`
 	IdentityPath    string            `json:"identity_path"`
 	Relays          []string          `json:"relays"`
@@ -85,6 +86,7 @@ type portalMetadata struct {
 type portalRelayStatus struct {
 	RelayURL  string `json:"relay_url"`
 	PublicURL string `json:"public_url,omitempty"`
+	AliasURL  string `json:"alias_url,omitempty"`
 	UDPAddr   string `json:"udp_addr,omitempty"`
 	TCPAddr   string `json:"tcp_addr,omitempty"`
 	Version   string `json:"version,omitempty"`
@@ -173,6 +175,9 @@ func statusOf(t *tunnel) portalStatus {
 			State:     string(r.State),
 			Failure:   string(r.Failure),
 		}
+		if r.State == sdk.RelayReady {
+			rs.AliasURL = r.AliasURL
+		}
 		if r.Err != nil {
 			rs.Error = r.Err.Error()
 		}
@@ -247,6 +252,36 @@ func PortalParseIdentity(cIdentityJSON *C.char, outIdentityJSON **C.char, outErr
 	return 0
 }
 
+// A requested domain label belongs to this lease, not the stored signing identity.
+func listenerIdentityFor(cfg portalConfig) (types.Identity, error) {
+	prefix := ""
+	if cfg.DomainPrefix != nil {
+		prefix = strings.TrimSpace(*cfg.DomainPrefix)
+		if len(prefix) < 1 || len(prefix) > 63 || prefix[0] == '-' || prefix[len(prefix)-1] == '-' {
+			return types.Identity{}, errors.New("domain_prefix must be a 1–63 character DNS label without edge hyphens")
+		}
+		for i := range len(prefix) {
+			c := prefix[i]
+			if c != '-' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') {
+				return types.Identity{}, errors.New("domain_prefix must contain only letters, digits and hyphens")
+			}
+		}
+		var err error
+		prefix, err = utils.NormalizeServiceName(prefix)
+		if err != nil {
+			return types.Identity{}, fmt.Errorf("domain_prefix: %w", err)
+		}
+	}
+	resolved, err := identity.LoadOrCreate(cfg.Name, cfg.IdentityPath, cfg.IdentityJSON)
+	if err != nil {
+		return types.Identity{}, err
+	}
+	if cfg.DomainPrefix != nil {
+		resolved.Name = prefix
+	}
+	return resolved, nil
+}
+
 //export PortalStart
 func PortalStart(cConfigJSON *C.char, outTunnelID **C.char, outError **C.char) C.int {
 	if cConfigJSON == nil {
@@ -268,7 +303,7 @@ func PortalStart(cConfigJSON *C.char, outTunnelID **C.char, outError **C.char) C
 		}
 	}
 
-	listenerIdentity, err := identity.LoadOrCreate(cfg.Name, cfg.IdentityPath, cfg.IdentityJSON)
+	listenerIdentity, err := listenerIdentityFor(cfg)
 	if err != nil {
 		return fail(outError, fmt.Errorf("resolve identity: %w", err))
 	}

@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#111724">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
   <title>Portal SDK Arcade</title>
   <link rel="stylesheet" href="./arcade.css">
   <script type="module" src="./arcade.js"></script>
@@ -19,7 +20,7 @@
     <nav class="game-tabs" role="tablist" aria-label="Choose a game">
       <button id="tab-snake" role="tab" aria-controls="game-snake" aria-selected="true" data-game="snake">01 <strong>Snake</strong><small>The classic</small></button>
       <button id="tab-memory" role="tab" aria-controls="game-memory" aria-selected="false" tabindex="-1" data-game="memory">02 <strong>Memory</strong><small>Find the pairs</small></button>
-      <button id="tab-reaction" role="tab" aria-controls="game-reaction" aria-selected="false" tabindex="-1" data-game="reaction">03 <strong>Reaction</strong><small>Wait for green</small></button>
+      <button id="tab-reaction" role="tab" aria-controls="game-reaction" aria-selected="false" tabindex="-1" data-game="reaction">03 <strong>Reaction</strong><small>Wait for GO</small></button>
       <button id="tab-water" role="tab" aria-controls="game-water" aria-selected="false" tabindex="-1" data-game="water">04 <strong>Water fill</strong><small>Pour. Tilt. Don't spill.</small></button>
     </nav>
     <section id="game-snake" class="game-panel" role="tabpanel" aria-labelledby="tab-snake"></section>

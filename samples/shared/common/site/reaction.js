@@ -1,7 +1,7 @@
 export function mountReaction(root) {
   root.innerHTML = `
     <h2>Reaction test</h2>
-    <p class="hint">Wait until the pad turns green, then react. Click, tap, or press Space / Enter while the pad is focused. Clicking early does not count.</p>
+    <p class="hint">Wait until the pad says GO, then react. Click, tap, or press Space / Enter while the pad is focused. Clicking early does not count.</p>
     <div class="metrics">
       <div class="metric">Last<strong data-last>—</strong></div>
       <div class="metric">Best<strong data-best>—</strong></div>
@@ -39,21 +39,21 @@ export function mountReaction(root) {
   }
   function begin() {
     cancelPending();
-    setState('waiting', 'Wait for green…', 'Do not tap yet', 'Waiting. The delay changes every round.');
+    setState('waiting', 'Wait for GO…', 'Do not tap yet', 'Waiting. The delay changes every round.');
     timer = setTimeout(() => {
       timer = null;
       frame = requestAnimationFrame(() => {
         frame = null;
         if (state !== 'waiting' || document.hidden) return;
         startTime = performance.now();
-        setState('go', 'GO!', 'Tap now', 'Green. React now.');
+        setState('go', 'GO!', 'Tap now', 'GO. React now.');
       });
     }, 1200 + Math.random() * 2300);
   }
   function react() {
     if (state === 'waiting') {
       cancelPending();
-      setState('early', 'Too soon', 'Tap to try again', 'False start. Wait for the green signal.');
+      setState('early', 'Too soon', 'Tap to try again', 'False start. Wait for the GO signal.');
     } else if (state === 'go') {
       const elapsed = performance.now() - startTime;
       bestTime = Math.min(bestTime, elapsed);

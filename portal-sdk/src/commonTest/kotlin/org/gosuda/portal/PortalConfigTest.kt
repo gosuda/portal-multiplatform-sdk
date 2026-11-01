@@ -89,6 +89,17 @@ class PortalConfigTest {
     }
 
     @Test
+    fun domainPrefixRejectsInvalidLabelsAndCanonicalIdentityShapes() {
+        for (prefix in listOf("", " ", "-arcade", "arcade-", "two.labels", "two words",
+            "a".repeat(64), "a".repeat(40), "arcade-${"0".repeat(40)}")) {
+            val error = assertFailsWith<PortalException> {
+                validate(PortalConfig.http("127.0.0.1:8080").withDomainPrefix(prefix))
+            }
+            assertEquals(PortalFailure.Codes.INVALID_CONFIG, error.code)
+        }
+    }
+
+    @Test
     fun bracketedIpv6LoopbackRelaysAndTargetsAreAccepted() {
         for (host in listOf("::1", "0:0:0:0:0:0:0:1", "::ffff:127.0.0.1")) {
             val relay = "http://[$host]:8443/relay"

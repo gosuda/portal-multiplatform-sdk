@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+  <title>Portal — Device-local AI</title>
+  <link rel="stylesheet" href="/llm.css">
+  <script type="module" src="/llm.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#prompt">Skip to prompt</a>
+  <main class="shell">
+    <header class="masthead">
+      <a class="wordmark" href="/" aria-label="Portal local AI home"><span class="portal-mark" aria-hidden="true">P</span>Portal <span class="wordmark-detail">/ local AI</span></a>
+      <span class="session-label">DEVICE-LOCAL / CPU</span>
+    </header>
+    <section class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">ONE DEVICE. ONE PROMPT AT A TIME.</p>
+      <h1 id="page-title">Small model.<br><span>Real local inference.</span></h1>
+      <p class="intro">An open model running on the host device’s CPU, shared through Portal. No cloud inference. Just your prompt and a fresh answer.</p>
+    </section>
+    <div class="studio">
+      <aside class="session-column" aria-label="Host session">
+        <section class="card session-card" aria-labelledby="session-heading">
+          <div class="section-heading"><h2 id="session-heading">The host</h2><span class="index-label">01</span></div>
+          <p id="connection-status" class="connection-status" role="status">Password needed</p>
+          <dl class="model-facts">
+            <div><dt>Loaded model</dt><dd id="model-name">Not connected</dd></div>
+            <div><dt>Execution</dt><dd id="execution">Not verified</dd></div>
+            <div><dt>Output limit</dt><dd id="output-limit">—</dd></div>
+            <div><dt>Context window</dt><dd id="context-limit">—</dd></div>
+          </dl>
+          <details id="password-details" open>
+            <summary>Log in with a password</summary>
+            <form id="password-form">
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="password-hint" required>
+              <p id="password-hint" class="field-hint">Enter the password configured in the host app’s Local LLM settings. It is kept only in this page’s memory, never in browser storage or the link.</p>
+              <button id="connect-button" class="secondary" type="submit">Connect to host <span aria-hidden="true">↗</span></button>
+            </form>
+          </details>
+        </section>
+        <section class="hosting-note" aria-labelledby="hosting-heading">
+          <h2 id="hosting-heading">A link is not a password.</h2>
+          <p>The public link opens this page, but using the model requires the host’s separately shared password. Share the password only with people you trust.</p>
+          <p>Keep the host app running in the foreground. Closing or stopping the host ends access; this page does not run the model itself.</p>
+          <p>Model downloads are managed explicitly in the host app, never on this webpage.</p>
+        </section>
+      </aside>
+      <div class="workspace">
+        <section class="card prompt-card" aria-labelledby="prompt-heading">
+          <div class="section-heading"><h2 id="prompt-heading">Your prompt</h2><span class="index-label">02</span></div>
+          <form id="prompt-form">
+            <label class="sr-only" for="prompt">Enter a single independent prompt</label>
+            <textarea id="prompt" name="prompt" rows="7" placeholder="Ask a question, draft a short note, or explore an idea…" aria-describedby="prompt-hint keyboard-hint" required disabled></textarea>
+            <p id="prompt-hint" class="field-hint">Each prompt is independent. There is no conversation history sent to the model. Keep it short enough for the host’s context window.</p>
+            <div class="prompt-controls">
+              <div class="token-control"><label for="max-tokens">Max output tokens</label><input id="max-tokens" name="max-tokens" type="number" inputmode="numeric" min="1" max="128" step="1" value="96" required disabled></div>
+              <button id="generate-button" type="submit" disabled><span id="generate-label">Generate answer</span><span aria-hidden="true">↗</span></button>
+            </div>
+            <p id="keyboard-hint" class="keyboard-hint">Ctrl / ⌘ + Enter to generate. One request at a time across all visitors.</p>
+          </form>
+        </section>
+        <div id="error-panel" class="error-panel" role="alert" hidden><strong>Request not completed</strong><p id="error-message"></p></div>
+        <section id="answer-card" class="card answer-card" aria-labelledby="answer-heading" aria-busy="false">
+          <div class="section-heading"><h2 id="answer-heading">Model answer</h2><span id="answer-state" class="answer-state" role="status">Awaiting a prompt</span></div>
+          <p id="answer-placeholder" class="answer-placeholder">The next words come from the host device.<br>No sample answers. No cloud fallback.</p>
+          <div id="answer" class="answer" tabindex="0" aria-label="Generated answer" hidden></div>
+          <p id="answer-meta" class="answer-meta" hidden></p>
+        </section>
+        <p class="model-caveat">Small models can be inaccurate or incomplete. Check important details independently. Prompts travel through the Portal connection to the host device; local inference does not mean this webpage runs offline.</p>
+      </div>
+    </div>
+    <footer><span>PORTAL / SAMPLE LAB</span><span>Local compute. Public reach. Your session.</span></footer>
+  </main>
+  <noscript><p class="noscript">Enable JavaScript to authenticate and send prompts to the device-local model.</p></noscript>
+</body>
+</html>

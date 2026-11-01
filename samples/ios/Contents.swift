@@ -3,11 +3,12 @@ import Network
 
 /// Local demonstrations only; production servers belong to the embedding app.
 enum WorkbenchMode: String, CaseIterable, Identifiable {
-    case staticSite, http, routes, tcp, udp
+    case staticSite, localLlm, http, routes, tcp, udp
     var id: String { rawValue }
     var title: String {
         switch self {
         case .staticSite: return "Web games / static site"
+        case .localLlm: return "Local LLM / private webpage"
         case .http: return "HTTP API / webhook"
         case .routes: return "HTTP prefix routes"
         case .tcp: return "TCP echo"
@@ -17,6 +18,7 @@ enum WorkbenchMode: String, CaseIterable, Identifiable {
     var explanation: String {
         switch self {
         case .staticSite: return "Publish Snake, memory pairs, reaction testing and sloshing water fill. The native engine serves the bundled files directly; no game server or downloads."
+        case .localLlm: return "Run a downloaded model on this device's CPU and publish a private, single-turn webpage. No cloud inference. Keep the app foregrounded."
         case .http: return "Forward HTTP to a loopback API. The built-in demo returns JSON and accepts bounded webhook requests; it never logs request bodies or query strings."
         case .routes: return "Prefixes select different loopback API and webhook services. The longest matching prefix wins; custom prefixes and upstreams are configurable."
         case .tcp: return "Forward a raw TCP stream to a loopback listener. The built-in listener echoes bytes; use the relay's TCP address, not the HTTPS URL."
@@ -35,7 +37,7 @@ final class DemoPayload {
 
     init(mode: WorkbenchMode, record: @escaping (String) -> Void) {
         switch mode {
-        case .staticSite: break
+        case .staticSite, .localLlm: break
         case .http: servers = [DemoServer(kind: .http("api"), record: record)]
         case .routes:
             servers = [DemoServer(kind: .http("api"), record: record),

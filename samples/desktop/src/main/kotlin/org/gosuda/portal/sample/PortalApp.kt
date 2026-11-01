@@ -7,12 +7,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.gosuda.portal.PortalClient
@@ -22,6 +25,8 @@ import org.gosuda.portal.PortalException
 import org.gosuda.portal.PortalEvent
 import org.gosuda.portal.PortalMetadata
 import org.gosuda.portal.PortalTunnel
+import org.gosuda.portal.sample.llm.LlmPassword
+import org.gosuda.portal.sample.llm.ModelStore
 
 /** One desktop window owns one client. Closing only exits after owned sessions are stopped. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -40,8 +45,49 @@ class PortalApp {
     val demoActivity = payload.flatMapLatest { it?.activity ?: flowOf(LocalDemo.Activity()) }
         .stateIn(scope, SharingStarted.Eagerly, LocalDemo.Activity())
     val localConfig = MutableStateFlow<org.gosuda.portal.PortalConfig?>(null)
+    val models: ModelStore = DesktopModels.store()
+    val downloadState = models.progress
+    val cachedModels = MutableStateFlow<Set<String>>(emptySet())
+    private var downloadJob: Job? = null
+    private val mutableLlmPassword = MutableStateFlow(LlmPassword.generate())
+    val llmPassword = mutableLlmPassword.asStateFlow()
+
+    fun updateLlmPassword(password: String) {
+        if (busy.value || payload.value != null || tunnel.value?.state?.value?.isTerminal == false) return
+        mutableLlmPassword.value = password
+    }
+
+    fun generateLlmPassword() {
+        if (busy.value || payload.value != null || tunnel.value?.state?.value?.isTerminal == false) return
+        mutableLlmPassword.value = LlmPassword.generate()
+    }
+
+    private fun refreshCachedModels() {
+        cachedModels.value = models.models.filter { models.cachedFile(it.id) != null }.map { it.id }.toSet()
+    }
+
+    fun downloadModel(id: String) {
+        if (downloadJob?.isActive == true) return
+        downloadJob = scope.launch(Dispatchers.IO) {
+            try { models.download(id) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { showFailure("Model download", failure) }
+            finally { refreshCachedModels() }
+        }
+    }
+
+    fun cancelDownload() { models.cancelDownload(); downloadJob?.cancel() }
+
+    fun deleteModel(id: String) {
+        if (busy.value || payload.value != null || downloadJob?.isActive == true) return
+        scope.launch(Dispatchers.IO) {
+            try { models.delete(id); refreshCachedModels() }
+            catch (failure: Exception) { showFailure("Remove cached model", failure) }
+        }
+    }
 
     init {
+        scope.launch(Dispatchers.IO) { refreshCachedModels() }
         scope.launch {
             tunnel.flatMapLatest { it?.events ?: flowOf(null) }.collect { event ->
                 if (event != null) eventLog.value = (eventLog.value + describe(event)).takeLast(40)
@@ -56,6 +102,11 @@ class PortalApp {
 
     fun startTunnel(request: WorkbenchRequest) {
         if (busy.value || tunnel.value?.state?.value?.isTerminal == false) return
+        val password = if (request.mode == WorkbenchMode.LOCAL_LLM) llmPassword.value else null
+        if (password != null && !LlmPassword.isValid(password)) {
+            lastError.value = "Password must contain 12–128 Unicode characters."
+            return
+        }
         busy.value = true
         scope.launch {
             try {
@@ -63,7 +114,7 @@ class PortalApp {
                 releasePayload()
                 check(payload.value == null) { "Previous local demo cleanup failed; close the window to retry." }
                 val prepared = withContext(Dispatchers.IO) {
-                    LocalDemo.prepare(request).also { payload.value = it }
+                    LocalDemo.prepare(request, models, password).also { payload.value = it }
                 }
                 localConfig.value = prepared.config
                 tunnel.value = client.publish(prepared.config)
@@ -142,6 +193,8 @@ class PortalApp {
     }
 
     fun shutdown(onClosed: () -> Unit) = operate("Close (retry window close or Stop)") {
+        models.cancelDownload()
+        downloadJob?.cancelAndJoin()
         if (clientDelegate.isInitialized()) client.close()
         releasePayload()
         if (payload.value == null) {

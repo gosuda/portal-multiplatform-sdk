@@ -21,7 +21,7 @@ export function mountSnake(root) {
       <button type="button" data-direction="down" style="grid-column: 2; grid-row: 2">Down</button>
       <button type="button" data-direction="right" style="grid-column: 3; grid-row: 2">Right</button>
     </div>
-    <p class="hint">Eat the coral dots without hitting a wall or yourself. Focus the board to use arrow keys or W, A, S, D, or use the direction buttons.</p>
+    <p class="hint">Eat the food dots without hitting a wall or yourself. Focus the board to use arrow keys or W, A, S, D, or use the direction buttons.</p>
   `;
 
   const canvas = root.querySelector('canvas');
@@ -45,8 +45,8 @@ export function mountSnake(root) {
     w: 'up', s: 'down', a: 'left', d: 'right',
   };
   const background = context.createLinearGradient(0, 0, canvas.width, canvas.height);
-  background.addColorStop(0, '#102d3c');
-  background.addColorStop(1, '#081a27');
+  background.addColorStop(0, '#fafafa');
+  background.addColorStop(1, '#f0f0f0');
   let snake;
   let food;
   let direction;
@@ -77,7 +77,7 @@ export function mountSnake(root) {
   function draw() {
     context.fillStyle = background;
     context.fillRect(0, 0, canvas.width, canvas.height);
-    context.strokeStyle = 'rgba(160, 218, 235, 0.07)';
+    context.strokeStyle = 'rgba(0, 0, 0, 0.06)';
     context.lineWidth = 1;
     context.beginPath();
     for (let index = 1; index < size; index += 1) {
@@ -92,18 +92,18 @@ export function mountSnake(root) {
     if (food) {
       const x = (food.x + 0.5) * cell;
       const y = (food.y + 0.5) * cell;
-      context.fillStyle = 'rgba(255, 126, 115, 0.16)';
+      context.fillStyle = 'rgba(0, 0, 0, 0.10)';
       context.beginPath();
       context.arc(x, y, cell * 0.47, 0, Math.PI * 2);
       context.fill();
-      context.fillStyle = '#ff8a79';
+      context.fillStyle = '#707070';
       context.beginPath();
       context.arc(x, y, cell * 0.3, 0, Math.PI * 2);
       context.fill();
     }
 
     snake.forEach((segment, index) => {
-      context.fillStyle = index === 0 ? '#c0ffe3' : '#45d6aa';
+      context.fillStyle = index === 0 ? '#111111' : '#353535';
       context.fillRect(segment.x * cell + 2, segment.y * cell + 2, cell - 4, cell - 4);
       context.fillStyle = 'rgba(255, 255, 255, 0.22)';
       context.fillRect(segment.x * cell + 3, segment.y * cell + 3, cell - 6, 2);
@@ -111,7 +111,7 @@ export function mountSnake(root) {
     const head = snake[0];
     const centerX = (head.x + 0.5) * cell;
     const centerY = (head.y + 0.5) * cell;
-    context.fillStyle = '#102d3c';
+    context.fillStyle = '#ffffff';
     for (const side of [-1, 1]) {
       context.beginPath();
       context.arc(
@@ -123,11 +123,11 @@ export function mountSnake(root) {
     }
 
     if (state !== 'running') {
-      context.fillStyle = 'rgba(5, 17, 28, 0.65)';
+      context.fillStyle = 'rgba(255, 255, 255, 0.85)';
       context.fillRect(0, canvas.height / 2 - 36, canvas.width, 72);
       context.textAlign = 'center';
       context.textBaseline = 'middle';
-      context.fillStyle = '#efffff';
+      context.fillStyle = '#111111';
       context.font = '600 24px system-ui, sans-serif';
       const title = { ready: 'Ready to play', paused: 'Paused', over: 'Game over', won: 'Board complete!' };
       context.fillText(title[state], canvas.width / 2, canvas.height / 2);
@@ -151,7 +151,7 @@ export function mountSnake(root) {
     score = 0;
     state = 'ready';
     food = spawnFood();
-    status.textContent = 'Ready. Select Start, then steer toward the coral food.';
+    status.textContent = 'Ready. Select Start, then steer toward the food.';
     updateControls();
     draw();
   }

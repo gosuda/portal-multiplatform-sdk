@@ -60,7 +60,9 @@ public data class PortalSnapshot(
     val droppedEventCount: Long,
     val nativeStatus: PortalStatus? = null
 ) {
-    val primaryPublicUrl: String? get() = publicUrls.firstOrNull()
+    /** Current relay-granted short URL when ACTIVE, else the canonical fallback. */
+    val primaryPublicUrl: String?
+        get() = (if (isActive) readyAliasUrl(relays) else null) ?: publicUrls.firstOrNull()
     val isActive: Boolean get() = phase == TunnelPhase.ACTIVE
     val isTerminal: Boolean get() = phase == TunnelPhase.STOPPED || phase == TunnelPhase.FAILED
 }

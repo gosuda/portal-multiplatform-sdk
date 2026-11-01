@@ -77,9 +77,9 @@ public class PortalTunnel internal constructor(
     public val address: String? get() = state.value.nativeStatus?.address
 
     /**
-     * First public URL from the latest snapshot, or null before the relay
-     * assigns one. Convenience for the common `publish` path; live updates
-     * and additional URLs remain on [state].
+     * Preferred public URL: a current relay-granted alias, or the identity-bound
+     * canonical fallback. Null before assignment; live updates and canonical
+     * URLs remain on [state].
      */
     public val publicUrl: String? get() = state.value.primaryPublicUrl
 

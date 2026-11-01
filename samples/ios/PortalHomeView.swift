@@ -7,7 +7,10 @@ final class PortalHomeModel: ObservableObject {
     @Published var mode: WorkbenchMode = .staticSite
     @Published var builtInDemo = true
     @Published var advancedSettings = false
-    @Published var name = "ios-workbench"
+    @Published var domainPrefix = "ios-demo"
+    @Published var selectedModelId = ""
+    @Published var llmPassword = ""
+    let modelStore = ModelStore()
     @Published var target = "127.0.0.1:8080"
     @Published var prefixOne = "/api"
     @Published var upstreamOne = "http://127.0.0.1:8080"
@@ -35,14 +38,39 @@ final class PortalHomeModel: ObservableObject {
     private var stateSubscription: PortalSubscription?
     private var eventSubscription: PortalSubscription?
     private var payload: DemoPayload?
+    private var llmServer: LocalLlmServer?
+    private var llmAddress: String?
     private var attempt = UUID()
+
+    init() {
+        do { llmPassword = try LocalLlmPassword.generate() }
+        catch { lastError = error.localizedDescription }
+    }
+
+    func generateLlmPassword() {
+        guard editable else { return }
+        do {
+            llmPassword = try LocalLlmPassword.generate()
+            lastError = nil
+        } catch { lastError = error.localizedDescription }
+    }
+
+    func copyLlmPassword() {
+        guard passwordValid else { return }
+        UIPasteboard.general.setItems(
+            [["public.utf8-plain-text": llmPassword]],
+            options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(120)])
+    }
 
     var running: Bool { snapshot.map { !$0.isTerminal } ?? false }
     var editable: Bool { !starting && !stopping && !running }
     var operable: Bool { running && !starting && !stopping && snapshot?.phase != .stopping }
     var missingRelay: Bool { advancedSettings && !discovery && values(relayInput).isEmpty }
-    var urls: [String] { running ? snapshot?.publicUrls ?? [] : [] }
+    var primaryPublicUrl: String? { running && !stopping ? snapshot?.primaryPublicUrl : nil }
     var localEndpoints: [String] { payload?.addresses ?? [] }
+    var selectedModel: LocalModelSpec? { modelStore.models.first { $0.id == selectedModelId } ?? modelStore.models.first }
+    var modelReady: Bool { selectedModel.flatMap { modelStore.cachedFile($0) } != nil }
+    var passwordValid: Bool { LocalLlmPassword.isValid(llmPassword) }
 
     func start() {
         guard editable else { return }
@@ -56,39 +84,70 @@ final class PortalHomeModel: ObservableObject {
         detach()
         session = nil
         starting = true
-        let localPayload = DemoPayload(mode: builtInDemo ? mode : .staticSite) { [weak self] message in
-            guard let self, self.attempt == id else { return }
-            self.receivedCount += 1
-            self.requests.append(message)
-            if self.requests.count > 40 { self.requests.removeFirst(self.requests.count - 40) }
-        }
-        payload = localPayload
-        localPayload.start { [weak self] error in
-            guard let self, self.attempt == id else { return }
-            if let error {
-                self.lastError = "Local demo could not start: \(error.localizedDescription)"
-                self.starting = false
-                self.releasePayload()
+        if mode == .localLlm {
+            guard let model = selectedModel, let file = modelStore.cachedFile(model) else {
+                lastError = "Download and verify a model before publishing."
+                starting = false
                 return
             }
             do {
-                let config = try self.makeConfig()
-                _ = self.client.publish(config: config) { [weak self] session, failure in
-                    MainActor.assumeIsolated {
-                        guard let self, self.attempt == id else { return }
+                let server = try LocalLlmServer(model: model, modelFile: file, password: llmPassword) { [weak self] message in
+                    guard let self, self.attempt == id else { return }
+                    self.lastError = message
+                }
+                llmServer = server
+                server.start { [weak self] result in
+                    guard let self, self.attempt == id else { return }
+                    switch result {
+                    case .success(let address): self.llmAddress = address; self.publish(id: id)
+                    case .failure(let error):
+                        self.lastError = error.localizedDescription
                         self.starting = false
-                        if let session { self.adopt(session) }
-                        else if let retained = self.client.sessions.first { self.adopt(retained) }
-                        if let failure { self.lastError = self.describe(failure) }
-                        else if self.session == nil { self.lastError = "SDK publish returned neither a session nor a failure." }
-                        if self.session?.snapshot.isTerminal != false { self.releasePayload() }
+                        self.releasePayload()
                     }
                 }
             } catch {
-                self.lastError = error.localizedDescription
-                self.starting = false
-                self.releasePayload()
+                lastError = error.localizedDescription
+                starting = false
+                releasePayload()
             }
+        } else {
+            let localPayload = DemoPayload(mode: builtInDemo ? mode : .staticSite) { [weak self] message in
+                guard let self, self.attempt == id else { return }
+                self.receivedCount += 1
+                self.requests.append(message)
+                if self.requests.count > 40 { self.requests.removeFirst(self.requests.count - 40) }
+            }
+            payload = localPayload
+            localPayload.start { [weak self] error in
+                guard let self, self.attempt == id else { return }
+                if let error {
+                    self.lastError = "Local demo could not start: \(error.localizedDescription)"
+                    self.starting = false
+                    self.releasePayload()
+                } else { self.publish(id: id) }
+            }
+        }
+    }
+
+    private func publish(id: UUID) {
+        do {
+            let config = try makeConfig()
+            _ = client.publish(config: config) { [weak self] session, failure in
+                MainActor.assumeIsolated {
+                    guard let self, self.attempt == id else { return }
+                    self.starting = false
+                    if let session { self.adopt(session) }
+                    else if let retained = self.client.sessions.first { self.adopt(retained) }
+                    if let failure { self.lastError = self.describe(failure) }
+                    else if self.session == nil { self.lastError = "SDK publish returned neither a session nor a failure." }
+                    if self.session?.snapshot.isTerminal != false { self.releasePayload() }
+                }
+            }
+        } catch {
+            lastError = error.localizedDescription
+            starting = false
+            releasePayload()
         }
     }
 
@@ -170,6 +229,9 @@ final class PortalHomeModel: ObservableObject {
                 throw NSError(domain: "PortalSample", code: 1, userInfo: [NSLocalizedDescriptionKey: "Bundled site folder is missing. Check Xcode resource configuration."])
             }
             base = factory.staticSite(directory: directory.path)
+        case .localLlm:
+            guard let address = llmAddress else { throw LocalLlmError.message("The local model server is not ready.") }
+            base = factory.http(targetAddress: address)
         case .http: base = factory.http(targetAddress: try address())
         case .tcp: base = factory.tcp(targetAddress: try address())
         case .udp: base = factory.udp(targetAddress: try address())
@@ -187,15 +249,20 @@ final class PortalHomeModel: ObservableObject {
                                                 route(prefix: prefixTwo, upstream: upstreamTwo)])
             }
         }
-        guard advancedSettings else { return base }
-        return factory.custom(
-            name: nonempty(name), identityJson: nil, identityPath: nil,
+        let config: PortalConfig
+        if advancedSettings {
+            config = factory.custom(
+            name: nil, identityJson: nil, identityPath: nil,
             relays: optionalValues(relayInput), discovery: discovery, maxActiveRelays: 3,
             banMitm: banMitm, ech: false, udp: base.udp, tcp: base.tcp,
             description: nonempty(metaDescription), tags: optionalValues(metaTags),
             owner: nonempty(metaOwner), thumbnail: nil, hide: hide,
             staticDir: base.staticDir, staticIndex: base.staticIndex,
             targetAddr: base.targetAddr, udpAddr: base.udpAddr, httpRoutes: base.httpRoutes, x402: nil)
+        } else {
+            config = base
+        }
+        return config.withDomainPrefix(prefix: nonempty(domainPrefix))
     }
 
     private func route(prefix: String, upstream: String) -> PortalHTTPRoute {
@@ -227,7 +294,13 @@ final class PortalHomeModel: ObservableObject {
         if snapshot.isTerminal { releasePayload() }
     }
 
-    private func releasePayload() { payload?.stop(); payload = nil }
+    private func releasePayload() {
+        payload?.stop()
+        payload = nil
+        llmServer?.close()
+        llmServer = nil
+        llmAddress = nil
+    }
     private func detach() {
         stateSubscription?.cancel()
         eventSubscription?.cancel()
@@ -267,41 +340,64 @@ final class PortalHomeModel: ObservableObject {
 @MainActor
 struct PortalHomeView: View {
     @ObservedObject var model: PortalHomeModel
+    @ObservedObject private var store: ModelStore
+
+    init(model: PortalHomeModel) {
+        self.model = model
+        self.store = model.modelStore
+    }
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Foreground workbench") {
-                    Text("Serve real traffic from this app through Portal relays. Keep the app open and explicitly stop when finished. iOS can suspend networking when backgrounded or locked.")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("PORTAL / IOS").font(.system(.caption, design: .monospaced).weight(.semibold)).tracking(3)
+                    Text("Your device.\nOn the web.").font(.system(size: 42, weight: .bold, design: .rounded)).tracking(-1.5)
+                    Text("A local-first workbench for real public connections.").font(.title3).foregroundStyle(.secondary)
+                }.padding(.vertical, 16)
+                MonoCard("FOREGROUND FIRST") {
+                    Text("Keep this app open while serving. iOS can suspend networking and inference when backgrounded or locked. Stop your session when finished.")
                     if scenePhase != .active {
                         Label("Background execution is not guaranteed.", systemImage: "exclamationmark.triangle")
                     }
                 }
                 configuration
+                if model.mode == .localLlm {
+                    ModelLibraryView(store: store, selectedId: $model.selectedModelId, editable: model.editable)
+                    llmPasswordSection
+                }
                 sessionSection
                 if model.running || model.receivedCount > 0 { requestSection }
                 if model.running || model.advancedSettings { metadataSection }
                 if model.running { relaySection }
                 diagnosticsSection
-                Section("SDK capabilities") {
-                    Text("Static directories, HTTP forwarding, prefix-based HTTP routes, raw TCP and UDP forwarding, live metadata, relay management, authoritative state and bounded events are exercised here. Relay support and network reachability still determine availability.")
-                    Text("Persistent identity is managed by the SDK in Application Support/Portal/identity.json. Editing the display name never regenerates or overwrites identity. Hide is a listing preference, not access control. ECH, x402, method-constrained routes and overlay are unsupported by this engine.")
+                MonoCard("SDK / OWNERSHIP") {
+                    Text("Static sites, HTTP, prefix routes, TCP and UDP use the same SDK. Local inference is sample-only native code, separate from the transport SDK.")
+                    Text("The SDK keeps identity in Application Support/Portal/identity.json. A domain prefix never replaces those keys. Hide is a listing preference, not authentication. ECH, x402, method-constrained routes and overlay are unsupported.").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Portal SDK Workbench")
-            .onAppear { model.loadDiagnostics() }
+            .frame(maxWidth: 760)
+            .padding(20)
+            .frame(maxWidth: .infinity)
         }
+        .clipped()
+        .background(Color(uiColor: .systemBackground))
+        .foregroundStyle(.primary)
+        .tint(.primary)
+        .buttonStyle(MonoButtonStyle())
+        .textFieldStyle(MonoTextFieldStyle())
+        .onAppear { model.loadDiagnostics() }
     }
 
     private var configuration: some View {
-        Section("1 · Choose a capability") {
+        MonoCard("01 / CONFIGURE") {
             Group {
                 Picker("Mode", selection: $model.mode) {
                     ForEach(WorkbenchMode.allCases) { mode in Text(mode.title).tag(mode) }
                 }
                 Text(model.mode.explanation).font(.footnote).foregroundStyle(.secondary)
-                if model.mode != .staticSite {
+                if model.mode != .staticSite && model.mode != .localLlm {
                     Toggle("Use built-in loopback demo", isOn: $model.builtInDemo)
                     if model.builtInDemo {
                         Text(demoInstructions).font(.caption).textSelection(.enabled)
@@ -316,35 +412,59 @@ struct PortalHomeView: View {
                         Text("Start a matching \(model.mode == .http ? "HTTP" : model.mode == .tcp ? "TCP" : "UDP") service on this device first. This sample never substitutes a fake upstream. Simulator loopback reaches your Mac; a physical device's loopback does not.").font(.caption)
                     }
                 }
+                Text("DOMAIN PREFIX").font(.system(.caption, design: .monospaced).weight(.semibold))
+                TextField("Domain prefix", text: $model.domainPrefix)
+                Text("Optional: 1–63 ASCII letters, digits or hyphens; no leading/trailing hyphen or reserved 40-hex identity shape. A requested prefix is not permanently reserved. If another identity owns it, the canonical URL is used instead.").font(.caption)
                 Toggle("Advanced settings", isOn: $model.advancedSettings)
                 if model.advancedSettings {
-                    TextField("Display name", text: $model.name)
                     Toggle("Discover relays", isOn: $model.discovery)
                     TextField("Relay URLs (comma-separated)", text: $model.relayInput)
                     Toggle("Ban suspected MITM relays", isOn: $model.banMitm)
                 }
             }
             .disabled(!model.editable)
-            if model.missingRelay { Text("With discovery off, configure at least one relay.").foregroundStyle(.red) }
+            if model.missingRelay { Label("With discovery off, configure at least one relay.", systemImage: "exclamationmark.triangle") }
             if model.starting {
-                ProgressView("Publishing… SDK waits for readiness")
+                ProgressView(model.mode == .localLlm ? "Loading device model / publishing…" : "Publishing / waiting for readiness…")
             } else {
-                Button("Publish") { model.start() }.disabled(!model.editable || model.missingRelay)
+                Button("Publish to the web") { model.start() }
+                    .buttonStyle(MonoButtonStyle(primary: true))
+                    .disabled(!model.editable || model.missingRelay || (model.mode == .localLlm && (!model.modelReady || !model.passwordValid)))
             }
         }
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
     }
 
+    private var llmPasswordSection: some View {
+        MonoCard("LOCAL LLM / PASSWORD") {
+            SecureField("Password", text: $model.llmPassword)
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .disabled(!model.editable)
+            Text("Use 12–128 Unicode code points. A securely generated password is recommended. Enter this password separately on the webpage; sharing the public URL alone does not grant inference.").font(.caption)
+            HStack {
+                Button("Generate password") { model.generateLlmPassword() }.disabled(!model.editable)
+                Button("Copy password") { model.copyLlmPassword() }.disabled(!model.passwordValid)
+            }
+            if !model.passwordValid {
+                Label("Password must contain 12–128 Unicode code points.", systemImage: "exclamationmark.triangle").font(.caption)
+            }
+            Text("Kept only in app memory, reused until changed, and replaced on relaunch. Editing and generation are disabled while publishing or serving. Copied passwords stay on this device's clipboard for two minutes.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var sessionSection: some View {
-        Section("2 · Live session") {
+        MonoCard("02 / LIVE SESSION") {
             if let snapshot = model.snapshot {
                 LabeledContent("Phase", value: String(describing: snapshot.phase))
                 Text("Revision \(snapshot.revision) · dropped events \(snapshot.droppedEventCount)").font(.caption)
-                if snapshot.hasSecurityWarning { Label("Sticky security warning: inspect relay state before sharing.", systemImage: "exclamationmark.shield").foregroundStyle(.red) }
-                if let failure = snapshot.lastFailure { Text("\(failure.code): \(failure.message)").foregroundStyle(.red) }
-                ForEach(model.urls, id: \.self) { address in
+                if snapshot.hasSecurityWarning { Label("Sticky security warning: inspect relay state before sharing.", systemImage: "exclamationmark.shield") }
+                if let failure = snapshot.lastFailure { Text("\(failure.code): \(failure.message)") }
+                if let address = model.primaryPublicUrl {
                     VStack(alignment: .leading, spacing: 8) {
+                        Text(model.mode == .localLlm ? "Public URL · password shared separately" : "Public URL").font(.caption).foregroundStyle(.secondary)
                         Text(address).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         HStack {
                             Button("Copy") { UIPasteboard.general.string = address }
@@ -353,10 +473,17 @@ struct PortalHomeView: View {
                         }.buttonStyle(.borderless)
                     }
                 }
+                if model.running {
+                    ForEach(snapshot.publicUrls.filter { $0 != model.primaryPublicUrl }, id: \.self) { address in
+                        Text("Canonical identity-bound URL: \(address)")
+                            .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                }
+                Text("The primary URL uses an actual relay-granted alias only while ACTIVE; otherwise it falls back to the canonical URL. Aliases are lease-scoped and can change after reconnecting.").font(.caption)
                 HStack {
                     Button("Refresh") { model.refresh() }.disabled(!model.operable)
                     Spacer()
-                    Button(model.snapshot?.phase == .stopping ? "Retry Stop" : "Stop", role: .destructive) { model.stop() }
+                    Button(model.snapshot?.phase == .stopping ? "Retry Stop" : "Stop") { model.stop() }
                         .disabled(!model.running || model.stopping || model.starting)
                 }.buttonStyle(.borderless)
                 if model.stopping { ProgressView("Stopping owned session…") }
@@ -364,23 +491,30 @@ struct PortalHomeView: View {
             } else {
                 Text("Choose a mode and tap Publish. The SDK waits for readiness and rolls back failed publication; upstream application health is checked separately.").foregroundStyle(.secondary)
             }
-            if let error = model.lastError { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+            if let error = model.lastError {
+                Label("Operation needs attention", systemImage: "exclamationmark.triangle").font(.headline)
+                Text(error).textSelection(.enabled)
+            }
         }
     }
 
     private var requestSection: some View {
-        Section("3 · Exercise the demo") {
+        MonoCard("03 / EXERCISE") {
             Text(exerciseCommands).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             ForEach(model.localEndpoints, id: \.self) { address in
                 Text("Local listener: \(address)").font(.system(.caption, design: .monospaced))
             }
-            Text("Received \(model.receivedCount) HTTP requests / echo chunks / datagrams. Showing the latest 40. No request bodies, headers or query strings are retained.").font(.caption)
-            ForEach(Array(model.requests.enumerated()), id: \.offset) { _, request in Text(request).font(.system(.caption, design: .monospaced)) }
+            if model.mode == .localLlm {
+                Text("Prompts, responses, authorization headers and passwords are not logged. Each request is independent. One generation at a time; 1024 context tokens and at most 128 output tokens.").font(.caption)
+            } else {
+                Text("Received \(model.receivedCount) HTTP requests / echo chunks / datagrams. Showing the latest 40. No request bodies, headers or query strings are retained.").font(.caption)
+                ForEach(Array(model.requests.enumerated()), id: \.offset) { _, request in Text(request).font(.system(.caption, design: .monospaced)) }
+            }
         }
     }
 
     private var metadataSection: some View {
-        Section(model.advancedSettings ? "Metadata · start settings and live updates" : "Live metadata edits") {
+        MonoCard(model.advancedSettings ? "METADATA / START + LIVE" : "METADATA / LIVE") {
             Group {
                 TextField("Description", text: $model.metaDescription)
                 TextField("Tags, comma-separated", text: $model.metaTags)
@@ -392,7 +526,7 @@ struct PortalHomeView: View {
     }
 
     private var relaySection: some View {
-        Section("Relay endpoints and live operations") {
+        MonoCard("RELAYS / LIVE OPERATIONS") {
             if let relays = model.snapshot?.relays {
                 ForEach(Array(relays.enumerated()), id: \.offset) { _, relay in
                     VStack(alignment: .leading, spacing: 6) {
@@ -400,9 +534,9 @@ struct PortalHomeView: View {
                         Text("State: \(relay.state)").font(.caption)
                         if let tcp = relay.tcpAddr { endpoint("TCP", tcp) }
                         if let udp = relay.udpAddr { endpoint("UDP", udp) }
-                        if let failure = relay.failure { Text(failure).foregroundStyle(.red).font(.caption) }
-                        if let error = relay.error { Text(error).foregroundStyle(.red).font(.caption) }
-                        Button("Remove relay", role: .destructive) { model.removeRelay(relay.relayUrl) }.disabled(!model.operable)
+                        if let failure = relay.failure { Text(failure).font(.caption) }
+                        if let error = relay.error { Text(error).font(.caption) }
+                        Button("Remove relay") { model.removeRelay(relay.relayUrl) }.disabled(!model.operable)
                     }
                 }
             }
@@ -420,7 +554,7 @@ struct PortalHomeView: View {
     }
 
     private var diagnosticsSection: some View {
-        Section("Diagnostics and auxiliary events") {
+        MonoCard("DIAGNOSTICS / AUXILIARY EVENTS") {
             Button("Read diagnostics") { model.loadDiagnostics() }
             if let diagnostics = model.diagnostics {
                 Text("SDK \(diagnostics.sdkVersion) · engine \(diagnostics.engineVersion) · ABI \(diagnostics.abiVersion) · wire \(diagnostics.wireSchemaVersion)\nOwned sessions \(diagnostics.activeSessions) · orphan drops \(diagnostics.droppedOrphanEvents)")
@@ -434,6 +568,7 @@ struct PortalHomeView: View {
     private var demoInstructions: String {
         switch model.mode {
         case .staticSite: return "Shared arcade: Snake, memory pairs, reaction testing and sloshing water fill; engine-served, no listener."
+        case .localLlm: return "Explicitly download a catalog model once, then reuse verified device storage. Open the public webpage and enter the separate password."
         case .http: return "Built-in loopback API on an automatically assigned port. GET returns JSON; POST receives a webhook."
         case .routes: return "Prefix routes: /api → local API; /hooks → local webhook receiver, each on an automatically assigned port."
         case .tcp: return "Loopback TCP echo on an automatically assigned port. Max 16 connections, 4096-byte chunks, 10-second connection lifetime."
@@ -442,13 +577,15 @@ struct PortalHomeView: View {
     }
 
     private var exerciseCommands: String {
-        if model.mode != .staticSite && !model.builtInDemo {
+        if model.mode != .staticSite && model.mode != .localLlm && !model.builtInDemo {
             return "Custom upstream selected. Exercise the public HTTP URL or relay TCP/UDP endpoint with your service's protocol. The custom service controls responses and its requests are not included in the built-in receive log."
         }
+        let publicUrl = model.primaryPublicUrl ?? "PUBLIC_URL"
         switch model.mode {
-        case .staticSite: return "Open the public HTTPS URL to play four keyboard/touch games. Each visitor plays independently; scores stay in that browser tab."
-        case .http: return "curl 'PUBLIC_URL/'\ncurl -X POST 'PUBLIC_URL/hooks' -H 'Content-Type: application/json' --data '{\"event\":\"hello\"}'\nBuilt-in HTTP: 16 KiB total request limit, Content-Length only, no keep-alive; bodies are discarded."
-        case .routes: return "curl 'PUBLIC_URL/api'\ncurl -X POST 'PUBLIC_URL/hooks' --data 'hello'\nAPI and webhook return different service labels. Unmatched prefixes are not a fallback route."
+        case .staticSite: return "Open \(publicUrl) to play four keyboard/touch games. Each visitor plays independently; scores stay in that browser tab."
+        case .localLlm: return "Open \(publicUrl) and enter the separately configured password. Requests run on this device's CPU while the app stays foregrounded; no cloud or external inference daemon is used.\ncurl -u 'portal:YOUR_PASSWORD' '\(publicUrl)/api/status'"
+        case .http: return "curl '\(publicUrl)/'\ncurl -X POST '\(publicUrl)/hooks' -H 'Content-Type: application/json' --data '{\"event\":\"hello\"}'\nBuilt-in HTTP: 16 KiB total request limit, Content-Length only, no keep-alive; bodies are discarded."
+        case .routes: return "curl '\(publicUrl)/api'\ncurl -X POST '\(publicUrl)/hooks' --data 'hello'\nAPI and webhook return different service labels. Unmatched prefixes are not a fallback route."
         case .tcp: return "Use the relay TCP host and port below:\nprintf 'hello\\n' | nc -w 2 TCP_HOST TCP_PORT\nExpected: the same bytes."
         case .udp: return "Use the relay UDP host and port below:\nprintf 'hello\\n' | nc -u -w 2 UDP_HOST UDP_PORT\nExpected: the same datagram."
         }

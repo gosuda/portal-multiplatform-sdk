@@ -40,6 +40,10 @@ URLs. Names, explicit relays, custom timeout and constructor options belong
 after this minimal path. Never build TCP configs with a name-only factory
 and a later target-field copy.
 
+For a runtime domain label use `config.withDomainPrefix("my-arcade")`
+(Swift: `prefix:`). It preserves the stored identity/key, unlike generating
+a new identity. A relay grants the short URL only when the prefix is available.
+
 
 ## Mental model
 
@@ -52,8 +56,9 @@ and a later target-field copy.
   `open` returning.
 - `state: StateFlow<PortalSnapshot>` is authoritative (phase, urls, relays,
   lastFailure, hasSecurityWarning, droppedEventCount). `events: SharedFlow`
-  is auxiliary, bounded, no replay. `tunnel.publicUrl` reads the first URL
-  directly.
+  is auxiliary, bounded, no replay. `tunnel.publicUrl` prefers a ready relay's
+  granted alias only while ACTIVE, otherwise the canonical fallback.
+  `snapshot.publicUrls` remains canonical; never synthesize or reuse stale aliases.
 - `stop()` is retryable: failure leaves the session in STOPPING, still
   registered. Terminal phases (STOPPED/FAILED) never resurrect on late events.
 - ACTIVE means every requested capability is ready. Raw TCP/UDP each require
@@ -97,3 +102,11 @@ and a later target-field copy.
 - `references/api-reference.md` — full API surface
 - `references/troubleshooting.md` — build/link/runtime pitfalls
 - `examples/StaticSiteActivity.kt` — end-to-end Android example
+
+The samples also host a real CPU-local GGUF model as an HTTP upstream.
+Inference, the curated `models.json`, explicit SHA-verified downloads and
+persistent caches belong only to `samples`; never add model management to
+the SDK. No model downloads on launch/select/publish, no cloud or fake fallback.
+LLM passwords are configured/generated in native app settings, kept in owner
+memory only and entered separately on the webpage (UTF-8 Basic, user `portal`).
+Never put credentials in URLs, SDK metadata or logs. Keep native/web UI black and white.

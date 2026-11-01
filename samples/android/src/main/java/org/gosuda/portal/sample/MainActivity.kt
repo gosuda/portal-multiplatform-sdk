@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val snapshot = app.tunnel.flatMapLatest { it?.state ?: flowOf(null) }
             .stateIn(observationScope, SharingStarted.Eagerly, app.tunnel.value?.state?.value)
         setContent {
@@ -43,16 +45,27 @@ class MainActivity : ComponentActivity() {
                 val keepAlive by app.keepAlive.collectAsState()
                 val demo by app.demoActivity.collectAsState()
                 val endpoint by app.localEndpoint.collectAsState()
+                val cachedModels by app.cachedModels.collectAsState()
+                val download by app.modelStore.progress.collectAsState()
+                val activeModelId by app.activeModelId.collectAsState()
+                val cleanupPending by app.cleanupPending.collectAsState()
+                val llmPassword by app.llmPassword.collectAsState()
                 SampleScreen(
                     snapshot = snap, lastError = error, failure = failure,
                     eventLog = events, diagnostics = diagnostics, busy = busy,
                     keepAlive = keepAlive, demo = demo, localEndpoint = endpoint,
+                    models = app.modelStore.models, cachedModels = cachedModels, download = download,
+                    activeModelId = activeModelId, cleanupPending = cleanupPending,
+                    llmPassword = llmPassword,
                     actions = SampleActions(
                         onStart = app::publish, onStop = app::stop,
                         onRefresh = app::refresh, onAwaitReady = app::awaitReady,
                         onUpdateMetadata = app::updateMetadata,
                         onAddRelay = app::addRelay, onRemoveRelay = app::removeRelay,
                         onDiagnostics = app::loadDiagnostics, onKeepAlive = ::setKeepAlive,
+                        onDownloadModel = app::downloadModel, onCancelDownload = app::cancelModelDownload,
+                        onLlmPasswordChange = app::setLlmPassword,
+                        onGenerateLlmPassword = app::generateLlmPassword,
                     ),
                 )
             }

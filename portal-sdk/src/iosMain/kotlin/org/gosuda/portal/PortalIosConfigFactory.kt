@@ -59,9 +59,9 @@ public object PortalIosConfigFactory {
         PortalConfig.staticSite(directory, index, name)
 
     /**
-     * Advanced escape hatch: builds a config with every field the
-     * intent factories do not cover, without the generated all-fields
-     * `PortalConfig` initializer or `KotlinBoolean` at the Swift call site.
+     * Advanced escape hatch for explicit identity, relays, metadata and transport
+     * combinations without the generated all-fields initializer. Runtime domain
+     * labels use [PortalConfig.withDomainPrefix] on any returned config.
      * Boolean parameters are
      * non-nullable on purpose: `encodeDefaults=false` makes an explicit
      * `true`/`false` wire-identical to the field default, so there is no

@@ -52,7 +52,7 @@ jobs:
     name: Publish only after the complete native and consumer matrix passes
     if: github.event_name == 'push' || inputs.publish
     needs: [release-gate, verify]
-    runs-on: macos-latest
+    runs-on: depot-macos-latest
     permissions:
       contents: write
     steps:

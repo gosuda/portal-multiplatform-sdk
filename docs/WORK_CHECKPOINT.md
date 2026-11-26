@@ -1,5 +1,21 @@
 # Work Checkpoint
 
+## CI runner cleanup — 2026-11-26
+
+The current CI change moves every workflow job to Depot and removes the direct
+tag trigger from gradle.yml. Publish Multiplatform SDK already calls that
+workflow, so each release keeps one complete nine-job native/consumer matrix.
+All macOS jobs use depot-macos-latest. Release eligibility, credentials,
+signing and provenance gates remain intact; ordinary commits still do not
+automatically run CI.
+
+Validation: actionlint 1.7.12 passed for both workflows; YAML/event and runner
+audits passed, including the local reusable workflow. Native Gradle, Apple,
+Windows and Android release builds were not executed in the editing container.
+Next action: review the CI PR and observe the next manual or tagged full matrix.
+No release tag or publication was created by this change. Prior product-task
+checkpoints below remain historical records.
+
 ## Session outcome — 2026-11-01
 
 The initial SDK cleanup, easy APIs, five-mode workbenches and four-game arcade
@@ -219,3 +235,4 @@ generated builds and runtime evidence were retained.
 - Full Linux/Windows/macOS release-matrix, provenance/signing and release
   credentials/tag/commit-subject gates remain required. Linux/Windows runtime
   execution was not verified on this macOS host.
+
